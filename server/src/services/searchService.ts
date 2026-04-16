@@ -2,9 +2,19 @@ import { nodeService } from './nodeService';
 import { aiService } from './aiService';
 import { SearchResult } from '../types';
 
+/**
+ * 搜索服务类
+ * 提供节点搜索功能，按工作区隔离
+ */
 class SearchService {
-  async searchNodes(query: string, userId?: string): Promise<SearchResult[]> {
-    const nodes = await nodeService.getAllNodes(userId);
+  /**
+   * 文本搜索节点
+   * @param query - 搜索关键词
+   * @param workspaceId - 工作区ID
+   * @returns 搜索结果列表
+   */
+  async searchNodes(query: string, workspaceId: string): Promise<SearchResult[]> {
+    const nodes = await nodeService.getAllNodes(workspaceId);
     const results: SearchResult[] = [];
     const queryLower = query.toLowerCase();
 
@@ -22,7 +32,7 @@ class SearchService {
         score += 5;
       }
 
-      const tagMatches = node.tags.filter(tag => 
+      const tagMatches = node.tags.filter(tag =>
         tag.toLowerCase().includes(queryLower)
       );
       if (tagMatches.length > 0) {
@@ -42,14 +52,20 @@ class SearchService {
     return results.sort((a, b) => b.score - a.score);
   }
 
+  /**
+   * 语义搜索
+   * @param query - 搜索关键词
+   * @param topK - 返回数量
+   * @returns 搜索结果列表
+   */
   async semanticSearch(query: string, topK: number = 10): Promise<SearchResult[]> {
     if (!aiService.isConfigured()) {
-      console.warn('AI service not configured, falling back to text search');
-      return this.searchNodes(query);
+      console.warn('AI服务未配置，回退到文本搜索');
+      return this.searchNodes(query, '');
     }
 
     const similarNodes = await aiService.searchSimilarNodes(query, topK);
-    
+
     return similarNodes.map(node => ({
       nodeId: node.id,
       score: node.score,
@@ -58,9 +74,15 @@ class SearchService {
     }));
   }
 
-  async hybridSearch(query: string, userId?: string): Promise<SearchResult[]> {
-    const textResults = await this.searchNodes(query, userId);
-    
+  /**
+   * 混合搜索
+   * @param query - 搜索关键词
+   * @param workspaceId - 工作区ID
+   * @returns 搜索结果列表
+   */
+  async hybridSearch(query: string, workspaceId: string): Promise<SearchResult[]> {
+    const textResults = await this.searchNodes(query, workspaceId);
+
     let semanticResults: SearchResult[] = [];
     if (aiService.isConfigured()) {
       semanticResults = await this.semanticSearch(query, 5);
@@ -87,13 +109,19 @@ class SearchService {
       .slice(0, 20);
   }
 
-  async searchByTags(tags: string[], userId?: string): Promise<SearchResult[]> {
-    const nodes = await nodeService.getAllNodes(userId);
+  /**
+   * 按标签搜索
+   * @param tags - 标签列表
+   * @param workspaceId - 工作区ID
+   * @returns 搜索结果列表
+   */
+  async searchByTags(tags: string[], workspaceId: string): Promise<SearchResult[]> {
+    const nodes = await nodeService.getAllNodes(workspaceId);
     const results: SearchResult[] = [];
 
     for (const node of nodes) {
-      const matchingTags = node.tags.filter(tag => 
-        tags.some(searchTag => 
+      const matchingTags = node.tags.filter(tag =>
+        tags.some(searchTag =>
           tag.toLowerCase().includes(searchTag.toLowerCase())
         )
       );
@@ -111,6 +139,12 @@ class SearchService {
     return results.sort((a, b) => b.score - a.score);
   }
 
+  /**
+   * 获取相关节点
+   * @param nodeId - 节点ID
+   * @param depth - 搜索深度
+   * @returns 搜索结果列表
+   */
   async getRelatedNodes(nodeId: string, depth: number = 2): Promise<SearchResult[]> {
     const visited = new Set<string>();
     const results: SearchResult[] = [];
@@ -120,10 +154,10 @@ class SearchService {
       visited.add(id);
 
       const relations = await nodeService.getRelationsForNode(id);
-      
+
       for (const relation of relations) {
         const relatedId = relation.sourceId === id ? relation.targetId : relation.sourceId;
-        
+
         if (!visited.has(relatedId)) {
           const node = await nodeService.getNode(relatedId);
           if (node) {
@@ -133,7 +167,7 @@ class SearchService {
               matches: [relation.type],
             });
           }
-          
+
           await traverse(relatedId, currentDepth + 1);
         }
       }

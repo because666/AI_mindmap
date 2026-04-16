@@ -1,6 +1,7 @@
 import { create } from 'zustand';
 import { persist } from 'zustand/middleware';
 import type { IMessage } from '../types';
+import { nodeApi, conversationApi } from '../services/api';
 
 /**
  * 关系类型定义
@@ -163,6 +164,23 @@ interface AppState {
   
   // 布局操作
   autoLayout: () => void;
+
+  /**
+   * 清除所有数据（工作区切换时使用）
+   */
+  clearAllData: () => void;
+
+  /**
+   * 从API加载数据（工作区切换后使用）
+   * @param data - 包含nodes和relations的API响应数据
+   */
+  loadNodesFromApi: (data: { nodes: unknown[]; relations: unknown[] }) => void;
+
+  /**
+   * 从API加载对话数据
+   * @param conversations - 服务端返回的对话列表
+   */
+  loadConversationsFromApi: (conversations: unknown[]) => void;
 }
 
 /**
@@ -314,6 +332,23 @@ export const useAppStore = create<AppState>()(
         });
         
         get().pushHistory('create_node', `创建根节点: ${title}`);
+
+        nodeApi.create({
+          id,
+          title,
+          position,
+          isRoot: true,
+          parentIds: [],
+          childrenIds: [],
+          isComposite: false,
+          hidden: false,
+          expanded: true,
+          tags: [],
+          summary: '',
+        }).catch((error: unknown) => {
+          console.error('[appStore] 同步创建根节点到服务端失败:', error);
+        });
+
         return id;
       },
       
@@ -380,6 +415,11 @@ export const useAppStore = create<AppState>()(
         });
         
         get().pushHistory('create_node', `创建子节点: ${title}`);
+
+        nodeApi.createChild(parentId, title, { id, position }).catch((error: unknown) => {
+          console.error('[appStore] 同步创建子节点到服务端失败:', error);
+        });
+
         return id;
       },
       
@@ -439,6 +479,11 @@ export const useAppStore = create<AppState>()(
         });
         
         get().pushHistory('update_node', `更新节点`);
+
+        const { createdAt, updatedAt, ...apiUpdates } = updates as Record<string, unknown>;
+        nodeApi.update(id, apiUpdates as Partial<import('../services/api').NodeData>).catch((error: unknown) => {
+          console.error('[appStore] 同步更新节点到服务端失败:', error);
+        });
       },
       
       /**
@@ -495,6 +540,10 @@ export const useAppStore = create<AppState>()(
         });
         
         get().pushHistory('delete_node', `删除节点`);
+
+        nodeApi.delete(id).catch((error: unknown) => {
+          console.error('[appStore] 同步删除节点到服务端失败:', error);
+        });
       },
       
       /**
@@ -531,6 +580,17 @@ export const useAppStore = create<AppState>()(
         }));
         
         get().pushHistory('create_relation', `创建关系: ${RELATION_TYPE_LABELS[relation.type].label}`);
+
+        nodeApi.createRelation({
+          id,
+          sourceId: relation.sourceId,
+          targetId: relation.targetId,
+          type: relation.type,
+          description: relation.description,
+        }).catch((error: unknown) => {
+          console.error('[appStore] 同步创建关系到服务端失败:', error);
+        });
+
         return id;
       },
       
@@ -557,6 +617,10 @@ export const useAppStore = create<AppState>()(
         }));
         
         get().pushHistory('delete_relation', `删除关系`);
+
+        nodeApi.deleteRelation(id).catch((error: unknown) => {
+          console.error('[appStore] 同步删除关系到服务端失败:', error);
+        });
       },
       
       /**
@@ -601,6 +665,14 @@ export const useAppStore = create<AppState>()(
           
           return { conversations: newConversations, nodes: newNodes };
         });
+
+        nodeApi.update(nodeId, { conversationId: id }).catch((error: unknown) => {
+          console.error('[appStore] 同步节点conversationId到服务端失败:', error);
+        });
+
+        conversationApi.getByNodeId(nodeId, id).catch((error: unknown) => {
+          console.error('[appStore] 同步创建对话到服务端失败:', error);
+        });
         
         return id;
       },
@@ -611,10 +683,13 @@ export const useAppStore = create<AppState>()(
        * @param message - 消息内容
        */
       addMessage: (conversationId, message) => {
+        let nodeId: string | null = null;
+
         set((state) => {
           const newConversations = new Map(state.conversations);
           const conversation = newConversations.get(conversationId);
           if (conversation) {
+            nodeId = conversation.nodeId;
             newConversations.set(conversationId, {
               ...conversation,
               messages: [
@@ -630,6 +705,12 @@ export const useAppStore = create<AppState>()(
           }
           return { conversations: newConversations };
         });
+
+        if (nodeId) {
+          conversationApi.saveMessage(nodeId, message.role, message.content).catch((error: unknown) => {
+            console.error('[appStore] 同步消息到服务端失败:', error);
+          });
+        }
       },
       
       /**
@@ -637,10 +718,13 @@ export const useAppStore = create<AppState>()(
        * @param conversationId - 对话ID
        */
       clearConversation: (conversationId) => {
+        let nodeId: string | null = null;
+
         set((state) => {
           const newConversations = new Map(state.conversations);
           const conversation = newConversations.get(conversationId);
           if (conversation) {
+            nodeId = conversation.nodeId;
             newConversations.set(conversationId, {
               ...conversation,
               messages: [],
@@ -649,6 +733,12 @@ export const useAppStore = create<AppState>()(
           }
           return { conversations: newConversations };
         });
+
+        if (nodeId) {
+          conversationApi.clear(nodeId).catch((error: unknown) => {
+            console.error('[appStore] 同步清空对话到服务端失败:', error);
+          });
+        }
       },
       
       /**
@@ -902,6 +992,32 @@ export const useAppStore = create<AppState>()(
         });
         
         get().pushHistory('create_node', `创建复合节点: ${title}`);
+
+        nodeApi.create({
+          id: compositeId,
+          title,
+          summary: `包含 ${nodeIds.length} 个节点`,
+          position: get().nodes.get(compositeId)?.position || { x: 0, y: 0 },
+          isRoot: false,
+          isComposite: true,
+          compositeChildren: nodeIds,
+          parentIds: [],
+          childrenIds: [],
+          hidden: false,
+          expanded: false,
+          tags: [],
+        }).catch((error: unknown) => {
+          console.error('[appStore] 同步创建复合节点到服务端失败:', error);
+        });
+
+        for (const aggregatedId of nodeIds) {
+          nodeApi.update(aggregatedId, {
+            hidden: true,
+            compositeParent: compositeId,
+          }).catch((error: unknown) => {
+            console.error('[appStore] 同步聚合节点状态到服务端失败:', error);
+          });
+        }
       },
       
       /**
@@ -911,6 +1027,8 @@ export const useAppStore = create<AppState>()(
        * @param nodeId - 复合节点ID
        */
       expandCompositeNode: (nodeId) => {
+        const updatedNodeIds: string[] = [];
+
         set((state) => {
           const newNodes = new Map(state.nodes);
           const node = newNodes.get(nodeId);
@@ -927,6 +1045,7 @@ export const useAppStore = create<AppState>()(
                     hidden: true,
                     compositeParent: nodeId
                   });
+                  updatedNodeIds.push(childId);
                 }
               });
               
@@ -934,6 +1053,7 @@ export const useAppStore = create<AppState>()(
                 ...node,
                 expanded: false
               });
+              updatedNodeIds.push(nodeId);
             } else {
               const childCount = node.compositeChildren.length;
               const centerX = node.position.x;
@@ -958,6 +1078,7 @@ export const useAppStore = create<AppState>()(
                     compositeParent: nodeId,
                     position: { x: newX, y: newY }
                   });
+                  updatedNodeIds.push(childId);
                 }
               });
               
@@ -965,6 +1086,7 @@ export const useAppStore = create<AppState>()(
                 ...node,
                 expanded: true
               });
+              updatedNodeIds.push(nodeId);
             }
           }
           
@@ -972,6 +1094,20 @@ export const useAppStore = create<AppState>()(
         });
         
         get().pushHistory('update_node', `切换复合节点展开状态`);
+
+        for (const updatedId of updatedNodeIds) {
+          const updatedNode = get().nodes.get(updatedId);
+          if (updatedNode) {
+            nodeApi.update(updatedId, {
+              hidden: updatedNode.hidden,
+              expanded: updatedNode.expanded,
+              compositeParent: updatedNode.compositeParent,
+              position: updatedNode.position,
+            }).catch((error: unknown) => {
+              console.error('[appStore] 同步复合节点展开状态到服务端失败:', error);
+            });
+          }
+        }
       },
       
       /**
@@ -1007,27 +1143,93 @@ export const useAppStore = create<AppState>()(
           
           return { nodes: newNodes };
         });
-      }
+      },
+
+      /**
+       * 清除所有数据（工作区切换时使用）
+       * 重置节点、关系、对话、历史记录等所有状态
+       */
+      clearAllData: () => {
+        set({
+          nodes: new Map(),
+          relations: [],
+          conversations: new Map(),
+          selectedNodeId: null,
+          hoveredNodeId: null,
+          history: [],
+          historyIndex: -1,
+          searchQuery: '',
+          searchResults: [],
+        });
+      },
+
+      /**
+       * 从API加载数据（工作区切换后使用）
+       */
+      loadNodesFromApi: (data: { nodes: unknown[]; relations: unknown[] }) => {
+        const newNodes = new Map<string, NodeData>();
+        for (const node of data.nodes as NodeData[]) {
+          const migratedNode = migrateNodeData(node);
+          newNodes.set(node.id, migratedNode);
+        }
+
+        const newRelations = migrateRelationsData(data.relations as RelationData[]);
+
+        set({
+          nodes: newNodes,
+          relations: newRelations,
+          selectedNodeId: null,
+          hoveredNodeId: null,
+          history: [],
+          historyIndex: -1,
+        });
+      },
+
+      /**
+       * 从API加载对话数据（工作区切换后使用）
+       * @param conversations - 服务端返回的对话列表
+       */
+      loadConversationsFromApi: (conversations: unknown[]) => {
+        const newConversations = new Map<string, ConversationData>();
+        const newNodes = new Map(get().nodes);
+
+        for (const conv of conversations as ConversationData[]) {
+          if (!conv || !conv.id || !conv.nodeId) continue;
+
+          newConversations.set(conv.id, {
+            ...conv,
+            createdAt: conv.createdAt ? new Date(conv.createdAt) : new Date(),
+            updatedAt: conv.updatedAt ? new Date(conv.updatedAt) : new Date(),
+            messages: (conv.messages || []).map((msg: { _id?: string; role?: string; content?: string; timestamp?: string | Date }) => ({
+              _id: msg._id || generateId(),
+              role: (msg.role === 'user' || msg.role === 'assistant' || msg.role === 'system' ? msg.role : 'user') as IMessage['role'],
+              content: msg.content || '',
+              timestamp: msg.timestamp ? new Date(msg.timestamp) : new Date(),
+            })),
+          });
+
+          const node = newNodes.get(conv.nodeId);
+          if (node && node.conversationId !== conv.id) {
+            newNodes.set(conv.nodeId, { ...node, conversationId: conv.id });
+          }
+        }
+
+        set({
+          conversations: newConversations,
+          nodes: newNodes,
+        });
+      },
     }),
     {
       name: 'deep-mind-map-storage',
       partialize: (state) => ({
-        nodes: Array.from(state.nodes.entries()),
-        relations: state.relations,
-        conversations: Array.from(state.conversations.entries())
+        selectedNodeId: state.selectedNodeId,
       }),
       onRehydrateStorage: () => (state) => {
         if (state) {
-          state.nodes = new Map(state.nodes as any);
-          
-          state.nodes.forEach((node: any) => {
-            const migratedNode = migrateNodeData(node);
-            state.nodes.set(node.id, migratedNode);
-          });
-          
-          state.relations = migrateRelationsData(state.relations);
-          
-          state.conversations = new Map(state.conversations as any);
+          state.nodes = new Map();
+          state.relations = [];
+          state.conversations = new Map();
         }
       }
     }

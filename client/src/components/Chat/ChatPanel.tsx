@@ -1,5 +1,5 @@
 import React, { useState, useRef, useEffect, useMemo } from 'react';
-import { Send, Loader2, Trash2, User, Bot, Sparkles, GitBranch, MessageSquare, Copy, Check } from 'lucide-react';
+import { Send, Loader2, Trash2, User, Bot, Sparkles, GitBranch, MessageSquare, Copy, Check, Plus } from 'lucide-react';
 import { useAppStore } from '../../stores/appStore';
 import { useAPIConfigStore } from '../../stores/apiConfigStore';
 import { chatService } from '../../services/chatService';
@@ -20,16 +20,13 @@ const MessageContent: React.FC<{
 }> = ({ content, role }) => {
   const [copied, setCopied] = useState(false);
 
-  /**
-   * 复制消息内容
-   */
   const handleCopy = async () => {
     try {
       await navigator.clipboard.writeText(content);
       setCopied(true);
       setTimeout(() => setCopied(false), 2000);
     } catch (err) {
-      console.error('Failed to copy:', err);
+      console.error('复制失败:', err);
     }
   };
 
@@ -70,14 +67,25 @@ const StreamingMessage: React.FC<{
 
 /**
  * 聊天面板组件 - 支持分支隔离上下文和流式传输
+ * 包含快捷创建分支按钮，优化移动端操作体验
  */
 const ChatPanel: React.FC<ChatPanelProps> = ({ nodeId }) => {
-  const { nodes, conversations, addConversation, addMessage, clearConversation, getConversationContext } = useAppStore();
+  const {
+    nodes,
+    conversations,
+    addConversation,
+    addMessage,
+    clearConversation,
+    getConversationContext,
+    createChildNode,
+    selectNode,
+  } = useAppStore();
   const { config } = useAPIConfigStore();
   const [input, setInput] = useState('');
   const [isLoading, setIsLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [streamingContent, setStreamingContent] = useState<string>('');
+  const [branchCreating, setBranchCreating] = useState(false);
   const messagesEndRef = useRef<HTMLDivElement>(null);
 
   const node = nodeId ? nodes.get(nodeId) : null;
@@ -144,9 +152,6 @@ const ChatPanel: React.FC<ChatPanelProps> = ({ nodeId }) => {
       { role: 'user' as const, content: userMessage }
     ];
 
-    /**
-     * 流式回调函数
-     */
     const handleStream = (event: StreamEvent) => {
       if (event.type === 'content' && event.fullContent) {
         setStreamingContent(event.fullContent);
@@ -168,9 +173,6 @@ const ChatPanel: React.FC<ChatPanelProps> = ({ nodeId }) => {
     }
   };
 
-  /**
-   * 处理键盘事件
-   */
   const handleKeyDown = (e: React.KeyboardEvent) => {
     if (e.key === 'Enter' && !e.shiftKey) {
       e.preventDefault();
@@ -178,12 +180,28 @@ const ChatPanel: React.FC<ChatPanelProps> = ({ nodeId }) => {
     }
   };
 
-  /**
-   * 清空对话
-   */
   const handleClear = () => {
     if (conversation?.id && confirm('确定要清空此对话吗？')) {
       clearConversation(conversation.id);
+    }
+  };
+
+  /**
+   * 快捷创建分支节点
+   * 一键从当前节点创建子分支并自动选中，移动端优化核心功能
+   */
+  const handleCreateBranch = async () => {
+    if (!nodeId || branchCreating) return;
+    setBranchCreating(true);
+    try {
+      const childId = createChildNode(nodeId, '新分支');
+      if (childId) {
+        selectNode(childId);
+      }
+    } catch (err) {
+      console.error('创建分支失败:', err);
+    } finally {
+      setBranchCreating(false);
     }
   };
 
@@ -214,6 +232,22 @@ const ChatPanel: React.FC<ChatPanelProps> = ({ nodeId }) => {
             <MessageSquare className="w-4 h-4 text-primary-400" />
           )}
           <span className="text-white font-medium truncate flex-1">{node?.title}</span>
+          
+          {/* 快捷创建分支按钮 - 移动端核心优化 */}
+          <button
+            onClick={handleCreateBranch}
+            disabled={branchCreating || !nodeId}
+            className="flex items-center gap-1.5 px-3 py-1.5 bg-primary-600/15 border border-primary-500/30 text-primary-400 rounded-lg text-xs font-medium hover:bg-primary-600/25 hover:border-primary-500/50 active:scale-95 transition-all disabled:opacity-40 disabled:cursor-not-allowed"
+            title="从此节点创建分支"
+          >
+            {branchCreating ? (
+              <Loader2 className="w-3.5 h-3.5 animate-spin" />
+            ) : (
+              <Plus className="w-3.5 h-3.5" />
+            )}
+            <span>分支</span>
+          </button>
+
           <button
             onClick={handleClear}
             className="p-1.5 text-dark-400 hover:text-red-400 hover:bg-dark-700 rounded-lg transition-colors"
@@ -251,6 +285,15 @@ const ChatPanel: React.FC<ChatPanelProps> = ({ nodeId }) => {
                 已继承 {contextInfo.parentCount} 个父节点的对话历史
               </p>
             )}
+            {/* 空状态时也提供创建分支引导 */}
+            <button
+              onClick={handleCreateBranch}
+              disabled={branchCreating}
+              className="mt-4 inline-flex items-center gap-1.5 px-4 py-2 bg-primary-600/15 border border-primary-500/30 text-primary-400 rounded-xl text-sm font-medium hover:bg-primary-600/25 active:scale-95 transition-all"
+            >
+              <GitBranch className="w-4 h-4" />
+              <span>创建对话分支</span>
+            </button>
           </div>
         ) : (
           <>
@@ -282,7 +325,6 @@ const ChatPanel: React.FC<ChatPanelProps> = ({ nodeId }) => {
               </div>
             ))}
             
-            {/* 流式消息显示 */}
             {streamingContent && (
               <div className="flex gap-3">
                 <div className="w-8 h-8 rounded-full bg-dark-700 flex items-center justify-center">
@@ -296,7 +338,6 @@ const ChatPanel: React.FC<ChatPanelProps> = ({ nodeId }) => {
           </>
         )}
         
-        {/* 加载指示器（仅在等待首个字符时显示） */}
         {isLoading && !streamingContent && (
           <div className="flex gap-3">
             <div className="w-8 h-8 rounded-full bg-dark-700 flex items-center justify-center">

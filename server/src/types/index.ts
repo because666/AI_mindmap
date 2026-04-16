@@ -1,10 +1,60 @@
 import { ObjectId } from 'mongodb';
 
 /**
+ * 工作区类型
+ */
+export type WorkspaceType = 'public' | 'private';
+
+/**
+ * 工作区成员角色
+ */
+export type MemberRole = 'owner' | 'collaborator';
+
+/**
+ * 工作区成员接口
+ */
+export interface WorkspaceMember {
+  visitorId: string;
+  nickname: string;
+  role: MemberRole;
+  joinedAt: Date;
+}
+
+/**
+ * 工作区数据接口
+ */
+export interface Workspace {
+  _id?: ObjectId;
+  id: string;
+  name: string;
+  description?: string;
+  type: WorkspaceType;
+  inviteCode?: string;
+  inviteCodeExpiry?: Date;
+  ownerId: string;
+  members: WorkspaceMember[];
+  createdAt: Date;
+  updatedAt: Date;
+}
+
+/**
+ * 访客数据接口
+ */
+export interface Visitor {
+  _id?: ObjectId;
+  id: string;
+  nickname: string;
+  lastSeen: Date;
+  workspaces: string[];
+  createdAt: Date;
+}
+
+/**
  * 节点数据接口
  */
 export interface Node {
   id: string;
+  workspaceId: string;
   title: string;
   summary: string;
   isRoot: boolean;
@@ -18,7 +68,7 @@ export interface Node {
   tags: string[];
   parentIds: string[];
   childrenIds: string[];
-  userId?: string;
+  createdBy?: string;
   createdAt: Date;
   updatedAt: Date;
 }
@@ -41,11 +91,12 @@ export type RelationType =
  */
 export interface Relation {
   id: string;
+  workspaceId: string;
   sourceId: string;
   targetId: string;
   type: RelationType;
   description?: string;
-  userId?: string;
+  createdBy?: string;
   createdAt: Date;
 }
 
@@ -56,13 +107,14 @@ export interface Conversation {
   _id?: ObjectId;
   id: string;
   nodeId: string;
+  workspaceId: string;
   messages: Message[];
   contextConfig: {
     includeParentHistory: boolean;
     includeRelatedNodes: string[];
     customContext?: string;
   };
-  userId?: string;
+  createdBy?: string;
   createdAt: Date;
   updatedAt: Date;
 }
@@ -117,11 +169,12 @@ export interface UserSettings {
  */
 export interface HistoryRecord {
   id: string;
-  userId?: string;
+  workspaceId?: string;
+  visitorId?: string;
   action: string;
   description: string;
-  beforeState?: any;
-  afterState?: any;
+  beforeState?: Record<string, unknown> | null;
+  afterState?: Record<string, unknown> | null;
   timestamp: Date;
 }
 

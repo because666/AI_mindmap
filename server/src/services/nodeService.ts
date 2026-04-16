@@ -4,14 +4,12 @@ import { mongoDBService } from '../data/mongodb/connection';
 import { vectorDBService } from '../data/vector/connection';
 import { Node, Relation } from '../types';
 
-/**
- * 默认节点位置
- */
 const DEFAULT_POSITION = { x: 100, y: 100 };
 
 /**
  * 节点服务类
  * 提供节点的CRUD操作和关系管理
+ * 所有数据按工作区隔离
  */
 class NodeService {
   private memoryNodes: Map<string, Node> = new Map();
@@ -20,16 +18,18 @@ class NodeService {
   /**
    * 创建节点
    * @param nodeData - 节点数据
-   * @param userId - 用户ID
+   * @param workspaceId - 工作区ID
+   * @param createdBy - 创建者访客ID
    * @returns 创建的节点
    */
-  async createNode(nodeData: Partial<Node>, userId?: string): Promise<Node> {
+  async createNode(nodeData: Partial<Node>, workspaceId: string, createdBy?: string): Promise<Node> {
     if (nodeData.id && this.memoryNodes.has(nodeData.id)) {
-      throw new Error(`Node with id ${nodeData.id} already exists`);
+      throw new Error(`节点 ${nodeData.id} 已存在`);
     }
 
     const node: Node = {
       id: nodeData.id || uuidv4(),
+      workspaceId,
       title: nodeData.title?.trim() || '新节点',
       summary: nodeData.summary?.trim() || '',
       isRoot: nodeData.isRoot || false,
@@ -43,7 +43,7 @@ class NodeService {
       tags: nodeData.tags || [],
       parentIds: nodeData.parentIds || [],
       childrenIds: nodeData.childrenIds || [],
-      userId,
+      createdBy,
       createdAt: new Date(),
       updatedAt: new Date(),
     };
@@ -55,7 +55,7 @@ class NodeService {
           { props: node }
         );
       } catch (error) {
-        console.error('Failed to create node in Neo4j:', error);
+        console.error('Neo4j创建节点失败:', error);
       }
     }
 
@@ -89,7 +89,7 @@ class NodeService {
           return node;
         }
       } catch (error) {
-        console.error('Failed to get node from Neo4j:', error);
+        console.error('Neo4j获取节点失败:', error);
       }
     }
 
@@ -114,6 +114,7 @@ class NodeService {
       ...existing,
       ...updates,
       id: existing.id,
+      workspaceId: existing.workspaceId,
       createdAt: existing.createdAt,
       updatedAt: new Date(),
     };
@@ -132,7 +133,7 @@ class NodeService {
           { id, props: updated }
         );
       } catch (error) {
-        console.error('Failed to update node in Neo4j:', error);
+        console.error('Neo4j更新节点失败:', error);
       }
     }
 
@@ -165,7 +166,7 @@ class NodeService {
           );
         }
       } catch (error) {
-        console.error('Failed to delete nodes from Neo4j:', error);
+        console.error('Neo4j删除节点失败:', error);
       }
     }
 
@@ -189,18 +190,13 @@ class NodeService {
   }
 
   /**
-   * 获取所有节点
-   * @param userId - 用户ID（可选）
+   * 获取工作区内的所有节点
+   * @param workspaceId - 工作区ID
    * @returns 节点列表
    */
-  async getAllNodes(userId?: string): Promise<Node[]> {
+  async getAllNodes(workspaceId: string): Promise<Node[]> {
     const nodes = Array.from(this.memoryNodes.values());
-    
-    if (userId) {
-      return nodes.filter(n => n.userId === userId);
-    }
-    
-    return nodes;
+    return nodes.filter(n => n.workspaceId === workspaceId);
   }
 
   /**
@@ -211,15 +207,11 @@ class NodeService {
   async getAllDescendants(nodeId: string): Promise<Node[]> {
     const descendants: Node[] = [];
     const visited = new Set<string>();
-    
-    /**
-     * 递归收集后代节点
-     * @param id - 当前节点ID
-     */
+
     const collect = async (id: string) => {
       if (visited.has(id)) return;
       visited.add(id);
-      
+
       const node = await this.getNode(id);
       if (node) {
         for (const childId of node.childrenIds) {
@@ -231,18 +223,18 @@ class NodeService {
         }
       }
     };
-    
+
     await collect(nodeId);
     return descendants;
   }
 
   /**
-   * 获取根节点
-   * @param userId - 用户ID（可选）
+   * 获取工作区内的根节点
+   * @param workspaceId - 工作区ID
    * @returns 根节点列表
    */
-  async getRootNodes(userId?: string): Promise<Node[]> {
-    const nodes = await this.getAllNodes(userId);
+  async getRootNodes(workspaceId: string): Promise<Node[]> {
+    const nodes = await this.getAllNodes(workspaceId);
     return nodes.filter(n => n.isRoot && !n.hidden);
   }
 
@@ -250,28 +242,29 @@ class NodeService {
    * 创建子节点
    * @param parentId - 父节点ID
    * @param title - 节点标题
-   * @param userId - 用户ID
+   * @param workspaceId - 工作区ID
+   * @param createdBy - 创建者访客ID
    * @returns 创建的子节点
    */
-  async createChildNode(parentId: string, title: string, userId?: string): Promise<Node> {
+  async createChildNode(parentId: string, title: string, workspaceId: string, createdBy?: string, childData?: Partial<Node>): Promise<Node> {
     const parent = await this.getNode(parentId);
     if (!parent) {
-      throw new Error('Parent node not found');
+      throw new Error('父节点不存在');
     }
 
     const siblingCount = parent.childrenIds.length;
-    const position = {
+    const defaultPosition = {
       x: parent.position.x + 250,
       y: parent.position.y + siblingCount * 120,
     };
 
     const child = await this.createNode({
+      id: childData?.id,
       title: title.trim() || '新分支',
       parentIds: [parentId],
-      position,
+      position: childData?.position || defaultPosition,
       isRoot: false,
-      userId,
-    }, userId);
+    }, workspaceId, createdBy);
 
     await this.updateNode(parentId, {
       childrenIds: [...parent.childrenIds, child.id],
@@ -281,7 +274,7 @@ class NodeService {
       sourceId: parentId,
       targetId: child.id,
       type: 'parent-child',
-    });
+    }, workspaceId);
 
     return child;
   }
@@ -289,33 +282,38 @@ class NodeService {
   /**
    * 创建关系
    * @param relationData - 关系数据
+   * @param workspaceId - 工作区ID
    * @returns 创建的关系
    */
-  async createRelation(relationData: Omit<Relation, 'id' | 'createdAt'>): Promise<Relation> {
+  async createRelation(relationData: Omit<Relation, 'id' | 'createdAt' | 'workspaceId'> & { id?: string }, workspaceId: string): Promise<Relation> {
     if (!relationData.sourceId || !relationData.targetId) {
-      throw new Error('Source and target IDs are required');
+      throw new Error('源节点和目标节点ID不能为空');
     }
 
     const sourceNode = await this.getNode(relationData.sourceId);
     const targetNode = await this.getNode(relationData.targetId);
-    
+
     if (!sourceNode || !targetNode) {
-      throw new Error('Source or target node not found');
+      throw new Error('源节点或目标节点不存在');
     }
 
     const existingRelation = this.memoryRelations.find(
-      r => r.sourceId === relationData.sourceId && 
+      r => r.sourceId === relationData.sourceId &&
            r.targetId === relationData.targetId &&
            r.type === relationData.type
     );
-    
+
     if (existingRelation) {
       return existingRelation;
     }
 
     const relation: Relation = {
-      id: uuidv4(),
-      ...relationData,
+      id: relationData.id || uuidv4(),
+      workspaceId,
+      sourceId: relationData.sourceId,
+      targetId: relationData.targetId,
+      type: relationData.type,
+      description: relationData.description,
       createdAt: new Date(),
     };
 
@@ -327,7 +325,7 @@ class NodeService {
           { sourceId: relation.sourceId, targetId: relation.targetId, props: relation }
         );
       } catch (error) {
-        console.error('Failed to create relation in Neo4j:', error);
+        console.error('Neo4j创建关系失败:', error);
       }
     }
 
@@ -336,11 +334,12 @@ class NodeService {
   }
 
   /**
-   * 获取所有关系
+   * 获取工作区内的所有关系
+   * @param workspaceId - 工作区ID
    * @returns 关系列表
    */
-  async getRelations(): Promise<Relation[]> {
-    return [...this.memoryRelations];
+  async getRelations(workspaceId: string): Promise<Relation[]> {
+    return this.memoryRelations.filter(r => r.workspaceId === workspaceId);
   }
 
   /**
@@ -377,7 +376,7 @@ class NodeService {
           { id }
         );
       } catch (error) {
-        console.error('Failed to delete relation from Neo4j:', error);
+        console.error('Neo4j删除关系失败:', error);
       }
     }
 
@@ -407,7 +406,7 @@ class NodeService {
       const childCount = node.compositeChildren?.length || 0;
       const centerX = node.position.x;
       const centerY = node.position.y;
-      
+
       const baseRadius = 200;
       const radius = Math.max(baseRadius, baseRadius + (childCount - 3) * 30);
       const spreadAngle = Math.min(180, 60 + childCount * 15);
@@ -419,14 +418,14 @@ class NodeService {
         const angle = (startAngle + angleStep * index) * Math.PI / 180;
         const newX = centerX + Math.cos(angle) * radius;
         const newY = centerY + Math.sin(angle) * radius;
-        
-        await this.updateNode(childId, { 
-          hidden: false, 
+
+        await this.updateNode(childId, {
+          hidden: false,
           compositeParent: nodeId,
           position: { x: newX, y: newY }
         });
       }
-      
+
       return await this.updateNode(nodeId, { expanded: true });
     }
   }
@@ -435,12 +434,13 @@ class NodeService {
    * 创建复合节点
    * @param nodeIds - 要聚合的节点ID列表
    * @param title - 复合节点标题
-   * @param userId - 用户ID
+   * @param workspaceId - 工作区ID
+   * @param createdBy - 创建者访客ID
    * @returns 创建的复合节点
    */
-  async createCompositeNode(nodeIds: string[], title: string, userId?: string): Promise<Node> {
+  async createCompositeNode(nodeIds: string[], title: string, workspaceId: string, createdBy?: string): Promise<Node> {
     if (!nodeIds || nodeIds.length < 2) {
-      throw new Error('At least 2 nodes are required to create a composite node');
+      throw new Error('至少需要2个节点才能创建复合节点');
     }
 
     const nodesToAggregate: Node[] = [];
@@ -452,7 +452,7 @@ class NodeService {
     }
 
     if (nodesToAggregate.length < 2) {
-      throw new Error('At least 2 valid nodes are required');
+      throw new Error('至少需要2个有效节点');
     }
 
     const centerX = nodesToAggregate.reduce((sum, n) => sum + n.position.x, 0) / nodesToAggregate.length;
@@ -463,13 +463,12 @@ class NodeService {
       isComposite: true,
       compositeChildren: nodeIds,
       position: { x: centerX, y: centerY },
-      userId,
-    }, userId);
+    }, workspaceId, createdBy);
 
     for (const nodeId of nodeIds) {
-      await this.updateNode(nodeId, { 
-        hidden: true, 
-        compositeParent: compositeNode.id 
+      await this.updateNode(nodeId, {
+        hidden: true,
+        compositeParent: compositeNode.id
       });
     }
 
@@ -477,8 +476,23 @@ class NodeService {
   }
 
   /**
+   * 清空工作区的所有内存数据
+   * @param workspaceId - 工作区ID
+   */
+  clearWorkspaceData(workspaceId: string): void {
+    const nodeIds = Array.from(this.memoryNodes.values())
+      .filter(n => n.workspaceId === workspaceId)
+      .map(n => n.id);
+
+    for (const id of nodeIds) {
+      this.memoryNodes.delete(id);
+    }
+
+    this.memoryRelations = this.memoryRelations.filter(r => r.workspaceId !== workspaceId);
+  }
+
+  /**
    * 清空所有内存数据
-   * 用于测试或重置
    */
   clearMemoryData(): void {
     this.memoryNodes.clear();

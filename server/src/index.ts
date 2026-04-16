@@ -19,6 +19,7 @@ import nodesRouter from './routes/nodes';
 import conversationsRouter from './routes/conversations';
 import searchRouter from './routes/search';
 import aiRouter from './routes/ai';
+import workspacesRouter from './routes/workspaces';
 
 console.log('='.repeat(50));
 console.log('🚀 DeepMindMap Server Starting...');
@@ -61,6 +62,7 @@ app.get('/api', (req, res) => {
     name: 'DeepMindMap API',
     version: '2.0.0',
     endpoints: {
+      workspaces: '/api/workspaces',
       nodes: '/api/nodes',
       conversations: '/api/conversations',
       search: '/api/search',
@@ -69,6 +71,7 @@ app.get('/api', (req, res) => {
   });
 });
 
+app.use('/api/workspaces', workspacesRouter);
 app.use('/api/nodes', nodesRouter);
 app.use('/api/conversations', conversationsRouter);
 app.use('/api/search', searchRouter);

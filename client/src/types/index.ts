@@ -25,6 +25,53 @@ export interface APIConfig {
 }
 
 /**
+ * 工作区类型
+ */
+export type WorkspaceType = 'public' | 'private';
+
+/**
+ * 工作区成员角色
+ */
+export type MemberRole = 'owner' | 'collaborator';
+
+/**
+ * 工作区成员接口
+ */
+export interface WorkspaceMember {
+  visitorId: string;
+  nickname: string;
+  role: MemberRole;
+  joinedAt: string;
+}
+
+/**
+ * 工作区接口
+ */
+export interface IWorkspace {
+  id: string;
+  name: string;
+  description?: string;
+  type: WorkspaceType;
+  inviteCode?: string;
+  inviteCodeExpiry?: string;
+  ownerId: string;
+  members: WorkspaceMember[];
+  createdAt: string;
+  updatedAt: string;
+}
+
+/**
+ * 访客接口
+ */
+export interface IVisitor {
+  id: string;
+  nickname: string;
+  lastSeen: string;
+  workspaces: string[];
+  createdAt: string;
+}
+
+/**
  * 节点类型定义
  */
 export type NodeType = 'root' | 'branch' | 'leaf' | 'composite';
@@ -32,13 +79,14 @@ export type NodeType = 'root' | 'branch' | 'leaf' | 'composite';
 /**
  * 关系类型定义
  */
-export type RelationType = 
-  | 'supports' 
-  | 'contradicts' 
-  | 'prerequisite' 
-  | 'elaborates' 
-  | 'references' 
-  | 'conclusion' 
+export type RelationType =
+  | 'parent-child'
+  | 'supports'
+  | 'contradicts'
+  | 'prerequisite'
+  | 'elaborates'
+  | 'references'
+  | 'conclusion'
   | 'custom';
 
 /**
@@ -94,6 +142,7 @@ export interface IMessage {
 export interface IConversation {
   _id: string;
   nodeId: string;
+  workspaceId: string;
   messages: IMessage[];
   contextConfig: {
     includeParentHistory: boolean;
@@ -121,21 +170,6 @@ export interface IRelation {
   type: RelationType;
   description?: string;
   createdAt: Date;
-}
-
-/**
- * 工作区接口
- */
-export interface IWorkspace {
-  _id: string;
-  name: string;
-  description?: string;
-  settings: {
-    defaultAIProvider: AIProvider;
-    defaultModel: string;
-  };
-  createdAt: Date;
-  updatedAt: Date;
 }
 
 /**

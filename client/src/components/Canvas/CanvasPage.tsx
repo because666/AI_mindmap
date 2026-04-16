@@ -566,21 +566,22 @@ const CanvasPage: React.FC = () => {
 
   return (
     <div className="h-full bg-dark-950 relative">
-      {/* 工具栏 */}
-      <div className="absolute top-4 left-4 z-10 flex gap-2 flex-wrap">
+      <div className="absolute inset-0 bg-grid opacity-20 pointer-events-none" />
+      
+      <div className="absolute top-4 left-4 z-10 flex gap-1.5 flex-wrap glass rounded-2xl p-2">
         <button
           onClick={handleCreateRootNode}
-          className="flex items-center gap-2 px-4 py-2.5 bg-primary-600 border border-primary-500 rounded-xl text-white hover:bg-primary-700 transition-all shadow-lg shadow-primary-600/20"
+          className="btn-primary text-sm"
           title="创建根节点（新对话起点）"
         >
           <Plus className="w-4 h-4" />
-          <span className="text-sm font-medium">创建对话</span>
+          <span className="text-sm">创建对话</span>
         </button>
         
         {selectedNodeId && (
           <button
             onClick={handleCreateChildNode}
-            className="flex items-center gap-2 px-3 py-2.5 bg-dark-700 border border-dark-600 rounded-xl text-white hover:bg-dark-600 hover:border-primary-500/50 transition-all"
+            className="btn-ghost text-sm"
             title="创建分支节点"
           >
             <GitBranch className="w-4 h-4" />
@@ -588,12 +589,12 @@ const CanvasPage: React.FC = () => {
           </button>
         )}
         
-        <div className="w-px bg-dark-600 h-10" />
+        <div className="w-px bg-dark-600/50 h-8 self-center mx-0.5" />
         
         <button
           onClick={undo}
           disabled={!canUndo}
-          className="p-2.5 bg-dark-700 border border-dark-600 rounded-xl text-white hover:bg-dark-600 disabled:opacity-40 disabled:cursor-not-allowed transition-all"
+          className="btn-icon"
           title="撤销 (Ctrl+Z)"
         >
           <Undo2 className="w-4 h-4" />
@@ -601,25 +602,25 @@ const CanvasPage: React.FC = () => {
         <button
           onClick={redo}
           disabled={!canRedo}
-          className="p-2.5 bg-dark-700 border border-dark-600 rounded-xl text-white hover:bg-dark-600 disabled:opacity-40 disabled:cursor-not-allowed transition-all"
+          className="btn-icon"
           title="重做 (Ctrl+Y)"
         >
           <Redo2 className="w-4 h-4" />
         </button>
         
-        <div className="w-px bg-dark-600 h-10" />
+        <div className="w-px bg-dark-600/50 h-8 self-center mx-0.5" />
         
         <button
           onClick={openNodeEditor}
           disabled={!selectedNodeId}
-          className="p-2.5 bg-dark-700 border border-dark-600 rounded-xl text-white hover:bg-dark-600 disabled:opacity-40 disabled:cursor-not-allowed transition-all"
+          className="btn-icon"
           title="编辑节点"
         >
           <Edit3 className="w-4 h-4" />
         </button>
         <button
           onClick={() => setIsRelationEditorOpen(true)}
-          className="p-2.5 bg-dark-700 border border-dark-600 rounded-xl text-white hover:bg-dark-600 transition-all"
+          className="btn-icon"
           title="创建关系"
         >
           <Link2 className="w-4 h-4" />
@@ -627,21 +628,17 @@ const CanvasPage: React.FC = () => {
         <button
           onClick={handleDeleteNode}
           disabled={!selectedNodeId}
-          className="p-2.5 bg-dark-700 border border-dark-600 rounded-xl text-red-400 hover:bg-red-900/30 hover:border-red-500/50 disabled:opacity-40 disabled:cursor-not-allowed transition-all"
+          className="btn-icon hover:!text-red-400 hover:!border-red-500/40 hover:!bg-red-900/20"
           title="删除节点"
         >
           <Trash2 className="w-4 h-4" />
         </button>
         
-        <div className="w-px bg-dark-600 h-10" />
+        <div className="w-px bg-dark-600/50 h-8 self-center mx-0.5" />
         
         <button
           onClick={toggleSelectMode}
-          className={`p-2.5 border rounded-xl transition-all ${
-            isSelectMode 
-              ? 'bg-primary-600 border-primary-500 text-white' 
-              : 'bg-dark-700 border-dark-600 text-white hover:bg-dark-600'
-          }`}
+          className={`btn-icon ${isSelectMode ? '!bg-primary-600/20 !text-primary-400 !border-primary-500/40' : ''}`}
           title="多选模式（用于聚合节点）"
         >
           <Layers className="w-4 h-4" />
@@ -649,7 +646,7 @@ const CanvasPage: React.FC = () => {
         {isSelectMode && selectedForComposite.length >= 2 && (
           <button
             onClick={handleCreateComposite}
-            className="flex items-center gap-2 px-3 py-2.5 bg-primary-600 border border-primary-500 rounded-xl text-white hover:bg-primary-700 transition-all"
+            className="btn-primary text-sm"
           >
             <Layers className="w-4 h-4" />
             <span className="text-sm">聚合 ({selectedForComposite.length})</span>
@@ -658,7 +655,7 @@ const CanvasPage: React.FC = () => {
         
         <button
           onClick={autoLayout}
-          className="p-2.5 bg-dark-700 border border-dark-600 rounded-xl text-white hover:bg-dark-600 transition-all"
+          className="btn-icon"
           title="自动布局"
         >
           <LayoutGrid className="w-4 h-4" />
@@ -703,30 +700,31 @@ const CanvasPage: React.FC = () => {
       {/* 空状态提示 */}
       {nodes.length === 0 && (
         <div className="absolute inset-0 flex items-center justify-center pointer-events-none">
-          <div className="text-center">
-            <div className="w-24 h-24 mx-auto mb-6 rounded-2xl bg-gradient-to-br from-primary-600 to-primary-800 flex items-center justify-center shadow-2xl shadow-primary-600/30">
+          <div className="text-center animate-blur-in">
+            <div className="w-24 h-24 mx-auto mb-6 rounded-2xl bg-gradient-to-br from-primary-500 to-primary-700 flex items-center justify-center shadow-2xl shadow-primary-600/20"
+                 style={{ animation: 'float 4s ease-in-out infinite' }}>
               <MessageSquare className="w-12 h-12 text-white" />
             </div>
-            <h2 className="text-2xl font-bold text-white mb-3">
+            <h2 className="text-2xl font-bold text-white mb-3 tracking-tight">
               开始构建你的思维网络
             </h2>
-            <p className="text-dark-400 mb-6 max-w-md">
+            <p className="text-dark-400 mb-6 max-w-md text-sm leading-relaxed">
               创建对话节点，通过分支展开新的讨论方向，<br />
               构建属于你的非线性思维导图
             </p>
             <button
               onClick={handleCreateRootNode}
-              className="pointer-events-auto flex items-center gap-2 px-6 py-3 bg-primary-600 rounded-xl text-white hover:bg-primary-700 transition-all mx-auto shadow-lg shadow-primary-600/30"
+              className="pointer-events-auto btn-primary px-6 py-3 mx-auto"
             >
               <Plus className="w-5 h-5" />
-              <span className="font-medium">创建第一个对话</span>
+              <span>创建第一个对话</span>
             </button>
           </div>
         </div>
       )}
 
       {/* 工具提示 */}
-      <div className="absolute bottom-4 left-4 text-dark-500 text-xs bg-dark-800/80 px-3 py-2 rounded-lg backdrop-blur-sm">
+      <div className="absolute bottom-4 left-4 text-dark-500 text-xs glass-light px-3 py-2 rounded-lg">
         <span className="text-dark-400">点击「创建对话」添加根节点</span>
         <span className="mx-2">•</span>
         <span className="text-dark-400">选中节点后可创建分支</span>

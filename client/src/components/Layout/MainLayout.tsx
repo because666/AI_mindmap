@@ -1,16 +1,19 @@
 import React, { useState, useEffect } from 'react';
-import { Settings, FolderOpen, Search, MessageSquare, Network, X, Clock, Undo2, Redo2, Globe, Lock, LogOut, Users, Plus } from 'lucide-react';
+import { Settings, FolderOpen, Search, MessageSquare, Network, X, Clock, Undo2, Redo2, Globe, Lock, LogOut, Users, Plus, Menu, RefreshCw, Bell } from 'lucide-react';
 import SettingsModal from '../Settings/SettingsModal';
 import ChatPanel from '../Chat/ChatPanel';
 import SearchPanel from '../Search/SearchPanel';
 import HistoryPanel from '../History/HistoryPanel';
 import WorkspaceSettingsModal from '../Workspace/WorkspaceSettingsModal';
+import { UnreadBadge, MessageCenter } from '../MessageCenter';
 import { useAppStore } from '../../stores/appStore';
 import { useUISettingsStore } from '../../stores/uiSettingsStore';
 import { useVisitorWorkspaceStore } from '../../stores/visitorWorkspaceStore';
+import useIsMobile from '../../hooks/useIsMobile';
 
 /**
  * 主布局组件
+ * 支持桌面端和移动端响应式布局
  */
 const MainLayout: React.FC<{ children: React.ReactNode }> = ({ children }) => {
   const [isSettingsOpen, setIsSettingsOpen] = useState(false);
@@ -20,13 +23,18 @@ const MainLayout: React.FC<{ children: React.ReactNode }> = ({ children }) => {
   const [isWorkspaceSettingsOpen, setIsWorkspaceSettingsOpen] = useState(false);
   const [activeTab, setActiveTab] = useState<'canvas' | 'chat'>('canvas');
   const [showWorkspaceInfo, setShowWorkspaceInfo] = useState(false);
+  const [isDrawerOpen, setIsDrawerOpen] = useState(false);
+  const [isMessageCenterOpen, setIsMessageCenterOpen] = useState(false);
 
-  const { selectedNodeId, selectNode, undo, redo, history, historyIndex } = useAppStore();
+  const isMobile = useIsMobile();
+
+  const { selectedNodeId, selectNode, undo, redo, history, historyIndex, reloadWorkspaceData, requestOpenChatForNode, clearChatRequest } = useAppStore();
   const { autoOpenChatOnLoad, chatPanelWidth } = useUISettingsStore();
   const { visitor, currentWorkspace, workspaces, switchWorkspace, leaveWorkspace, clearCurrentWorkspace } = useVisitorWorkspaceStore();
 
   const canUndo = historyIndex >= 0;
   const canRedo = historyIndex < history.length - 1;
+  const [isSyncing, setIsSyncing] = useState(false);
 
   useEffect(() => {
     if (autoOpenChatOnLoad) {
@@ -38,9 +46,34 @@ const MainLayout: React.FC<{ children: React.ReactNode }> = ({ children }) => {
     }
   }, [autoOpenChatOnLoad]);
 
+  /**
+   * 监听长按节点打开聊天面板的请求
+   * 当检测到requestOpenChatForNode变化时，自动打开聊天面板并选中对应节点
+   */
+  useEffect(() => {
+    if (requestOpenChatForNode) {
+      selectNode(requestOpenChatForNode);
+      setIsChatOpen(true);
+      setActiveTab('chat');
+      clearChatRequest();
+    }
+  }, [requestOpenChatForNode, selectNode, clearChatRequest]);
+
+  useEffect(() => {
+    if (isDrawerOpen) {
+      document.body.style.overflow = 'hidden';
+    } else {
+      document.body.style.overflow = '';
+    }
+    return () => {
+      document.body.style.overflow = '';
+    };
+  }, [isDrawerOpen]);
+
   const openChat = () => {
     setIsChatOpen(true);
     setActiveTab('chat');
+    setIsDrawerOpen(false);
   };
 
   const closeChat = () => {
@@ -60,16 +93,356 @@ const MainLayout: React.FC<{ children: React.ReactNode }> = ({ children }) => {
     }
   };
 
-  return (
-    <div className="h-screen flex bg-dark-950">
-      {/* 左侧边栏 */}
+  /**
+   * 处理手动同步数据
+   * 调用 appStore 的 reloadWorkspaceData 从服务端重新加载当前工作区数据
+   */
+  const handleSyncData = async () => {
+    if (isSyncing) return;
+    setIsSyncing(true);
+    try {
+      await reloadWorkspaceData();
+    } finally {
+      setIsSyncing(false);
+    }
+  };
+
+  /**
+   * 渲染侧边栏内容
+   */
+  const renderSidebarContent = () => (
+    <>
+      <div className="flex items-center justify-between px-4 py-3 border-b border-dark-700">
+        <div className="flex items-center gap-2">
+          <div className="w-8 h-8 bg-primary-600 rounded-lg flex items-center justify-center">
+            <Network className="w-4 h-4 text-white" />
+          </div>
+          <span className="text-white font-semibold">DeepMindMap</span>
+        </div>
+        {isMobile && (
+          <button
+            onClick={() => setIsDrawerOpen(false)}
+            className="p-2 text-dark-400 hover:text-white rounded-lg transition-colors"
+          >
+            <X className="w-5 h-5" />
+          </button>
+        )}
+      </div>
+
+      <div className="flex-1 overflow-y-auto py-2">
+        <div className="px-3 mb-2">
+          <span className="text-xs text-dark-500 uppercase tracking-wider">导航</span>
+        </div>
+
+        <button
+          onClick={() => { setActiveTab('canvas'); closeChat(); setIsDrawerOpen(false); }}
+          className={`w-full flex items-center gap-3 px-4 py-3 text-left transition-colors ${
+            activeTab === 'canvas' && !isChatOpen
+              ? 'bg-primary-600/20 text-primary-400 border-r-2 border-primary-500'
+              : 'text-dark-300 hover:text-white hover:bg-dark-800'
+          }`}
+        >
+          <Network className="w-5 h-5" />
+          <span>思维画布</span>
+        </button>
+
+        <button
+          onClick={openChat}
+          className={`w-full flex items-center gap-3 px-4 py-3 text-left transition-colors ${
+            isChatOpen
+              ? 'bg-primary-600/20 text-primary-400 border-r-2 border-primary-500'
+              : 'text-dark-300 hover:text-white hover:bg-dark-800'
+          }`}
+        >
+          <MessageSquare className="w-5 h-5" />
+          <span>AI 对话</span>
+        </button>
+
+        <div className="px-3 mt-4 mb-2">
+          <span className="text-xs text-dark-500 uppercase tracking-wider">操作</span>
+        </div>
+
+        <button
+          onClick={() => { undo(); }}
+          disabled={!canUndo}
+          className={`w-full flex items-center gap-3 px-4 py-3 text-left transition-colors ${
+            canUndo
+              ? 'text-dark-300 hover:text-white hover:bg-dark-800'
+              : 'text-dark-600 cursor-not-allowed'
+          }`}
+        >
+          <Undo2 className="w-5 h-5" />
+          <span>撤销</span>
+        </button>
+
+        <button
+          onClick={() => { redo(); }}
+          disabled={!canRedo}
+          className={`w-full flex items-center gap-3 px-4 py-3 text-left transition-colors ${
+            canRedo
+              ? 'text-dark-300 hover:text-white hover:bg-dark-800'
+              : 'text-dark-600 cursor-not-allowed'
+          }`}
+        >
+          <Redo2 className="w-5 h-5" />
+          <span>重做</span>
+        </button>
+
+        <div className="px-3 mt-4 mb-2">
+          <span className="text-xs text-dark-500 uppercase tracking-wider">工具</span>
+        </div>
+
+        <button
+          onClick={() => { setIsSearchOpen(true); setIsDrawerOpen(false); }}
+          className="w-full flex items-center gap-3 px-4 py-3 text-left text-dark-300 hover:text-white hover:bg-dark-800 transition-colors"
+        >
+          <Search className="w-5 h-5" />
+          <span>搜索</span>
+        </button>
+
+        <button
+          onClick={() => { setIsMessageCenterOpen(true); setIsDrawerOpen(false); }}
+          className={`w-full flex items-center gap-3 px-4 py-3 text-left transition-colors ${
+            isMessageCenterOpen
+              ? 'bg-primary-600/20 text-primary-400 border-r-2 border-primary-500'
+              : 'text-dark-300 hover:text-white hover:bg-dark-800'
+          }`}
+        >
+          <Bell className="w-5 h-5" />
+          <span>消息</span>
+        </button>
+
+        <button
+          onClick={() => { setIsHistoryOpen(!isHistoryOpen); setIsDrawerOpen(false); }}
+          className={`w-full flex items-center gap-3 px-4 py-3 text-left transition-colors ${
+            isHistoryOpen
+              ? 'bg-primary-600/20 text-primary-400 border-r-2 border-primary-500'
+              : 'text-dark-300 hover:text-white hover:bg-dark-800'
+          }`}
+        >
+          <Clock className="w-5 h-5" />
+          <span>历史</span>
+        </button>
+
+        <button
+          className="w-full flex items-center gap-3 px-4 py-3 text-left text-dark-300 hover:text-white hover:bg-dark-800 transition-colors"
+        >
+          <FolderOpen className="w-5 h-5" />
+          <span>文件</span>
+        </button>
+
+        <div className="px-3 mt-4 mb-2">
+          <span className="text-xs text-dark-500 uppercase tracking-wider">设置</span>
+        </div>
+
+        <button
+          onClick={() => { setIsSettingsOpen(true); setIsDrawerOpen(false); }}
+          className="w-full flex items-center gap-3 px-4 py-3 text-left text-dark-300 hover:text-white hover:bg-dark-800 transition-colors"
+        >
+          <Settings className="w-5 h-5" />
+          <span>设置</span>
+        </button>
+      </div>
+
+      {currentWorkspace && (
+        <div className="p-3 border-t border-dark-700">
+          <button
+            onClick={() => { setShowWorkspaceInfo(!showWorkspaceInfo); }}
+            className="w-full flex items-center gap-2 p-2 bg-dark-800 rounded-lg text-left hover:bg-dark-700 transition-colors"
+          >
+            {currentWorkspace.type === 'public' ? (
+              <Globe className="w-4 h-4 text-primary-400" />
+            ) : (
+              <Lock className="w-4 h-4 text-primary-400" />
+            )}
+            <span className="text-sm text-white truncate flex-1">{currentWorkspace.name}</span>
+            <Users className="w-4 h-4 text-dark-400" />
+          </button>
+        </div>
+      )}
+    </>
+  );
+
+  /**
+   * 渲染工作区信息面板
+   */
+  const renderWorkspacePanel = () => (
+    showWorkspaceInfo && (
+      <div className={`${isMobile ? 'fixed inset-0 z-50' : 'w-64'} bg-dark-900 border-r border-dark-700 flex flex-col`}>
+        {isMobile && (
+          <div
+            className="absolute inset-0 bg-black/60 backdrop-blur-sm"
+            onClick={() => setShowWorkspaceInfo(false)}
+          />
+        )}
+        <div className={`relative ${isMobile ? 'w-72 h-full' : ''} bg-dark-900 flex flex-col`}>
+          <div className="flex items-center justify-between p-4 border-b border-dark-700">
+            <h3 className="text-white font-medium text-sm">工作区</h3>
+            <button
+              onClick={() => setShowWorkspaceInfo(false)}
+              className="p-1 text-dark-400 hover:text-white rounded transition-colors"
+            >
+              <X className="w-4 h-4" />
+            </button>
+          </div>
+
+          {currentWorkspace && (
+            <div className="p-4">
+              <div className="p-3 bg-dark-800 rounded-xl border border-primary-500/30">
+                <div className="flex items-center gap-2 mb-1">
+                  {currentWorkspace.type === 'public' ? (
+                    <Globe className="w-3.5 h-3.5 text-primary-400" />
+                  ) : (
+                    <Lock className="w-3.5 h-3.5 text-primary-400" />
+                  )}
+                  <span className="text-white font-medium text-sm">{currentWorkspace.name}</span>
+                </div>
+                <div className="flex items-center gap-1 text-dark-500 text-xs">
+                  <Users className="w-3 h-3" />
+                  <span>{currentWorkspace.members.length} 位成员</span>
+                </div>
+                {currentWorkspace.inviteCode && (
+                  <div className="mt-2 text-xs text-dark-400">
+                    邀请码: <span className="text-primary-400 font-mono">{currentWorkspace.inviteCode}</span>
+                  </div>
+                )}
+                <button
+                  onClick={() => { setIsWorkspaceSettingsOpen(true); setShowWorkspaceInfo(false); }}
+                  className="mt-2 w-full flex items-center justify-center gap-1.5 px-3 py-1.5 text-primary-400 hover:text-primary-300 rounded-lg hover:bg-dark-700 transition-colors text-xs border border-primary-500/20"
+                >
+                  <Settings className="w-3 h-3" />
+                  工作区设置
+                </button>
+              </div>
+            </div>
+          )}
+
+          {visitor && (
+            <div className="px-4 text-xs text-dark-400">
+              当前身份: <span className="text-dark-300">{visitor.nickname}</span>
+            </div>
+          )}
+
+          <div className="px-4 py-2 text-xs text-dark-500">切换工作区</div>
+          <div className="flex-1 overflow-y-auto px-2">
+            {workspaces.length > 1 ? (
+              workspaces.filter(ws => ws.id !== currentWorkspace?.id).map(ws => (
+                <button
+                  key={ws.id}
+                  onClick={() => { switchWorkspace(ws.id); setShowWorkspaceInfo(false); }}
+                  className="w-full flex items-center gap-2 p-2 rounded-lg text-left text-dark-400 hover:text-white hover:bg-dark-800 transition-colors"
+                >
+                  {ws.type === 'public' ? (
+                    <Globe className="w-3.5 h-3.5" />
+                  ) : (
+                    <Lock className="w-3.5 h-3.5" />
+                  )}
+                  <span className="text-sm truncate">{ws.name}</span>
+                </button>
+              ))
+            ) : (
+              <div className="px-2 py-2 text-xs text-dark-500">
+                暂无其他工作区
+              </div>
+            )}
+          </div>
+
+          <div className="p-2 border-t border-dark-700">
+            <button
+              onClick={() => { setShowWorkspaceInfo(false); clearCurrentWorkspace(); }}
+              className="w-full flex items-center gap-2 px-3 py-2 text-primary-400 hover:text-primary-300 rounded-lg hover:bg-dark-800 transition-colors text-sm"
+            >
+              <Plus className="w-3.5 h-3.5" />
+              创建或加入新工作区
+            </button>
+          </div>
+
+          <div className="p-2 border-t border-dark-700">
+            <button
+              onClick={handleLeaveWorkspace}
+              className="w-full flex items-center gap-2 px-3 py-2 text-dark-400 hover:text-red-400 rounded-lg hover:bg-dark-800 transition-colors text-sm"
+            >
+              <LogOut className="w-3.5 h-3.5" />
+              离开工作区
+            </button>
+          </div>
+        </div>
+      </div>
+    )
+  );
+
+  /**
+   * 移动端顶部栏
+   */
+  const renderMobileHeader = () => (
+    <header className="h-14 bg-dark-900 border-b border-dark-700 flex items-center justify-between px-4 md:hidden">
+      <button
+        onClick={() => setIsDrawerOpen(true)}
+        className="p-2 text-dark-400 hover:text-white rounded-lg transition-colors"
+      >
+        <Menu className="w-5 h-5" />
+      </button>
+
+      <div className="flex items-center gap-2">
+        <div className="w-8 h-8 bg-primary-600 rounded-lg flex items-center justify-center">
+          <Network className="w-4 h-4 text-white" />
+        </div>
+        <span className="text-white font-semibold">DeepMindMap</span>
+      </div>
+
+      <div className="flex items-center gap-1">
+        <button
+          onClick={handleSyncData}
+          disabled={isSyncing}
+          className={`p-2 rounded-lg transition-colors ${isSyncing ? 'text-primary-400' : 'text-dark-400 hover:text-white'}`}
+          title="同步数据"
+        >
+          <RefreshCw className={`w-5 h-5 ${isSyncing ? 'animate-spin' : ''}`} />
+        </button>
+        <UnreadBadge onClick={() => setIsMessageCenterOpen(true)} />
+        <button
+          onClick={openChat}
+          className="p-2 text-dark-400 hover:text-white rounded-lg transition-colors"
+        >
+          <MessageSquare className="w-5 h-5" />
+        </button>
+        <button
+          onClick={() => setIsSettingsOpen(true)}
+          className="p-2 text-dark-400 hover:text-white rounded-lg transition-colors"
+        >
+          <Settings className="w-5 h-5" />
+        </button>
+      </div>
+    </header>
+  );
+
+  /**
+   * 移动端抽屉
+   */
+  const renderMobileDrawer = () => (
+    isMobile && isDrawerOpen && (
+      <div className="fixed inset-0 z-50">
+        <div
+          className="absolute inset-0 bg-black/60 backdrop-blur-sm"
+          onClick={() => setIsDrawerOpen(false)}
+        />
+        <div className="absolute left-0 top-0 bottom-0 w-72 bg-dark-900 border-r border-dark-700 flex flex-col animate-slide-in-left">
+          {renderSidebarContent()}
+        </div>
+      </div>
+    )
+  );
+
+  /**
+   * 桌面端侧边栏
+   */
+  const renderDesktopSidebar = () => (
+    !isMobile && (
       <aside className="w-14 bg-dark-900 border-r border-dark-700 flex flex-col items-center py-4 gap-2">
-        {/* Logo */}
         <div className="w-10 h-10 bg-primary-600 rounded-xl flex items-center justify-center mb-4">
           <Network className="w-6 h-6 text-white" />
         </div>
 
-        {/* 工作区信息 */}
         <button
           onClick={() => setShowWorkspaceInfo(!showWorkspaceInfo)}
           className="w-10 h-10 rounded-xl flex items-center justify-center transition-colors bg-dark-800 border border-dark-600 hover:border-primary-500"
@@ -84,7 +457,19 @@ const MainLayout: React.FC<{ children: React.ReactNode }> = ({ children }) => {
 
         <div className="w-6 h-px bg-dark-700 my-2" />
 
-        {/* 导航按钮 */}
+        <button
+          onClick={handleSyncData}
+          disabled={isSyncing}
+          className={`w-10 h-10 rounded-xl flex items-center justify-center transition-colors ${
+            isSyncing
+              ? 'text-primary-400 bg-primary-600/20'
+              : 'text-dark-400 hover:text-white hover:bg-dark-700'
+          }`}
+          title="同步数据"
+        >
+          <RefreshCw className={`w-4 h-4 ${isSyncing ? 'animate-spin' : ''}`} />
+        </button>
+
         <button
           onClick={() => { setActiveTab('canvas'); closeChat(); }}
           className={`w-10 h-10 rounded-xl flex items-center justify-center transition-colors ${
@@ -109,9 +494,20 @@ const MainLayout: React.FC<{ children: React.ReactNode }> = ({ children }) => {
           <MessageSquare className="w-5 h-5" />
         </button>
 
+        <button
+          onClick={() => setIsMessageCenterOpen(!isMessageCenterOpen)}
+          className={`w-10 h-10 rounded-xl flex items-center justify-center transition-colors relative ${
+            isMessageCenterOpen
+              ? 'bg-primary-600 text-white'
+              : 'text-dark-400 hover:text-white hover:bg-dark-700'
+          }`}
+          title="消息"
+        >
+          <Bell className="w-5 h-5" />
+        </button>
+
         <div className="w-6 h-px bg-dark-700 my-2" />
 
-        {/* 撤销/重做 */}
         <button
           onClick={undo}
           disabled={!canUndo}
@@ -140,7 +536,6 @@ const MainLayout: React.FC<{ children: React.ReactNode }> = ({ children }) => {
 
         <div className="flex-1" />
 
-        {/* 底部按钮 */}
         <button
           onClick={() => setIsSearchOpen(true)}
           className="w-10 h-10 rounded-xl flex items-center justify-center text-dark-400 hover:text-white hover:bg-dark-700 transition-colors"
@@ -176,152 +571,153 @@ const MainLayout: React.FC<{ children: React.ReactNode }> = ({ children }) => {
           <Settings className="w-5 h-5" />
         </button>
       </aside>
+    )
+  );
 
-      {/* 工作区信息面板 */}
-      {showWorkspaceInfo && (
-        <div className="w-64 bg-dark-900 border-r border-dark-700 p-4 flex flex-col">
-          <div className="flex items-center justify-between mb-4">
-            <h3 className="text-white font-medium text-sm">工作区</h3>
-            <button
-              onClick={() => setShowWorkspaceInfo(false)}
-              className="p-1 text-dark-400 hover:text-white rounded transition-colors"
-            >
-              <X className="w-4 h-4" />
-            </button>
+  return (
+    <div className="h-screen flex flex-col bg-dark-950/90">
+      {renderMobileHeader()}
+      {renderMobileDrawer()}
+
+      <div className="flex-1 flex overflow-hidden">
+        {renderDesktopSidebar()}
+        {renderWorkspacePanel()}
+
+        <main className="flex-1 overflow-hidden flex">
+          <div className="flex-1 overflow-hidden">
+            {children}
           </div>
 
-          {currentWorkspace && (
-            <div className="mb-4 p-3 bg-dark-800 rounded-xl border border-primary-500/30">
-              <div className="flex items-center gap-2 mb-1">
-                {currentWorkspace.type === 'public' ? (
-                  <Globe className="w-3.5 h-3.5 text-primary-400" />
-                ) : (
-                  <Lock className="w-3.5 h-3.5 text-primary-400" />
-                )}
-                <span className="text-white font-medium text-sm">{currentWorkspace.name}</span>
-              </div>
-              <div className="flex items-center gap-1 text-dark-500 text-xs">
-                <Users className="w-3 h-3" />
-                <span>{currentWorkspace.members.length} 位成员</span>
-              </div>
-              {currentWorkspace.inviteCode && (
-                <div className="mt-2 text-xs text-dark-400">
-                  邀请码: <span className="text-primary-400 font-mono">{currentWorkspace.inviteCode}</span>
+          {!isMobile && (
+            <div
+              className={`border-l border-dark-700 flex flex-col bg-dark-900 transition-all duration-300 ease-in-out ${
+                isChatOpen ? 'opacity-100 translate-x-0' : 'opacity-0 translate-x-full pointer-events-none absolute right-0'
+              }`}
+              style={{ width: isChatOpen ? chatPanelWidth : 0 }}
+            >
+              <div className="flex items-center justify-between px-4 py-2 border-b border-dark-700 bg-dark-800">
+                <div className="flex items-center gap-2">
+                  <MessageSquare className="w-4 h-4 text-primary-400" />
+                  <span className="text-white font-medium">AI 对话</span>
                 </div>
-              )}
-              <button
-                onClick={() => { setIsWorkspaceSettingsOpen(true); setShowWorkspaceInfo(false); }}
-                className="mt-2 w-full flex items-center justify-center gap-1.5 px-3 py-1.5 text-primary-400 hover:text-primary-300 rounded-lg hover:bg-dark-700 transition-colors text-xs border border-primary-500/20"
-              >
-                <Settings className="w-3 h-3" />
-                工作区设置
-              </button>
-            </div>
-          )}
-
-          {visitor && (
-            <div className="mb-4 text-xs text-dark-400">
-              当前身份: <span className="text-dark-300">{visitor.nickname}</span>
-            </div>
-          )}
-
-          <div className="text-xs text-dark-500 mb-2">切换工作区</div>
-          <div className="flex-1 overflow-y-auto space-y-1">
-            {workspaces.length > 1 ? (
-              workspaces.filter(ws => ws.id !== currentWorkspace?.id).map(ws => (
                 <button
-                  key={ws.id}
-                  onClick={() => { switchWorkspace(ws.id); setShowWorkspaceInfo(false); }}
-                  className="w-full flex items-center gap-2 p-2 rounded-lg text-left text-dark-400 hover:text-white hover:bg-dark-800 transition-colors"
+                  onClick={closeChat}
+                  className="p-1 text-dark-400 hover:text-white hover:bg-dark-700 rounded transition-colors"
                 >
-                  {ws.type === 'public' ? (
-                    <Globe className="w-3.5 h-3.5" />
-                  ) : (
-                    <Lock className="w-3.5 h-3.5" />
-                  )}
-                  <span className="text-sm truncate">{ws.name}</span>
+                  <X className="w-4 h-4" />
                 </button>
-              ))
-            ) : (
-              <div className="text-xs text-dark-500 py-2">
-                暂无其他工作区
               </div>
-            )}
-          </div>
-          
-          <div className="mt-2 pt-2 border-t border-dark-700">
-            <button
-              onClick={() => { setShowWorkspaceInfo(false); clearCurrentWorkspace(); }}
-              className="w-full flex items-center gap-2 px-3 py-2 text-primary-400 hover:text-primary-300 rounded-lg hover:bg-dark-800 transition-colors text-sm"
+              <div className="flex-1 overflow-hidden">
+                <ChatPanel nodeId={selectedNodeId} />
+              </div>
+            </div>
+          )}
+
+          {!isMobile && (
+            <HistoryPanel
+              isOpen={isHistoryOpen}
+              onClose={() => setIsHistoryOpen(false)}
+            />
+          )}
+
+          {!isMobile && isMessageCenterOpen && (
+            <div
+              className={`border-l border-dark-700 flex flex-col bg-dark-900 transition-all duration-300 ease-in-out h-full ${
+                isMessageCenterOpen ? 'opacity-100 translate-x-0' : 'opacity-0 translate-x-full pointer-events-none'
+              }`}
+              style={{ width: '384px' }}
             >
-              <Plus className="w-3.5 h-3.5" />
-              创建或加入新工作区
-            </button>
-          </div>
+              <div className="flex items-center justify-between px-4 py-3 border-b border-dark-700 bg-dark-800">
+                <div className="flex items-center gap-2">
+                  <Bell className="w-4 h-4 text-primary-400" />
+                  <span className="text-white font-medium">消息中心</span>
+                </div>
+                <button
+                  onClick={() => setIsMessageCenterOpen(false)}
+                  className="p-1.5 text-dark-400 hover:text-white bg-dark-700 rounded-lg hover:bg-dark-600 transition-colors"
+                >
+                  <X className="w-4 h-4" />
+                </button>
+              </div>
+              <div className="flex-1 overflow-hidden">
+                <MessageCenter />
+              </div>
+            </div>
+          )}
+        </main>
+      </div>
 
-          <div className="mt-4 pt-4 border-t border-dark-700">
-            <button
-              onClick={handleLeaveWorkspace}
-              className="w-full flex items-center gap-2 px-3 py-2 text-dark-400 hover:text-red-400 rounded-lg hover:bg-dark-800 transition-colors text-sm"
-            >
-              <LogOut className="w-3.5 h-3.5" />
-              离开工作区
-            </button>
-          </div>
-        </div>
-      )}
-
-      {/* 主内容区域 */}
-      <main className="flex-1 overflow-hidden flex">
-        <div className="flex-1 overflow-hidden">
-          {children}
-        </div>
-
-        {/* 聊天面板 */}
-        <div
-          className={`border-l border-dark-700 flex flex-col bg-dark-900 transition-all duration-300 ease-in-out ${
-            isChatOpen ? 'opacity-100 translate-x-0' : 'opacity-0 translate-x-full pointer-events-none absolute right-0'
-          }`}
-          style={{ width: isChatOpen ? chatPanelWidth : 0 }}
-        >
-          <div className="flex items-center justify-between px-4 py-2 border-b border-dark-700 bg-dark-800">
+      {isMobile && isChatOpen && (
+        <div className="fixed inset-0 z-50 bg-dark-950 flex flex-col">
+          <div className="h-14 bg-dark-900 border-b border-dark-700 flex items-center justify-between px-4">
             <div className="flex items-center gap-2">
               <MessageSquare className="w-4 h-4 text-primary-400" />
               <span className="text-white font-medium">AI 对话</span>
             </div>
             <button
               onClick={closeChat}
-              className="p-1 text-dark-400 hover:text-white hover:bg-dark-700 rounded transition-colors"
+              className="p-2 text-dark-400 hover:text-white hover:bg-dark-700 rounded-lg transition-colors"
             >
-              <X className="w-4 h-4" />
+              <X className="w-5 h-5" />
             </button>
           </div>
           <div className="flex-1 overflow-hidden">
             <ChatPanel nodeId={selectedNodeId} />
           </div>
         </div>
+      )}
 
-        {/* 历史面板 */}
-        <HistoryPanel
-          isOpen={isHistoryOpen}
-          onClose={() => setIsHistoryOpen(false)}
-        />
-      </main>
+      {isMobile && isHistoryOpen && (
+        <div className="fixed inset-0 z-50 bg-dark-950 flex flex-col">
+          <div className="h-14 bg-dark-900 border-b border-dark-700 flex items-center justify-between px-4">
+            <div className="flex items-center gap-2">
+              <Clock className="w-4 h-4 text-primary-400" />
+              <span className="text-white font-medium">操作历史</span>
+            </div>
+            <button
+              onClick={() => setIsHistoryOpen(false)}
+              className="p-2 text-dark-400 hover:text-white hover:bg-dark-700 rounded-lg transition-colors"
+            >
+              <X className="w-5 h-5" />
+            </button>
+          </div>
+          <div className="flex-1 overflow-hidden">
+            <HistoryPanel isOpen={true} onClose={() => setIsHistoryOpen(false)} />
+          </div>
+        </div>
+      )}
 
-      {/* 设置弹窗 */}
+      {isMobile && isMessageCenterOpen && (
+        <div className="fixed inset-0 z-50 bg-dark-950 flex flex-col">
+          <div className="h-14 bg-dark-900 border-b border-dark-700 flex items-center justify-between px-4">
+            <div className="flex items-center gap-2">
+              <Bell className="w-4 h-4 text-primary-400" />
+              <span className="text-white font-medium">消息中心</span>
+            </div>
+            <button
+              onClick={() => setIsMessageCenterOpen(false)}
+              className="p-2 text-dark-400 hover:text-white hover:bg-dark-700 rounded-lg transition-colors"
+            >
+              <X className="w-5 h-5" />
+            </button>
+          </div>
+          <div className="flex-1 overflow-hidden">
+            <MessageCenter />
+          </div>
+        </div>
+      )}
+
       <SettingsModal
         isOpen={isSettingsOpen}
         onClose={() => setIsSettingsOpen(false)}
       />
 
-      {/* 搜索弹窗 */}
       <SearchPanel
         isOpen={isSearchOpen}
         onClose={() => setIsSearchOpen(false)}
         onNodeSelect={handleNodeLocate}
       />
 
-      {/* 工作区设置弹窗 */}
       <WorkspaceSettingsModal
         isOpen={isWorkspaceSettingsOpen}
         onClose={() => setIsWorkspaceSettingsOpen(false)}

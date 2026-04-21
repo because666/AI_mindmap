@@ -128,6 +128,11 @@ interface AppState {
   searchQuery: string;
   searchResults: { nodeId: string; matches: string[] }[];
   
+  // 聊天面板控制
+  requestOpenChatForNode: string | null;
+  requestOpenChat: (nodeId: string) => void;
+  clearChatRequest: () => void;
+  
   // 节点操作
   createRootNode: (title?: string) => string;
   createChildNode: (parentId: string, title?: string) => string;
@@ -181,6 +186,13 @@ interface AppState {
    * @param conversations - 服务端返回的对话列表
    */
   loadConversationsFromApi: (conversations: unknown[]) => void;
+
+  /**
+   * 从服务端重新加载当前工作区的全部数据
+   * 用于手动同步、网络恢复后同步、App恢复前台后同步等场景
+   * @returns 是否同步成功
+   */
+  reloadWorkspaceData: () => Promise<boolean>;
 }
 
 /**
@@ -309,6 +321,22 @@ export const useAppStore = create<AppState>()(
       historyIndex: -1,
       searchQuery: '',
       searchResults: [],
+      requestOpenChatForNode: null,
+
+      /**
+       * 请求打开指定节点的聊天面板
+       * @param nodeId - 目标节点ID
+       */
+      requestOpenChat: (nodeId: string) => {
+        set({ requestOpenChatForNode: nodeId });
+      },
+
+      /**
+       * 清除聊天面板打开请求
+       */
+      clearChatRequest: () => {
+        set({ requestOpenChatForNode: null });
+      },
       
       /**
        * 创建根节点
@@ -1218,6 +1246,75 @@ export const useAppStore = create<AppState>()(
           conversations: newConversations,
           nodes: newNodes,
         });
+      },
+
+      /**
+       * 从服务端重新加载当前工作区的全部数据
+       * 用于手动同步、网络恢复后同步、App恢复前台后同步等场景
+       * @returns 是否同步成功
+       */
+      reloadWorkspaceData: async (): Promise<boolean> => {
+        try {
+          const result = await nodeApi.getAll() as unknown as {
+            success: boolean;
+            data: { nodes: unknown[]; relations: unknown[] };
+          };
+
+          if (result.success && result.data) {
+            const newNodes = new Map<string, NodeData>();
+            for (const node of result.data.nodes as NodeData[]) {
+              const migratedNode = migrateNodeData(node);
+              newNodes.set(node.id, migratedNode);
+            }
+            const newRelations = migrateRelationsData(result.data.relations as RelationData[]);
+
+            set({
+              nodes: newNodes,
+              relations: newRelations,
+            });
+          }
+
+          const convResult = await conversationApi.list() as unknown as {
+            success: boolean;
+            data: unknown[];
+          };
+
+          if (convResult.success && convResult.data) {
+            const newConversations = new Map<string, ConversationData>();
+            const currentNodes = new Map(get().nodes);
+
+            for (const conv of convResult.data as ConversationData[]) {
+              if (!conv || !conv.id || !conv.nodeId) continue;
+
+              newConversations.set(conv.id, {
+                ...conv,
+                createdAt: conv.createdAt ? new Date(conv.createdAt) : new Date(),
+                updatedAt: conv.updatedAt ? new Date(conv.updatedAt) : new Date(),
+                messages: (conv.messages || []).map((msg: { _id?: string; role?: string; content?: string; timestamp?: string | Date }) => ({
+                  _id: msg._id || generateId(),
+                  role: (msg.role === 'user' || msg.role === 'assistant' || msg.role === 'system' ? msg.role : 'user') as IMessage['role'],
+                  content: msg.content || '',
+                  timestamp: msg.timestamp ? new Date(msg.timestamp) : new Date(),
+                })),
+              });
+
+              const node = currentNodes.get(conv.nodeId);
+              if (node && node.conversationId !== conv.id) {
+                currentNodes.set(conv.nodeId, { ...node, conversationId: conv.id });
+              }
+            }
+
+            set({
+              conversations: newConversations,
+              nodes: currentNodes,
+            });
+          }
+
+          return true;
+        } catch (error) {
+          console.error('[appStore] 重新加载工作区数据失败:', error);
+          return false;
+        }
       },
     }),
     {

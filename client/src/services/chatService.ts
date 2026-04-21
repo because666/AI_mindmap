@@ -99,7 +99,7 @@ export const chatService = {
     messages: ChatMessage[],
     config: APIConfig,
     onStream: StreamCallback
-  ): Promise<{ success: boolean; content?: string; error?: string }> {
+  ): Promise<{ success: boolean; content?: string; thinkingContent?: string; error?: string }> {
     try {
       const response = await fetch(`${API_BASE_URL}/api/ai/chat/stream`, {
         method: 'POST',
@@ -137,6 +137,7 @@ export const chatService = {
       const decoder = new TextDecoder();
       let buffer = '';
       let finalContent = '';
+      let finalThinkingContent = '';
 
       while (true) {
         const { done, value } = await reader.read();
@@ -160,13 +161,24 @@ export const chatService = {
                 onStream({
                   type: 'content',
                   content: data.content,
+                  fullContent: finalContent,
+                  fullThinkingContent: finalThinkingContent
+                });
+              } else if (data.type === 'thinking') {
+                finalThinkingContent = data.fullThinkingContent || finalThinkingContent + (data.thinkingContent || '');
+                onStream({
+                  type: 'thinking',
+                  thinkingContent: data.thinkingContent,
+                  fullThinkingContent: finalThinkingContent,
                   fullContent: finalContent
                 });
               } else if (data.type === 'done') {
                 finalContent = data.fullContent || finalContent;
+                finalThinkingContent = data.fullThinkingContent || finalThinkingContent;
                 onStream({
                   type: 'done',
-                  fullContent: finalContent
+                  fullContent: finalContent,
+                  fullThinkingContent: finalThinkingContent
                 });
               } else if (data.type === 'error') {
                 onStream({
@@ -187,7 +199,8 @@ export const chatService = {
 
       return {
         success: true,
-        content: finalContent
+        content: finalContent,
+        thinkingContent: finalThinkingContent
       };
     } catch (error) {
       const errorMessage = error instanceof Error ? error.message : '网络错误';
@@ -225,6 +238,35 @@ export const chatService = {
       return {
         success: result.success,
         message: result.message,
+        error: result.error
+      };
+    } catch (error) {
+      return {
+        success: false,
+        error: error instanceof Error ? error.message : '网络错误'
+      };
+    }
+  },
+
+  /**
+   * 获取 AI 服务状态
+   */
+  async getStatus(): Promise<{
+    success: boolean;
+    configured?: boolean;
+    hasBuiltInKey?: boolean;
+    defaultProvider?: string;
+    error?: string;
+  }> {
+    try {
+      const response = await fetch(`${API_BASE_URL}/api/ai/status`);
+      const result = await parseJsonResponse(response);
+      
+      return {
+        success: result.success,
+        configured: result.configured,
+        hasBuiltInKey: result.hasBuiltInKey,
+        defaultProvider: result.defaultProvider,
         error: result.error
       };
     } catch (error) {

@@ -6,7 +6,7 @@ const getApiBaseUrl = () => {
     return import.meta.env.VITE_API_URL;
   }
   if (import.meta.env.PROD) {
-    return '';
+    return '/api';
   }
   return 'http://localhost:3001/api';
 };

@@ -76,19 +76,31 @@ router.post('/chat/stream', optionalVisitorAuth, async (req: Request, res: Respo
     });
 
     let fullContent = '';
+    let fullThinkingContent = '';
 
     for await (const chunk of stream) {
-      fullContent += chunk;
+      if (chunk.type === 'thinking') {
+        fullThinkingContent += chunk.content;
 
-      const data = JSON.stringify({
-        type: 'content',
-        content: chunk,
-        fullContent
-      });
-      res.write(`data: ${data}\n\n`);
+        const data = JSON.stringify({
+          type: 'thinking',
+          thinkingContent: chunk.content,
+          fullThinkingContent
+        });
+        res.write(`data: ${data}\n\n`);
+      } else if (chunk.type === 'content') {
+        fullContent += chunk.content;
+
+        const data = JSON.stringify({
+          type: 'content',
+          content: chunk.content,
+          fullContent
+        });
+        res.write(`data: ${data}\n\n`);
+      }
     }
 
-    res.write(`data: ${JSON.stringify({ type: 'done', fullContent })}\n\n`);
+    res.write(`data: ${JSON.stringify({ type: 'done', fullContent, fullThinkingContent })}\n\n`);
     res.end();
   } catch (error: unknown) {
     const message = error instanceof Error ? error.message : String(error);
@@ -155,6 +167,8 @@ router.get('/status', (_req: Request, res: Response) => {
   res.json({
     success: true,
     configured: aiService.isConfigured(),
+    hasBuiltInKey: aiService.hasBuiltInApiKey(),
+    defaultProvider: aiService.getDefaultProvider(),
   });
 });
 

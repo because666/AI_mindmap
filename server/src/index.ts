@@ -20,6 +20,9 @@ import conversationsRouter from './routes/conversations';
 import searchRouter from './routes/search';
 import aiRouter from './routes/ai';
 import workspacesRouter from './routes/workspaces';
+import pushRouter from './routes/push';
+import { pushService } from './services/pushService';
+import { initScheduledJobs } from './jobs/scheduledJobs';
 
 console.log('='.repeat(50));
 console.log('🚀 DeepMindMap Server Starting...');
@@ -72,6 +75,7 @@ app.get('/api', (req, res) => {
 });
 
 app.use('/api/workspaces', workspacesRouter);
+app.use('/api/push', pushRouter);
 app.use('/api/nodes', nodesRouter);
 app.use('/api/conversations', conversationsRouter);
 app.use('/api/search', searchRouter);
@@ -140,6 +144,11 @@ async function startServer() {
     
     const connectedCount = dbConnections.filter(r => r.status === 'fulfilled').length;
     console.log(`✅ ${connectedCount}/3 database services connected`);
+    
+    await pushService.initializeIndexes();
+    console.log('✅ 推送服务初始化完成');
+    
+    initScheduledJobs();
     
     const port = config.server.port;
     const host = '0.0.0.0';

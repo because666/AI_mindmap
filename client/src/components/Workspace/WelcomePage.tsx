@@ -1,6 +1,7 @@
 import React, { useState } from 'react';
 import { Network, Plus, LogIn, Globe, Lock, Copy, Check, Search, Users, Sparkles } from 'lucide-react';
 import { useVisitorWorkspaceStore } from '../../stores/visitorWorkspaceStore';
+import useMobile from '../../hooks/useMobile';
 import type { WorkspaceType, IWorkspace } from '../../types';
 
 const WelcomePage: React.FC = () => {
@@ -18,6 +19,7 @@ const WelcomePage: React.FC = () => {
     fetchPublicWorkspaces,
     joinPublicWorkspace,
   } = useVisitorWorkspaceStore();
+  const { haptic, notifyHaptic } = useMobile();
 
   const [nickname, setNickname] = useState('');
   const [workspaceName, setWorkspaceName] = useState('');
@@ -34,29 +36,37 @@ const WelcomePage: React.FC = () => {
   const handleNicknameSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
     if (!nickname.trim()) return;
+    haptic('medium');
     await registerVisitor(nickname.trim());
   };
 
   const handleCreateWorkspace = async (e: React.FormEvent) => {
     e.preventDefault();
     if (!workspaceName.trim()) return;
+    haptic('heavy');
     await createWorkspace(workspaceName.trim(), workspaceType, workspaceDescription.trim() || undefined);
     setShowCreate(false);
     setWorkspaceName('');
     setWorkspaceDescription('');
+    notifyHaptic('success');
   };
 
   const handleJoinByCode = async (e: React.FormEvent) => {
     e.preventDefault();
     if (!inviteCode.trim()) return;
+    haptic('medium');
     const success = await joinByInviteCode(inviteCode.trim());
     if (success) {
       setShowJoin(false);
       setInviteCode('');
+      notifyHaptic('success');
+    } else {
+      notifyHaptic('error');
     }
   };
 
   const handleShowPublic = async () => {
+    haptic('light');
     setShowPublic(true);
     setShowCreate(false);
     setShowJoin(false);
@@ -67,9 +77,11 @@ const WelcomePage: React.FC = () => {
   };
 
   const handleJoinPublic = async (workspaceId: string) => {
+    haptic('medium');
     const success = await joinPublicWorkspace(workspaceId);
     if (success) {
       setShowPublic(false);
+      notifyHaptic('success');
     }
   };
 
@@ -85,10 +97,7 @@ const WelcomePage: React.FC = () => {
 
   if (!visitor) {
     return (
-      <div className="h-screen flex items-center justify-center bg-dark-950 relative overflow-hidden noise-overlay">
-        <div className="absolute inset-0 bg-grid opacity-40" />
-        <div className="absolute top-1/4 left-1/4 w-96 h-96 bg-primary-600/10 rounded-full blur-[128px]" />
-        <div className="absolute bottom-1/4 right-1/4 w-64 h-64 bg-primary-400/5 rounded-full blur-[96px]" />
+      <div className="h-screen flex items-center justify-center bg-dark-950/80 relative overflow-hidden">
 
         <div className="w-full max-w-md p-8 glass rounded-2xl shadow-2xl relative z-10 animate-scale-in">
           <div className="flex items-center justify-center mb-8">
@@ -137,9 +146,7 @@ const WelcomePage: React.FC = () => {
 
   if (!currentWorkspace) {
     return (
-      <div className="h-screen flex items-center justify-center bg-dark-950 relative overflow-hidden noise-overlay">
-        <div className="absolute inset-0 bg-dots opacity-30" />
-        <div className="absolute top-1/3 right-1/3 w-80 h-80 bg-primary-600/8 rounded-full blur-[120px]" />
+      <div className="h-screen flex items-center justify-center bg-dark-950/80 relative overflow-hidden">
 
         <div className="w-full max-w-lg p-8 glass rounded-2xl shadow-2xl relative z-10 animate-scale-in">
           <div className="flex items-center gap-3 mb-6 animate-in">
@@ -159,7 +166,7 @@ const WelcomePage: React.FC = () => {
                 {workspaces.map((ws) => (
                   <div
                     key={ws.id}
-                    onClick={() => switchWorkspace(ws.id)}
+                    onClick={() => { haptic('light'); switchWorkspace(ws.id); }}
                     className="w-full flex items-center gap-3 p-3 rounded-xl text-left hover:bg-dark-700/50 transition-all duration-200 cursor-pointer group border border-transparent hover:border-dark-600/50"
                   >
                     <div className="w-9 h-9 bg-dark-700/80 rounded-lg flex items-center justify-center group-hover:bg-dark-600 transition-colors">
@@ -193,14 +200,14 @@ const WelcomePage: React.FC = () => {
 
           <div className="flex gap-2 animate-in-delay-2">
             <button
-              onClick={() => { setShowCreate(true); setShowJoin(false); setShowPublic(false); }}
+              onClick={() => { haptic('light'); setShowCreate(true); setShowJoin(false); setShowPublic(false); }}
               className="btn-primary flex-1"
             >
               <Plus className="w-4 h-4" />
               创建
             </button>
             <button
-              onClick={() => { setShowJoin(true); setShowCreate(false); setShowPublic(false); }}
+              onClick={() => { haptic('light'); setShowJoin(true); setShowCreate(false); setShowPublic(false); }}
               className="btn-ghost flex-1"
             >
               <LogIn className="w-4 h-4" />

@@ -281,6 +281,21 @@ body {
   to { transform: rotate(360deg); }
 }
 
+@keyframes slide-in-left {
+  from {
+    transform: translateX(-100%);
+    opacity: 0;
+  }
+  to {
+    transform: translateX(0);
+    opacity: 1;
+  }
+}
+
+.animate-slide-in-left {
+  animation: slide-in-left 0.3s cubic-bezier(0.16, 1, 0.3, 1) forwards;
+}
+
 @media (prefers-reduced-motion: reduce) {
   *,
   *::before,
@@ -574,4 +589,8 @@ body {
 
 .react-flow__attribution {
   display: none !important;
+}
+
+.react-flow {
+  background-color: transparent !important;
 }

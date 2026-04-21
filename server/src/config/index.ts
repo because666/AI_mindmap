@@ -49,6 +49,14 @@ export const config = {
     windowMs: parseInt(process.env.RATE_LIMIT_WINDOW || '60000', 10),
     maxRequests: parseInt(process.env.RATE_LIMIT_MAX || '100', 10),
   },
+
+  jpush: {
+    appKey: process.env.JPUSH_APPKEY || '',
+    masterSecret: process.env.JPUSH_MASTER_SECRET || '',
+    forceReadDays: parseInt(process.env.PUSH_FORCE_READ_DAYS || '7', 10),
+    messageRetentionDays: parseInt(process.env.PUSH_MESSAGE_RETENTION_DAYS || '30', 10),
+    broadcastBatchSize: parseInt(process.env.PUSH_BROADCAST_BATCH_SIZE || '1000', 10),
+  },
 };
 
 export type Config = typeof config;

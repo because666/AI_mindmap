@@ -1,7 +1,8 @@
-import React, { useState, useMemo } from 'react';
-import { Settings, Server, Key, Globe, Plus, Trash2, Edit3, X } from 'lucide-react';
+import React, { useState, useMemo, useEffect } from 'react';
+import { Settings, Server, Key, Globe, Plus, Trash2, Edit3, X, CheckCircle } from 'lucide-react';
 import { useAPIConfigStore } from '../../stores/apiConfigStore';
 import { AI_PROVIDERS } from '../../utils/aiModels';
+import { chatService } from '../../services/chatService';
 import type { AIProvider, AIModel } from '../../types';
 
 interface APIConfigPanelProps {
@@ -119,6 +120,19 @@ const APIConfigPanel: React.FC<APIConfigPanelProps> = () => {
 
   const [showAddModelForm, setShowAddModelForm] = useState(false);
   const [editingModelId, setEditingModelId] = useState<string | null>(null);
+  const [hasBuiltInKey, setHasBuiltInKey] = useState(false);
+  const [defaultProvider, setDefaultProvider] = useState<string>('zhipu');
+
+  useEffect(() => {
+    const fetchStatus = async () => {
+      const result = await chatService.getStatus();
+      if (result.success) {
+        setHasBuiltInKey(result.hasBuiltInKey || false);
+        setDefaultProvider(result.defaultProvider || 'zhipu');
+      }
+    };
+    fetchStatus();
+  }, []);
 
   /**
    * 获取当前提供商的自定义模型列表（安全过滤）
@@ -208,6 +222,22 @@ const APIConfigPanel: React.FC<APIConfigPanelProps> = () => {
         <Settings className="w-5 h-5 text-primary-400" />
         <h2 className="text-lg font-semibold text-white">API 配置</h2>
       </div>
+
+      {/* 内置密钥提示 */}
+      {hasBuiltInKey && (
+        <div className="flex items-start gap-3 p-4 bg-primary-600/10 border border-primary-500/30 rounded-xl">
+          <CheckCircle className="w-5 h-5 text-primary-400 flex-shrink-0 mt-0.5" />
+          <div className="flex-1">
+            <p className="text-sm text-white font-medium mb-1">
+              系统已内置 AI 服务
+            </p>
+            <p className="text-xs text-dark-300 leading-relaxed">
+              您可以直接使用内置的 <span className="text-primary-400">{AI_PROVIDERS[defaultProvider as AIProvider]?.name || defaultProvider}</span> 服务进行对话，无需配置 API 密钥。
+              如需使用其他服务商或自定义模型，请在下方配置您自己的 API 密钥。
+            </p>
+          </div>
+        </div>
+      )}
 
       {/* 服务商选择 */}
       <div>
@@ -338,14 +368,14 @@ const APIConfigPanel: React.FC<APIConfigPanelProps> = () => {
       <div>
         <label className="flex items-center gap-2 text-sm font-medium text-dark-300 mb-2">
           <Key className="w-4 h-4" />
-          API 密钥
+          API 密钥 {hasBuiltInKey && <span className="text-dark-500 font-normal">（可选）</span>}
         </label>
         <div className="relative">
           <input
             type="password"
             value={config.apiKey}
             onChange={(e) => setApiKey(e.target.value)}
-            placeholder="输入你的API密钥..."
+            placeholder={hasBuiltInKey ? "留空使用内置服务..." : "输入你的API密钥..."}
             className="w-full pl-4 pr-12 py-2.5 bg-dark-800 border border-dark-600 rounded-xl text-white placeholder-dark-500 focus:border-primary-500 focus:outline-none transition-colors text-sm pr-10"
           />
           <button
@@ -358,12 +388,18 @@ const APIConfigPanel: React.FC<APIConfigPanelProps> = () => {
             <svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><rect width="14" height="14" x="8" y="8" rx="2" ry="2"/><path d="M4 16c-1.1 0-2-.9-2-2V4c0-1.1.9-2 2-2h10c1.1 0 2 .9 2 2"/></svg>
           </button>
         </div>
-        <p className="mt-1.5 text-xs text-dark-500">
-          获取密钥：
-          <a href={config.provider === 'zhipu' ? 'https://open.bigmodel.cn/' : config.provider === 'openai' ? 'https://platform.openai.com/api-keys' : 'https://console.anthropic.com/settings/keys'} target="_blank" rel="noopener noreferrer" className="text-primary-400 hover:text-primary-300 underline ml-1">
-            {config.provider === 'zhipu' ? 'https://open.bigmodel.cn/' : config.provider === 'openai' ? 'platform.openai.com' : 'console.anthropic.com'}
-          </a>
-        </p>
+        {hasBuiltInKey ? (
+          <p className="mt-1.5 text-xs text-dark-500">
+            配置您自己的 API 密钥以使用自定义服务商或模型。留空则使用系统内置服务。
+          </p>
+        ) : (
+          <p className="mt-1.5 text-xs text-dark-500">
+            获取密钥：
+            <a href={config.provider === 'zhipu' ? 'https://open.bigmodel.cn/' : config.provider === 'openai' ? 'https://platform.openai.com/api-keys' : 'https://console.anthropic.com/settings/keys'} target="_blank" rel="noopener noreferrer" className="text-primary-400 hover:text-primary-300 underline ml-1">
+              {config.provider === 'zhipu' ? 'https://open.bigmodel.cn/' : config.provider === 'openai' ? 'platform.openai.com' : 'console.anthropic.com'}
+            </a>
+          </p>
+        )}
       </div>
 
       {/* 基础URL */}

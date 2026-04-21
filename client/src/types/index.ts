@@ -185,7 +185,7 @@ export interface ApiResponse<T> {
 /**
  * 流式响应事件类型
  */
-export type StreamEventType = 'content' | 'done' | 'error';
+export type StreamEventType = 'content' | 'thinking' | 'done' | 'error';
 
 /**
  * 流式响应数据接口
@@ -194,6 +194,8 @@ export interface StreamEvent {
   type: StreamEventType;
   content?: string;
   fullContent?: string;
+  thinkingContent?: string;
+  fullThinkingContent?: string;
   error?: string;
 }
 

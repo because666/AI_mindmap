@@ -265,9 +265,15 @@ export const useVisitorWorkspaceStore = create<VisitorWorkspaceState>()(
         }
       },
 
+      /**
+       * 切换当前工作区
+       * 切换时先清除旧工作区的所有数据，再设置新工作区
+       * @param workspaceId - 工作区ID
+       */
       switchWorkspace: async (workspaceId) => {
         const workspace = get().workspaces.find(w => w.id === workspaceId);
         if (workspace) {
+          useAppStore.getState().clearAllData();
           localStorage.setItem('currentWorkspaceId', workspaceId);
           set({ currentWorkspace: workspace });
         }

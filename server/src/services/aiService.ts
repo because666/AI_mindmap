@@ -27,6 +27,14 @@ interface TestOptions {
 }
 
 /**
+ * 流式聊天结果接口
+ */
+interface StreamChunk {
+  type: 'content' | 'thinking';
+  content: string;
+}
+
+/**
  * 默认模型配置
  */
 const DEFAULT_MODELS: Record<string, string> = {
@@ -71,6 +79,28 @@ class AIService {
   }
 
   /**
+   * 获取内置API密钥
+   * @param provider - 服务提供商
+   * @returns 内置API密钥或undefined
+   */
+  private getBuiltInApiKey(provider?: string): string | undefined {
+    if (!provider) {
+      if (config.ai.zhipuApiKey) return config.ai.zhipuApiKey;
+      if (config.ai.openaiApiKey) return config.ai.openaiApiKey;
+      return undefined;
+    }
+
+    switch (provider) {
+      case 'zhipu':
+        return config.ai.zhipuApiKey;
+      case 'openai':
+        return config.ai.openaiApiKey;
+      default:
+        return undefined;
+    }
+  }
+
+  /**
    * 获取OpenAI客户端
    * @param apiKey - API密钥
    * @param baseUrl - API基础URL
@@ -78,22 +108,31 @@ class AIService {
    * @returns OpenAI客户端实例
    */
   private getOpenAIClient(apiKey?: string, baseUrl?: string, provider?: string): OpenAI {
-    if (apiKey) {
-      let effectiveBaseUrl = baseUrl;
-      if (!effectiveBaseUrl && provider && API_BASE_URLS[provider]) {
-        effectiveBaseUrl = API_BASE_URLS[provider];
+    let effectiveApiKey = apiKey;
+    let effectiveProvider = provider;
+
+    if (!effectiveApiKey) {
+      effectiveApiKey = this.getBuiltInApiKey(provider);
+      if (!effectiveProvider && effectiveApiKey === config.ai.zhipuApiKey) {
+        effectiveProvider = 'zhipu';
       }
-      return new OpenAI({ 
-        apiKey, 
-        baseURL: effectiveBaseUrl || 'https://api.openai.com/v1',
-        timeout: 60000,
-        maxRetries: 2,
-      });
     }
-    if (!this.openai) {
-      throw new Error('API key not configured. Please provide an API key in settings.');
+
+    if (!effectiveApiKey) {
+      throw new Error('API key not configured. Please provide an API key in settings or configure a built-in API key on the server.');
     }
-    return this.openai;
+
+    let effectiveBaseUrl = baseUrl;
+    if (!effectiveBaseUrl && effectiveProvider && API_BASE_URLS[effectiveProvider]) {
+      effectiveBaseUrl = API_BASE_URLS[effectiveProvider];
+    }
+
+    return new OpenAI({
+      apiKey: effectiveApiKey,
+      baseURL: effectiveBaseUrl || 'https://api.openai.com/v1',
+      timeout: 60000,
+      maxRetries: 2,
+    });
   }
 
   /**
@@ -225,9 +264,9 @@ class AIService {
   /**
    * 流式聊天
    * @param request - 聊天请求选项
-   * @yields 响应内容片段
+   * @yields 响应内容片段（包含内容和思考过程）
    */
-  async *chatStream(request: ChatOptions): AsyncGenerator<string> {
+  async *chatStream(request: ChatOptions): AsyncGenerator<StreamChunk> {
     if (!request.messages || request.messages.length === 0) {
       throw new Error('Messages array cannot be empty');
     }
@@ -268,9 +307,23 @@ class AIService {
       });
 
       for await (const chunk of stream) {
-        const content = chunk.choices[0]?.delta?.content || '';
+        const delta = chunk.choices[0]?.delta as any;
+        
+        const reasoningContent = delta?.reasoning_content || '';
+        const content = delta?.content || '';
+        
+        if (reasoningContent) {
+          yield {
+            type: 'thinking',
+            content: reasoningContent
+          };
+        }
+        
         if (content) {
-          yield content;
+          yield {
+            type: 'content',
+            content: content
+          };
         }
       }
     } catch (error: any) {
@@ -388,11 +441,27 @@ class AIService {
   }
 
   /**
-   * 检查API是否已配置
+   * 检查API是否已配置（包括内置密钥）
    * @returns 是否已配置
    */
   isConfigured(): boolean {
-    return this.openai !== null;
+    return !!(this.openai || config.ai.zhipuApiKey || config.ai.openaiApiKey);
+  }
+
+  /**
+   * 检查是否有内置API密钥可用
+   * @returns 是否有内置密钥
+   */
+  hasBuiltInApiKey(): boolean {
+    return !!(config.ai.zhipuApiKey || config.ai.openaiApiKey);
+  }
+
+  /**
+   * 获取默认提供商（基于内置密钥）
+   * @returns 默认提供商
+   */
+  getDefaultProvider(): string {
+    return config.ai.defaultProvider || 'zhipu';
   }
 
   /**

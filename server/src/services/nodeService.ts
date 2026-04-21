@@ -191,12 +191,37 @@ class NodeService {
 
   /**
    * 获取工作区内的所有节点
+   * 优先从内存缓存获取，若内存中无该工作区数据则回退查询Neo4j
    * @param workspaceId - 工作区ID
    * @returns 节点列表
    */
   async getAllNodes(workspaceId: string): Promise<Node[]> {
-    const nodes = Array.from(this.memoryNodes.values());
-    return nodes.filter(n => n.workspaceId === workspaceId);
+    const memoryNodes = Array.from(this.memoryNodes.values());
+    const workspaceNodes = memoryNodes.filter(n => n.workspaceId === workspaceId);
+
+    if (workspaceNodes.length > 0) {
+      return workspaceNodes;
+    }
+
+    if (neo4jService.isConnected()) {
+      try {
+        const results = await neo4jService.runQuery<{ n: Node }>(
+          `MATCH (n:Node {workspaceId: $workspaceId}) RETURN n`,
+          { workspaceId }
+        );
+        if (results.length > 0) {
+          const nodes = results.map(r => r.n);
+          for (const node of nodes) {
+            this.memoryNodes.set(node.id, node);
+          }
+          return nodes;
+        }
+      } catch (error) {
+        console.error('Neo4j获取工作区节点失败:', error);
+      }
+    }
+
+    return workspaceNodes;
   }
 
   /**
@@ -335,11 +360,38 @@ class NodeService {
 
   /**
    * 获取工作区内的所有关系
+   * 优先从内存缓存获取，若内存中无该工作区关系数据则回退查询Neo4j
    * @param workspaceId - 工作区ID
    * @returns 关系列表
    */
   async getRelations(workspaceId: string): Promise<Relation[]> {
-    return this.memoryRelations.filter(r => r.workspaceId === workspaceId);
+    const memoryRelations = this.memoryRelations.filter(r => r.workspaceId === workspaceId);
+
+    if (memoryRelations.length > 0) {
+      return memoryRelations;
+    }
+
+    if (neo4jService.isConnected()) {
+      try {
+        const results = await neo4jService.runQuery<{ r: Relation }>(
+          `MATCH ()-[r:RELATES_TO {workspaceId: $workspaceId}]->() RETURN r`,
+          { workspaceId }
+        );
+        if (results.length > 0) {
+          const relations = results.map(r => r.r);
+          for (const relation of relations) {
+            if (!this.memoryRelations.find(mr => mr.id === relation.id)) {
+              this.memoryRelations.push(relation);
+            }
+          }
+          return relations;
+        }
+      } catch (error) {
+        console.error('Neo4j获取工作区关系失败:', error);
+      }
+    }
+
+    return memoryRelations;
   }
 
   /**

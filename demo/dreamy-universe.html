@@ -1,0 +1,670 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>梦幻艺术宇宙 - DeepMindMap</title>
+  <style>
+    * { margin: 0; padding: 0; box-sizing: border-box; }
+    body { overflow: hidden; background: #030208; font-family: system-ui, -apple-system, sans-serif; }
+
+    #scene-container { position: fixed; top: 0; left: 0; width: 100vw; height: 100vh; z-index: 0; }
+    canvas { display: block; }
+
+    .content {
+      position: relative; z-index: 10;
+      display: flex; flex-direction: column; align-items: center; justify-content: center;
+      min-height: 100vh; padding: 2rem; text-align: center; pointer-events: none;
+    }
+
+    .title {
+      font-size: clamp(2rem, 5vw, 3.8rem); font-weight: 700; color: #fff;
+      margin-bottom: 1rem; letter-spacing: -0.03em;
+      text-shadow: 0 0 80px rgba(240,196,232,0.2), 0 0 120px rgba(165,216,255,0.15);
+    }
+    .subtitle {
+      font-size: clamp(0.95rem, 2.3vw, 1.2rem); color: rgba(255,255,255,0.4);
+      max-width: 560px; line-height: 1.65; margin-bottom: 2rem;
+    }
+
+    .info-panel {
+      background: rgba(3, 2, 8, 0.6); backdrop-filter: blur(18px);
+      border: 1px solid rgba(196, 181, 253, 0.12); border-radius: 14px;
+      padding: 1.4rem 1.9rem; margin-top: 2rem; max-width: 480px; pointer-events: auto;
+    }
+    .info-row {
+      display: flex; justify-content: space-between; align-items: center;
+      padding: 0.65rem 0; border-bottom: 1px solid rgba(196, 181, 253, 0.08); font-size: 0.88rem;
+    }
+    .info-row:last-child { border-bottom: none; }
+    .info-label { color: rgba(196, 181, 253, 0.55); }
+    .info-value { color: #c4b5fd; font-weight: 500; font-family: monospace; }
+
+    .controls {
+      position: fixed; bottom: 2rem; right: 2rem; z-index: 100;
+      display: flex; gap: 0.6rem; flex-wrap: wrap; justify-content: flex-end; max-width: 360px;
+    }
+    .control-btn {
+      padding: 0.55rem 1.15rem; background: rgba(3, 2, 8, 0.7); backdrop-filter: blur(10px);
+      border: 1px solid rgba(196, 181, 253, 0.15); border-radius: 9px;
+      color: rgba(230, 220, 245, 0.7); font-size: 0.82rem; cursor: pointer;
+      transition: all 0.25s ease; white-space: nowrap;
+    }
+    .control-btn:hover {
+      background: rgba(20, 15, 35, 0.85); border-color: #c4b5fd; color: #e8d5f2;
+      transform: translateY(-1.5px); box-shadow: 0 4px 20px rgba(196, 181, 253, 0.2);
+    }
+    .control-btn.active {
+      background: rgba(196, 181, 253, 0.12); border-color: rgba(196, 181, 253, 0.45); color: #e8d5f2;
+    }
+
+    @media (max-width: 768px) {
+      .controls { bottom: 1rem; right: 1rem; left: 1rem; justify-content: center; max-width: none; }
+      .control-btn { padding: 0.48rem 0.95rem; font-size: 0.78rem; }
+      .info-panel { margin-left: 1rem; margin-right: 1rem; padding: 1rem 1.3rem; }
+    }
+  </style>
+</head>
+<body>
+  <div id="scene-container"></div>
+  <div class="content">
+    <h1 class="title">DeepMindMap</h1>
+    <p class="subtitle">梦幻艺术宇宙 · 水晶几何体<br>65000 粒子 · 呼吸脉动 · 轨道漫游</p>
+    <div class="info-panel">
+      <div class="info-row"><span class="info-label">几何体数量</span><span class="info-value" id="cloud-count">--</span></div>
+      <div class="info-row"><span class="info-label">总粒子数</span><span class="info-value" id="particle-count">--</span></div>
+      <div class="info-row"><span class="info-label">帧率 (FPS)</span><span class="info-value" id="fps-display">--</span></div>
+    </div>
+  </div>
+  <div class="controls">
+    <button class="control-btn active" id="btn-rotate">自动旋转</button>
+    <button class="control-btn active" id="btn-burst">爆发效果</button>
+    <button class="control-btn" id="btn-pause">暂停动画</button>
+  </div>
+
+  <script src="https://cdn.jsdelivr.net/npm/three@0.160.0/build/three.min.js"></script>
+  <script>
+    (function () {
+      'use strict';
+
+      var container = document.getElementById('scene-container');
+      if (!container) return;
+
+      if (typeof THREE === 'undefined') {
+        container.innerHTML = '<div style="color:#f0c4e8;padding:60px;font-size:18px;text-align:center;">Three.js 加载失败，请检查网络连接后刷新页面</div>';
+        return;
+      }
+
+      var W = window.innerWidth;
+      var H = window.innerHeight;
+      var pixR = Math.min(window.devicePixelRatio || 1, 1.5);
+      var isMobile = W <= 768;
+
+      var scene, camera, renderer;
+      var particleClouds = [];
+      var envParticles;
+      var running = true;
+      var autoRotate = true;
+      var burstOn = true;
+
+      var baseTime = performance.now();
+      var lastFpsTime = performance.now();
+      var frames = 0;
+      var fpsVal = 60;
+
+      var PARTICLES_PER_CLOUD = isMobile ? 6000 : 10000;
+      var ENV_PARTICLE_COUNT = isMobile ? 8000 : 15000;
+      var PARTICLE_SIZE = 1.5;
+
+      var mouseNDC = new THREE.Vector2(-10, -10);
+      var mouseActive = 0;
+      var raycaster = new THREE.Raycaster();
+      var inverseMat = new THREE.Matrix4();
+      var localMouseOrigin = new THREE.Vector3();
+      var localMouseDir = new THREE.Vector3();
+
+      /**
+       * 五个几何体粒子云的配置
+       * type: 0=二十面体, 1=八面体, 2=十二面体, 3=四面体
+       * size: 几何体半径
+       * color: RGB颜色值 [R, G, B]
+       * orbitR: 轨道半径
+       * orbitAngle: 初始轨道角度
+       * orbitSpeed: 轨道公转速度（正负表示方向）
+       * rotX/rotY/rotZ: 三轴自转速度
+       * zOff: Z轴偏移（深度层次）
+       * breathSpeed: 呼吸频率（各几何体不同，形成错落感）
+       * breathAmp: 呼吸振幅
+       */
+      var CLOUD_CONFIGS = [
+        {
+          name: '核心二十面体', type: 0,
+          size: isMobile ? 35 : 45,
+          color: [248, 240, 255],
+          orbitR: 0, orbitAngle: 0, orbitSpeed: 0,
+          rotX: 0.12, rotY: 0.08, rotZ: 0.05, zOff: 0,
+          breathSpeed: 0.6, breathAmp: 0.10
+        },
+        {
+          name: '四面体', type: 3,
+          size: isMobile ? 60 : 75,
+          color: [181, 240, 232],
+          orbitR: isMobile ? 220 : 300, orbitAngle: Math.PI * 0.25, orbitSpeed: 0.035,
+          rotX: 0.15, rotY: 0.10, rotZ: 0.07, zOff: -60,
+          breathSpeed: 0.45, breathAmp: 0.14
+        },
+        {
+          name: '二十面体', type: 0,
+          size: isMobile ? 75 : 95,
+          color: [240, 196, 232],
+          orbitR: isMobile ? 290 : 380, orbitAngle: Math.PI * 0.75, orbitSpeed: -0.028,
+          rotX: 0.10, rotY: 0.14, rotZ: 0.06, zOff: 80,
+          breathSpeed: 0.55, breathAmp: 0.12
+        },
+        {
+          name: '八面体', type: 1,
+          size: isMobile ? 85 : 105,
+          color: [196, 181, 253],
+          orbitR: isMobile ? 350 : 450, orbitAngle: Math.PI * 1.25, orbitSpeed: 0.022,
+          rotX: 0.08, rotY: 0.12, rotZ: 0.09, zOff: -40,
+          breathSpeed: 0.38, breathAmp: 0.16
+        },
+        {
+          name: '十二面体', type: 2,
+          size: isMobile ? 100 : 125,
+          color: [165, 216, 255],
+          orbitR: isMobile ? 420 : 540, orbitAngle: Math.PI * 1.75, orbitSpeed: -0.018,
+          rotX: 0.06, rotY: 0.09, rotZ: 0.11, zOff: 100,
+          breathSpeed: 0.50, breathAmp: 0.13
+        }
+      ];
+
+      /**
+       * 初始化场景、相机、渲染器
+       */
+      function setupScene() {
+        camera = new THREE.PerspectiveCamera(50, W / H, 1, 5000);
+        camera.position.z = isMobile ? 1100 : 900;
+
+        scene = new THREE.Scene();
+        scene.background = new THREE.Color(0x030208);
+        scene.fog = new THREE.FogExp2(0x030208, 0.0006);
+
+        renderer = new THREE.WebGLRenderer({ antialias: false, alpha: false });
+        renderer.setPixelRatio(pixR);
+        renderer.setSize(W, H);
+        container.appendChild(renderer.domElement);
+      }
+
+      /**
+       * 根据类型创建对应的Three.js多面体几何体
+       * @param {number} type - 几何体类型: 0=二十面体, 1=八面体, 2=十二面体, 3=四面体
+       * @param {number} size - 几何体半径
+       * @returns {THREE.BufferGeometry} 非索引化的几何体
+       */
+      function getGeometry(type, size) {
+        var geo;
+        switch (type) {
+          case 0: geo = new THREE.IcosahedronGeometry(size, 1); break;
+          case 1: geo = new THREE.OctahedronGeometry(size, 0); break;
+          case 2: geo = new THREE.DodecahedronGeometry(size, 0); break;
+          case 3: geo = new THREE.TetrahedronGeometry(size, 0); break;
+          default: geo = new THREE.IcosahedronGeometry(size, 1); break;
+        }
+        if (geo.index) {
+          geo = geo.toNonIndexed();
+        }
+        return geo;
+      }
+
+      /**
+       * 在几何体表面均匀采样粒子位置
+       * 使用重心坐标插值确保均匀分布
+       * @param {THREE.BufferGeometry} geometry - 非索引化的几何体
+       * @param {number} count - 采样粒子数量
+       * @returns {number[]} 位置数组 [x1,y1,z1, x2,y2,z2, ...]
+       */
+      function sampleGeometrySurface(geometry, count) {
+        var posAttr = geometry.getAttribute('position');
+        if (!posAttr) {
+          console.error('几何体缺少 position 属性');
+          return [];
+        }
+
+        var vertCount = posAttr.count;
+        var faceCount = Math.floor(vertCount / 3);
+        if (faceCount === 0) {
+          console.error('几何体面数为0，顶点数:', vertCount);
+          return [];
+        }
+
+        var positions = [];
+        for (var i = 0; i < count; i++) {
+          var faceIdx = Math.floor(Math.random() * faceCount);
+          var baseIdx = faceIdx * 3;
+
+          var ax = posAttr.getX(baseIdx);
+          var ay = posAttr.getY(baseIdx);
+          var az = posAttr.getZ(baseIdx);
+          var bx = posAttr.getX(baseIdx + 1);
+          var by = posAttr.getY(baseIdx + 1);
+          var bz = posAttr.getZ(baseIdx + 1);
+          var cx = posAttr.getX(baseIdx + 2);
+          var cy = posAttr.getY(baseIdx + 2);
+          var cz = posAttr.getZ(baseIdx + 2);
+
+          var r1 = Math.random();
+          var r2 = Math.random();
+          var sqrtR1 = Math.sqrt(r1);
+          var u = 1 - sqrtR1;
+          var v = sqrtR1 * (1 - r2);
+          var w = sqrtR1 * r2;
+
+          positions.push(
+            ax * u + bx * v + cx * w,
+            ay * u + by * v + cy * w,
+            az * u + bz * v + cz * w
+          );
+        }
+        return positions;
+      }
+
+      /**
+       * 在几何体内部生成随机分布的粒子位置
+       * 使用球坐标+立方根缩放确保体积均匀
+       * @param {number} count - 粒子数量
+       * @param {number} radius - 分布半径
+       * @returns {number[]} 位置数组 [x1,y1,z1, x2,y2,z2, ...]
+       */
+      function generateInnerParticles(count, radius) {
+        var positions = [];
+        for (var i = 0; i < count; i++) {
+          var r = Math.pow(Math.random(), 1 / 3) * radius * 0.7;
+          var theta = Math.random() * Math.PI * 2;
+          var phi = Math.acos(2 * Math.random() - 1);
+          positions.push(
+            r * Math.sin(phi) * Math.cos(theta),
+            r * Math.sin(phi) * Math.sin(theta),
+            r * Math.cos(phi)
+          );
+        }
+        return positions;
+      }
+
+      /**
+       * 创建单个几何体粒子云
+       * 包含表面密集粒子（65%，高亮度）和内部稀疏粒子（35%，低亮度）
+       * 支持鼠标交互排斥和呼吸缩放效果
+       * @param {Object} cfg - 粒子云配置对象
+       */
+      function createParticleCloud(cfg) {
+        var group = new THREE.Object3D();
+        var geometry = getGeometry(cfg.type, cfg.size);
+
+        var surfaceCount = Math.floor(PARTICLES_PER_CLOUD * 0.65);
+        var innerCount = PARTICLES_PER_CLOUD - surfaceCount;
+
+        var surfacePos = sampleGeometrySurface(geometry, surfaceCount);
+        var innerPos = generateInnerParticles(innerCount, cfg.size);
+        geometry.dispose();
+
+        var allPos = surfacePos.concat(innerPos);
+        var totalParticles = allPos.length / 3;
+
+        var colors = [];
+        var sizes = [];
+        var alphas = [];
+        var phases = [];
+
+        var baseR = cfg.color[0] / 255;
+        var baseG = cfg.color[1] / 255;
+        var baseB = cfg.color[2] / 255;
+
+        for (var i = 0; i < totalParticles; i++) {
+          var isSurface = i < surfaceCount;
+          var cv = (Math.random() - 0.5) * 0.08;
+
+          if (isSurface) {
+            colors.push(
+              Math.max(0, Math.min(1, baseR + cv)),
+              Math.max(0, Math.min(1, baseG + cv)),
+              Math.max(0, Math.min(1, baseB + cv))
+            );
+            sizes.push(PARTICLE_SIZE * 1.2);
+            alphas.push(0.9);
+          } else {
+            var wb = 0.3;
+            colors.push(
+              Math.max(0, Math.min(1, baseR + (1 - baseR) * wb + cv * 0.5)),
+              Math.max(0, Math.min(1, baseG + (1 - baseG) * wb + cv * 0.5)),
+              Math.max(0, Math.min(1, baseB + (1 - baseB) * wb + cv * 0.5))
+            );
+            sizes.push(PARTICLE_SIZE * 0.8);
+            alphas.push(0.5);
+          }
+          phases.push(Math.random());
+        }
+
+        var geo = new THREE.BufferGeometry();
+        geo.setAttribute('position', new THREE.Float32BufferAttribute(allPos, 3));
+        geo.setAttribute('aColor', new THREE.Float32BufferAttribute(colors, 3));
+        geo.setAttribute('aSize', new THREE.Float32BufferAttribute(sizes, 1));
+        geo.setAttribute('aAlpha', new THREE.Float32BufferAttribute(alphas, 1));
+        geo.setAttribute('aPhase', new THREE.Float32BufferAttribute(phases, 1));
+
+        var vertexShader = [
+          'attribute vec3 aColor;',
+          'attribute float aSize;',
+          'attribute float aAlpha;',
+          'attribute float aPhase;',
+          'uniform float uTime;',
+          'uniform float uBreath;',
+          'uniform float uBurst;',
+          'uniform float uPixelRatio;',
+          'uniform vec3 uMouseOrigin;',
+          'uniform vec3 uMouseDir;',
+          'uniform float uMouseActive;',
+          'varying float vAlpha;',
+          'varying vec3 vColor;',
+          '',
+          'void main() {',
+          '  vAlpha = aAlpha;',
+          '  vColor = aColor;',
+          '  vec3 pos = position;',
+          '',
+          '  float wave = sin(uTime * 0.8 + aPhase * 6.2832) * 1.5;',
+          '  vec3 dir = normalize(pos + vec3(0.001));',
+          '  pos += dir * wave;',
+          '',
+          '  pos *= (1.0 + uBreath);',
+          '  pos *= (1.0 + uBurst * 0.3);',
+          '',
+          '  if (uMouseActive > 0.5) {',
+          '    vec3 toPoint = pos - uMouseOrigin;',
+          '    float projLen = dot(toPoint, uMouseDir);',
+          '    vec3 closestPt = uMouseOrigin + uMouseDir * projLen;',
+          '    float distToRay = length(pos - closestPt);',
+          '    float repulseRadius = 130.0;',
+          '    if (distToRay < repulseRadius) {',
+          '      vec3 repulseDir = normalize(pos - closestPt + vec3(0.001));',
+          '      float strength = 1.0 - distToRay / repulseRadius;',
+          '      strength = strength * strength * 45.0;',
+          '      pos += repulseDir * strength;',
+          '    }',
+          '  }',
+          '',
+          '  vec4 mvPosition = modelViewMatrix * vec4(pos, 1.0);',
+          '  gl_PointSize = aSize * uPixelRatio * (400.0 / -mvPosition.z);',
+          '  gl_PointSize = max(1.0, gl_PointSize);',
+          '  gl_Position = projectionMatrix * mvPosition;',
+          '}'
+        ].join('\n');
+
+        var fragmentShader = [
+          'varying float vAlpha;',
+          'varying vec3 vColor;',
+          '',
+          'void main() {',
+          '  float dist = length(gl_PointCoord - vec2(0.5));',
+          '  if (dist > 0.5) discard;',
+          '  float glow = 1.0 - dist * 2.0;',
+          '  glow = pow(glow, 1.5);',
+          '  gl_FragColor = vec4(vColor, vAlpha * glow);',
+          '}'
+        ].join('\n');
+
+        var shaderMat = new THREE.ShaderMaterial({
+          uniforms: {
+            uTime: { value: 0 },
+            uBreath: { value: 0 },
+            uBurst: { value: 0 },
+            uPixelRatio: { value: pixR },
+            uMouseOrigin: { value: new THREE.Vector3() },
+            uMouseDir: { value: new THREE.Vector3(0, 0, -1) },
+            uMouseActive: { value: 0 }
+          },
+          vertexShader: vertexShader,
+          fragmentShader: fragmentShader,
+          transparent: true,
+          depthWrite: false,
+          blending: THREE.AdditiveBlending
+        });
+
+        var points = new THREE.Points(geo, shaderMat);
+        group.add(points);
+
+        group.position.x = Math.cos(cfg.orbitAngle) * cfg.orbitR;
+        group.position.y = Math.sin(cfg.orbitAngle) * cfg.orbitR;
+        group.position.z = cfg.zOff;
+
+        group.userData = {
+          cfg: cfg,
+          material: shaderMat,
+          currentAngle: cfg.orbitAngle,
+          burstPhase: Math.random() * Math.PI * 2,
+          phase: Math.random() * Math.PI * 2
+        };
+
+        scene.add(group);
+        particleClouds.push(group);
+      }
+
+      /**
+       * 创建背景环境粒子
+       * 全屏随机分布，与几何体同色系但更淡，极缓慢漂浮旋转
+       */
+      function createEnvParticles() {
+        var count = ENV_PARTICLE_COUNT;
+        var positions = [];
+        var colors = [];
+
+        var envColors = [
+          [240, 196, 232],
+          [196, 181, 253],
+          [165, 216, 255],
+          [181, 240, 232],
+          [248, 240, 255]
+        ];
+
+        for (var i = 0; i < count; i++) {
+          positions.push(
+            (Math.random() - 0.5) * 3000,
+            (Math.random() - 0.5) * 2000,
+            (Math.random() - 0.5) * 1500 - 500
+          );
+          var c = envColors[Math.floor(Math.random() * envColors.length)];
+          var fade = 0.4 + Math.random() * 0.3;
+          colors.push(c[0] / 255 * fade, c[1] / 255 * fade, c[2] / 255 * fade);
+        }
+
+        var geo = new THREE.BufferGeometry();
+        geo.setAttribute('position', new THREE.Float32BufferAttribute(positions, 3));
+        geo.setAttribute('color', new THREE.Float32BufferAttribute(colors, 3));
+
+        var mat = new THREE.PointsMaterial({
+          size: 1.2,
+          vertexColors: true,
+          transparent: true,
+          opacity: 0.35,
+          depthWrite: false,
+          blending: THREE.AdditiveBlending
+        });
+
+        envParticles = new THREE.Points(geo, mat);
+        scene.add(envParticles);
+      }
+
+      /**
+       * 初始化：创建场景、所有粒子云、环境粒子，绑定事件，启动渲染循环
+       */
+      function init() {
+        try {
+          setupScene();
+          for (var i = 0; i < CLOUD_CONFIGS.length; i++) {
+            createParticleCloud(CLOUD_CONFIGS[i]);
+          }
+          createEnvParticles();
+          bindEvents();
+
+          document.getElementById('cloud-count').textContent = particleClouds.length;
+          document.getElementById('particle-count').textContent =
+            (particleClouds.length * PARTICLES_PER_CLOUD + ENV_PARTICLE_COUNT).toLocaleString();
+
+          render();
+          console.log('梦幻艺术宇宙初始化完成，几何体数量:', CLOUD_CONFIGS.length,
+            '，总粒子数:', particleClouds.length * PARTICLES_PER_CLOUD + ENV_PARTICLE_COUNT);
+        } catch (err) {
+          console.error('初始化失败:', err);
+          container.innerHTML = '<div style="color:#f0c4e8;padding:60px;font-size:16px;text-align:center;">初始化失败: ' + err.message + '</div>';
+        }
+      }
+
+      /**
+       * 绑定鼠标/触摸交互事件和窗口resize事件
+       * 鼠标移动时更新NDC坐标，用于射线投射计算粒子排斥
+       */
+      function bindEvents() {
+        container.addEventListener('mousemove', function (e) {
+          mouseNDC.x = (e.clientX / W) * 2 - 1;
+          mouseNDC.y = -(e.clientY / H) * 2 + 1;
+          mouseActive = 1;
+        });
+
+        container.addEventListener('mouseleave', function () {
+          mouseNDC.set(-10, -10);
+          mouseActive = 0;
+        });
+
+        container.addEventListener('touchmove', function (e) {
+          if (e.touches.length > 0) {
+            var touch = e.touches[0];
+            mouseNDC.x = (touch.clientX / W) * 2 - 1;
+            mouseNDC.y = -(touch.clientY / H) * 2 + 1;
+            mouseActive = 1;
+          }
+        }, { passive: true });
+
+        container.addEventListener('touchend', function () {
+          mouseNDC.set(-10, -10);
+          mouseActive = 0;
+        });
+
+        window.addEventListener('resize', function () {
+          W = window.innerWidth;
+          H = window.innerHeight;
+          camera.aspect = W / H;
+          camera.updateProjectionMatrix();
+          renderer.setSize(W, H);
+        });
+
+        document.getElementById('btn-rotate').addEventListener('click', function () {
+          autoRotate = !autoRotate;
+          this.classList.toggle('active');
+        });
+        document.getElementById('btn-burst').addEventListener('click', function () {
+          burstOn = !burstOn;
+          this.classList.toggle('active');
+        });
+        document.getElementById('btn-pause').addEventListener('click', function () {
+          running = !running;
+          this.classList.toggle('active');
+          this.textContent = running ? '暂停动画' : '继续动画';
+        });
+      }
+
+      /**
+       * 更新每个粒子云的鼠标交互uniform
+       * 将世界空间射线转换到每个几何体的局部空间
+       * @param {number} i - 粒子云索引
+       */
+      function updateMouseUniforms(i) {
+        var cloud = particleClouds[i];
+        var d = cloud.userData;
+
+        if (mouseActive > 0) {
+          cloud.updateMatrixWorld(true);
+          raycaster.setFromCamera(mouseNDC, camera);
+          var ray = raycaster.ray;
+
+          inverseMat.copy(cloud.matrixWorld).invert();
+          localMouseOrigin.copy(ray.origin).applyMatrix4(inverseMat);
+          localMouseDir.copy(ray.direction).transformDirection(inverseMat).normalize();
+
+          d.material.uniforms.uMouseOrigin.value.copy(localMouseOrigin);
+          d.material.uniforms.uMouseDir.value.copy(localMouseDir);
+          d.material.uniforms.uMouseActive.value = 1.0;
+        } else {
+          d.material.uniforms.uMouseActive.value = 0.0;
+        }
+      }
+
+      /**
+       * 渲染循环
+       * 处理轨道公转、三轴自转、呼吸缩放、爆发效果、鼠标交互、环境粒子旋转
+       */
+      function render() {
+        requestAnimationFrame(render);
+
+        var now = performance.now();
+        var t = (now - baseTime) / 1000;
+
+        if (running) {
+          for (var i = 0; i < particleClouds.length; i++) {
+            var cloud = particleClouds[i];
+            var d = cloud.userData;
+            var cfg = d.cfg;
+
+            if (autoRotate) {
+              d.currentAngle += cfg.orbitSpeed * 0.01;
+              var targetX = Math.cos(d.currentAngle) * cfg.orbitR;
+              var targetY = Math.sin(d.currentAngle) * cfg.orbitR;
+              cloud.position.x += (targetX - cloud.position.x) * 0.03;
+              cloud.position.y += (targetY - cloud.position.y) * 0.03;
+
+              cloud.rotation.x = t * cfg.rotX + d.phase;
+              cloud.rotation.y = t * cfg.rotY + d.phase * 0.7;
+              cloud.rotation.z = t * cfg.rotZ + d.phase * 0.4;
+            }
+
+            var breathVal = Math.sin(t * cfg.breathSpeed + d.burstPhase) * cfg.breathAmp;
+
+            var burstVal = 0;
+            if (burstOn) {
+              var burstCycle = (t * 0.3 + d.burstPhase * 1.5) % (Math.PI * 2);
+              burstVal = Math.max(0, Math.sin(burstCycle)) * 0.25;
+            }
+
+            d.material.uniforms.uTime.value = t;
+            d.material.uniforms.uBreath.value = breathVal;
+            d.material.uniforms.uBurst.value = burstVal;
+
+            updateMouseUniforms(i);
+          }
+
+          if (envParticles) {
+            envParticles.rotation.y = t * 0.008;
+            envParticles.rotation.x = t * 0.003;
+          }
+        } else {
+          for (var j = 0; j < particleClouds.length; j++) {
+            updateMouseUniforms(j);
+          }
+        }
+
+        renderer.render(scene, camera);
+
+        frames++;
+        if (now - lastFpsTime >= 1000) {
+          fpsVal = Math.round(frames * 1000 / (now - lastFpsTime));
+          frames = 0;
+          lastFpsTime = now;
+          var fpsEl = document.getElementById('fps-display');
+          if (fpsEl) fpsEl.textContent = fpsVal;
+        }
+      }
+
+      init();
+    })();
+  </script>
+</body>
+</html>

@@ -1,10 +1,12 @@
-import React, { useState, useRef, useEffect, useMemo } from 'react';
-import { Send, Loader2, Trash2, User, Bot, Sparkles, GitBranch, MessageSquare, Copy, Check, Plus } from 'lucide-react';
+import React, { useState, useRef, useEffect, useMemo, useCallback } from 'react';
+import { Send, Loader2, Trash2, User, Bot, Sparkles, GitBranch, MessageSquare, Copy, Check, Plus, Brain, ChevronDown, ChevronUp } from 'lucide-react';
 import { useAppStore } from '../../stores/appStore';
 import { useAPIConfigStore } from '../../stores/apiConfigStore';
 import { chatService } from '../../services/chatService';
+import useMobile from '../../hooks/useMobile';
 import type { StreamEvent } from '../../types';
 import MarkdownRenderer from './MarkdownRenderer';
+import MindMapThumbnail from './MindMapThumbnail';
 
 interface ChatPanelProps {
   nodeId?: string | null;
@@ -66,12 +68,59 @@ const StreamingMessage: React.FC<{
 };
 
 /**
+ * 思考过程展示组件
+ * 用于展示AI的推理和思考过程
+ */
+const ThinkingProcess: React.FC<{
+  content: string;
+  isStreaming?: boolean;
+}> = ({ content, isStreaming = false }) => {
+  const [isExpanded, setIsExpanded] = useState(true);
+
+  if (!content) return null;
+
+  return (
+    <div className="mb-3 border border-dark-600 rounded-xl bg-dark-800/50 overflow-hidden">
+      <button
+        onClick={() => setIsExpanded(!isExpanded)}
+        className="w-full flex items-center gap-2 px-3 py-2 text-xs font-medium text-dark-300 hover:text-primary-400 hover:bg-dark-700/50 transition-colors"
+      >
+        <Brain className="w-3.5 h-3.5 text-primary-400" />
+        <span>思考过程</span>
+        {isStreaming && (
+          <span className="flex gap-1 ml-1">
+            <span className="w-1 h-1 bg-primary-400 rounded-full animate-bounce" style={{ animationDelay: '0ms' }}></span>
+            <span className="w-1 h-1 bg-primary-400 rounded-full animate-bounce" style={{ animationDelay: '150ms' }}></span>
+            <span className="w-1 h-1 bg-primary-400 rounded-full animate-bounce" style={{ animationDelay: '300ms' }}></span>
+          </span>
+        )}
+        <div className="flex-1" />
+        {isExpanded ? (
+          <ChevronUp className="w-3.5 h-3.5" />
+        ) : (
+          <ChevronDown className="w-3.5 h-3.5" />
+        )}
+      </button>
+      {isExpanded && (
+        <div className="px-3 pb-3 text-xs text-dark-400 leading-relaxed whitespace-pre-wrap break-words max-h-60 overflow-y-auto">
+          {content}
+          {isStreaming && (
+            <span className="inline-block w-1.5 h-3 bg-primary-400/60 animate-pulse ml-0.5" />
+          )}
+        </div>
+      )}
+    </div>
+  );
+};
+
+/**
  * 聊天面板组件 - 支持分支隔离上下文和流式传输
  * 包含快捷创建分支按钮，优化移动端操作体验
  */
 const ChatPanel: React.FC<ChatPanelProps> = ({ nodeId }) => {
   const {
     nodes,
+    relations,
     conversations,
     addConversation,
     addMessage,
@@ -79,13 +128,17 @@ const ChatPanel: React.FC<ChatPanelProps> = ({ nodeId }) => {
     getConversationContext,
     createChildNode,
     selectNode,
+    requestOpenChat,
   } = useAppStore();
   const { config } = useAPIConfigStore();
+  const { keepAwake, allowSleep, haptic } = useMobile();
   const [input, setInput] = useState('');
   const [isLoading, setIsLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [streamingContent, setStreamingContent] = useState<string>('');
+  const [streamingThinkingContent, setStreamingThinkingContent] = useState<string>('');
   const [branchCreating, setBranchCreating] = useState(false);
+  const [hasBuiltInKey, setHasBuiltInKey] = useState(false);
   const messagesEndRef = useRef<HTMLDivElement>(null);
 
   const node = nodeId ? nodes.get(nodeId) : null;
@@ -94,7 +147,25 @@ const ChatPanel: React.FC<ChatPanelProps> = ({ nodeId }) => {
 
   useEffect(() => {
     messagesEndRef.current?.scrollIntoView({ behavior: 'smooth' });
-  }, [messages, streamingContent]);
+  }, [messages, streamingContent, streamingThinkingContent]);
+
+  useEffect(() => {
+    if (isLoading || streamingContent) {
+      keepAwake();
+    } else {
+      allowSleep();
+    }
+  }, [isLoading, streamingContent, keepAwake, allowSleep]);
+
+  useEffect(() => {
+    const fetchStatus = async () => {
+      const result = await chatService.getStatus();
+      if (result.success) {
+        setHasBuiltInKey(result.hasBuiltInKey || false);
+      }
+    };
+    fetchStatus();
+  }, []);
 
   /**
    * 获取上下文信息
@@ -121,7 +192,9 @@ const ChatPanel: React.FC<ChatPanelProps> = ({ nodeId }) => {
    */
   const handleSend = async () => {
     if (!input.trim() || isLoading) return;
-    if (!config.apiKey) {
+    haptic('light');
+    
+    if (!config.apiKey && !hasBuiltInKey) {
       setError('请先在设置中配置API密钥');
       return;
     }
@@ -135,6 +208,7 @@ const ChatPanel: React.FC<ChatPanelProps> = ({ nodeId }) => {
     setInput('');
     setError(null);
     setStreamingContent('');
+    setStreamingThinkingContent('');
 
     let convId = node?.conversationId;
     if (!convId) {
@@ -155,9 +229,12 @@ const ChatPanel: React.FC<ChatPanelProps> = ({ nodeId }) => {
     const handleStream = (event: StreamEvent) => {
       if (event.type === 'content' && event.fullContent) {
         setStreamingContent(event.fullContent);
+      } else if (event.type === 'thinking' && event.fullThinkingContent) {
+        setStreamingThinkingContent(event.fullThinkingContent);
       } else if (event.type === 'error') {
         setError(event.error || '发送消息失败');
         setStreamingContent('');
+        setStreamingThinkingContent('');
       }
     };
 
@@ -165,6 +242,7 @@ const ChatPanel: React.FC<ChatPanelProps> = ({ nodeId }) => {
 
     setIsLoading(false);
     setStreamingContent('');
+    setStreamingThinkingContent('');
 
     if (result.success && result.content) {
       addMessage(convId, { role: 'assistant', content: result.content });
@@ -204,6 +282,16 @@ const ChatPanel: React.FC<ChatPanelProps> = ({ nodeId }) => {
       setBranchCreating(false);
     }
   };
+
+  /**
+   * 缩略图节点点击处理
+   * 选中目标节点并请求打开其对话面板
+   * @param targetNodeId - 目标节点ID
+   */
+  const handleThumbnailNodeClick = useCallback((targetNodeId: string) => {
+    selectNode(targetNodeId);
+    requestOpenChat(targetNodeId);
+  }, [selectNode, requestOpenChat]);
 
   if (!nodeId) {
     return (
@@ -269,7 +357,17 @@ const ChatPanel: React.FC<ChatPanelProps> = ({ nodeId }) => {
       </div>
 
       {/* 消息列表 */}
-      <div className="flex-1 overflow-y-auto p-4 space-y-4">
+      <div className="flex-1 overflow-y-auto p-4 space-y-4 relative">
+        {/* 思维导图缩略图 - 左上角悬浮 */}
+        <div className="sticky top-0 z-10 mb-3">
+          <MindMapThumbnail
+            nodes={nodes}
+            relations={relations}
+            activeNodeId={nodeId}
+            onNodeClick={handleThumbnailNodeClick}
+          />
+        </div>
+
         {messages.length === 0 && !streamingContent ? (
           <div className="text-center text-dark-400 py-8">
             <Sparkles className="w-12 h-12 mx-auto mb-3 opacity-50" />
@@ -331,6 +429,7 @@ const ChatPanel: React.FC<ChatPanelProps> = ({ nodeId }) => {
                   <Bot className="w-4 h-4 text-primary-400" />
                 </div>
                 <div className="max-w-[85%] px-4 py-2.5 rounded-2xl bg-dark-700 text-white rounded-tl-sm">
+                  <ThinkingProcess content={streamingThinkingContent} isStreaming={true} />
                   <StreamingMessage content={streamingContent} />
                 </div>
               </div>
@@ -386,7 +485,7 @@ const ChatPanel: React.FC<ChatPanelProps> = ({ nodeId }) => {
           </button>
         </div>
         <p className="text-xs text-dark-500 mt-2 text-center">
-          对话上下文将自动包含父节点历史 · 支持流式输出
+          对话上下文将自动包含父节点历史 · 支持流式输出与思考过程展示
         </p>
       </div>
     </div>

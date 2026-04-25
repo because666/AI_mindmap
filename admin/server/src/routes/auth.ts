@@ -47,6 +47,7 @@ router.get('/check-ip', async (req: Request, res: Response) => {
 /**
  * 初始化第一个管理员
  * 当admin_ips集合为空时，允许任何IP初始化
+ * 如果admin_configs已存在（自动初始化），则只创建IP白名单条目
  */
 router.post('/init', async (req: Request, res: Response) => {
   try {
@@ -56,34 +57,37 @@ router.post('/init', async (req: Request, res: Response) => {
       return;
     }
 
-    const { password, confirmPassword } = req.body;
-    if (!password || !confirmPassword) {
-      res.status(400).json({ success: false, error: '请输入密码和确认密码' });
-      return;
-    }
-    if (password !== confirmPassword) {
-      res.status(400).json({ success: false, error: '两次密码不一致' });
-      return;
-    }
-    if (password.length < 6) {
-      res.status(400).json({ success: false, error: '密码长度不能少于6位' });
-      return;
-    }
-
     const clientIp = getClientIp(req);
-    const passwordHash = await bcryptjs.hash(password, config.security.bcryptRounds);
+    const existingConfig = await adminDB.findOne<AdminConfig>('admin_configs', {});
 
-    await adminDB.insertOne('admin_configs', {
-      passwordHash,
-      passwordUpdatedAt: new Date(),
-      loginAttempts: [],
-      features: {
-        sensitiveWordCheck: true,
-        auditLog: true,
-        dataExport: true,
-      },
-      updatedAt: new Date(),
-    });
+    if (!existingConfig) {
+      const { password, confirmPassword } = req.body;
+      if (!password || !confirmPassword) {
+        res.status(400).json({ success: false, error: '请输入密码和确认密码' });
+        return;
+      }
+      if (password !== confirmPassword) {
+        res.status(400).json({ success: false, error: '两次密码不一致' });
+        return;
+      }
+      if (password.length < 6) {
+        res.status(400).json({ success: false, error: '密码长度不能少于6位' });
+        return;
+      }
+
+      const passwordHash = await bcryptjs.hash(password, config.security.bcryptRounds);
+      await adminDB.insertOne('admin_configs', {
+        passwordHash,
+        passwordUpdatedAt: new Date(),
+        loginAttempts: [],
+        features: {
+          sensitiveWordCheck: true,
+          auditLog: true,
+          dataExport: true,
+        },
+        updatedAt: new Date(),
+      });
+    }
 
     await adminDB.insertOne('admin_ips', {
       ipAddress: clientIp,

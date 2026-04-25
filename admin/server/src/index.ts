@@ -4,6 +4,7 @@ import compression from 'compression';
 import morgan from 'morgan';
 import helmet from 'helmet';
 import session from 'express-session';
+import bcryptjs from 'bcryptjs';
 import { config } from './config';
 import { adminDB } from './config/database';
 import { apiLimiter } from './middleware/rateLimit';
@@ -75,6 +76,8 @@ async function start() {
     await adminDB.connect();
     console.log('✅ 后台系统数据库连接成功');
 
+    await autoInitAdmin();
+
     app.listen(config.server.port, config.server.host, () => {
       console.log(`🚀 DeepMindMap 后台管理系统已启动`);
       console.log(`   地址: http://${config.server.host}:${config.server.port}`);
@@ -83,6 +86,34 @@ async function start() {
   } catch (error) {
     console.error('❌ 后台系统启动失败:', error);
     process.exit(1);
+  }
+}
+
+async function autoInitAdmin() {
+  try {
+    const totalAdmins = await adminDB.countDocuments('admin_ips', { isActive: true } as never);
+    if (totalAdmins > 0) return;
+
+    const defaultPassword = process.env.ADMIN_INIT_PASSWORD || 'admin123';
+    const passwordHash = await bcryptjs.hash(defaultPassword, config.security.bcryptRounds);
+
+    await adminDB.insertOne('admin_configs', {
+      passwordHash,
+      passwordUpdatedAt: new Date(),
+      loginAttempts: [],
+      features: {
+        sensitiveWordCheck: true,
+        auditLog: true,
+        dataExport: true,
+      },
+      updatedAt: new Date(),
+    });
+
+    console.log('✅ 首次启动自动初始化完成');
+    console.log(`   管理员密码: ${defaultPassword}`);
+    console.log('   请登录后立即修改密码');
+  } catch (error) {
+    console.warn('⚠️ 自动初始化跳过:', error);
   }
 }
 

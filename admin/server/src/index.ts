@@ -38,7 +38,7 @@ app.use(session({
   cookie: {
     maxAge: config.session.maxAge,
     httpOnly: true,
-    secure: process.env.NODE_ENV === 'production',
+    secure: false,
     sameSite: 'lax',
   },
 }));
@@ -68,10 +68,7 @@ app.use('/api/*', (_req, res) => {
 
 async function start() {
   if (!config.session.secret || config.session.secret === 'deepmindmap-admin-session-secret') {
-    console.error('❌ 安全警告：SESSION_SECRET未设置或使用默认值，请配置环境变量');
-    if (process.env.NODE_ENV === 'production') {
-      process.exit(1);
-    }
+    console.warn('⚠️ 安全警告：SESSION_SECRET未设置或使用默认值，建议配置环境变量');
   }
 
   try {

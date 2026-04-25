@@ -109,10 +109,13 @@ export const useAuthStore = create<AuthState>((set) => ({
           isAuthenticated: true,
           ipAddress: d.ipAddress,
           nickname: d.nickname,
+          isLoading: false,
         });
+      } else {
+        set({ isAuthenticated: false, isLoading: false });
       }
     } catch {
-      set({ isAuthenticated: false });
+      set({ isAuthenticated: false, isLoading: false });
     }
   },
 }));

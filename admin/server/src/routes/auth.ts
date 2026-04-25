@@ -46,9 +46,9 @@ router.get('/check-ip', async (req: Request, res: Response) => {
 
 /**
  * 初始化第一个管理员
- * 使用ipWhitelistOnly确保只有白名单IP可初始化
+ * 当admin_ips集合为空时，允许任何IP初始化
  */
-router.post('/init', ipWhitelistOnly, async (req: Request, res: Response) => {
+router.post('/init', async (req: Request, res: Response) => {
   try {
     const totalAdmins = await adminDB.countDocuments('admin_ips', { isActive: true } as never);
     if (totalAdmins > 0) {

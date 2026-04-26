@@ -5,9 +5,38 @@ import { AttackLog, AdminConfig } from '../types';
 
 const router = Router();
 
+const DEFAULT_QUESTION = process.env.SECRET_QUESTION || '世界上最帅的人是谁';
+const DEFAULT_ANSWER = process.env.SECRET_ANSWER || '罗楚瑞';
+
+/**
+ * 获取安全配置
+ * 优先从数据库读取，如果数据库中没有则使用环境变量默认值
+ */
+async function getSecurityConfig(): Promise<{ secretQuestion: string; secretAnswer: string; enableHoneypot: boolean }> {
+  try {
+    const adminConfig = await adminDB.findOne<AdminConfig>('admin_configs', {});
+    console.log('[HONEYPOT] 数据库查询结果:', JSON.stringify(adminConfig ? {
+      hasSecurity: !!adminConfig.security,
+      security: adminConfig.security,
+    } : null));
+
+    if (adminConfig?.security?.secretQuestion) {
+      return adminConfig.security;
+    }
+  } catch (error) {
+    console.error('[HONEYPOT] 数据库查询失败:', error);
+  }
+
+  console.log('[HONEYPOT] 使用环境变量默认值');
+  return {
+    secretQuestion: DEFAULT_QUESTION,
+    secretAnswer: DEFAULT_ANSWER,
+    enableHoneypot: true,
+  };
+}
+
 /**
  * 获取当前攻击者的统计信息
- * 蜜罐页面使用，展示给攻击者看
  */
 router.get('/my-stats', async (req: Request, res: Response) => {
   try {
@@ -45,7 +74,6 @@ router.get('/my-stats', async (req: Request, res: Response) => {
 
 /**
  * 获取最近攻击日志
- * 展示给攻击者看（也给自己看）
  */
 router.get('/recent-logs', async (req: Request, res: Response) => {
   try {
@@ -86,7 +114,6 @@ router.get('/recent-logs', async (req: Request, res: Response) => {
 
 /**
  * 验证秘密问题答案
- * 答对后标记攻击日志并返回token
  */
 router.post('/verify-question', async (req: Request, res: Response) => {
   try {
@@ -98,29 +125,28 @@ router.post('/verify-question', async (req: Request, res: Response) => {
       return;
     }
 
-    const adminConfig = await adminDB.findOne<AdminConfig>('admin_configs', {});
-    if (!adminConfig?.security) {
-      res.status(400).json({ success: false, error: '系统未配置安全问题' });
-      return;
-    }
+    const security = await getSecurityConfig();
 
-    const correctAnswer = adminConfig.security.secretAnswer;
-    if (answer.trim() !== correctAnswer.trim()) {
+    if (answer.trim() !== security.secretAnswer.trim()) {
       res.status(401).json({ success: false, error: '答案错误' });
       return;
     }
 
-    await adminDB.updateOne('attack_logs', { ipAddress: clientIp } as never, {
-      $set: {
-        isSolvedQuestion: true,
-        questionAnswerAt: new Date(),
-      },
-    });
+    try {
+      await adminDB.updateOne('attack_logs', { ipAddress: clientIp } as never, {
+        $set: {
+          isSolvedQuestion: true,
+          questionAnswerAt: new Date(),
+        },
+      });
+    } catch {
+      // 记录失败不影响验证结果
+    }
 
     res.json({
       success: true,
       message: '验证通过',
-      question: adminConfig.security.secretQuestion,
+      question: security.secretQuestion,
     });
   } catch (error) {
     console.error('验证问题失败:', error);
@@ -130,32 +156,69 @@ router.post('/verify-question', async (req: Request, res: Response) => {
 
 /**
  * 获取秘密问题
- * 蜜罐页面使用
+ * 优先从数据库读取，回退到环境变量
  */
-router.get('/question', async (req: Request, res: Response) => {
+router.get('/question', async (_req: Request, res: Response) => {
   try {
-    const adminConfig = await adminDB.findOne<AdminConfig>('admin_configs', {});
-    if (!adminConfig?.security) {
-      res.json({ success: true, data: { question: '', enableHoneypot: false } });
-      return;
-    }
-
+    const security = await getSecurityConfig();
     res.json({
       success: true,
       data: {
-        question: adminConfig.security.secretQuestion,
-        enableHoneypot: adminConfig.security.enableHoneypot,
+        question: security.secretQuestion,
+        enableHoneypot: security.enableHoneypot,
       },
     });
   } catch (error) {
     console.error('获取问题失败:', error);
-    res.status(500).json({ success: false, error: '获取问题失败' });
+    res.json({
+      success: true,
+      data: {
+        question: DEFAULT_QUESTION,
+        enableHoneypot: true,
+      },
+    });
+  }
+});
+
+/**
+ * 调试端点 - 返回数据库原始查询结果
+ * 用于排查数据库连接问题
+ */
+router.get('/debug', async (_req: Request, res: Response) => {
+  try {
+    const dbStatus = adminDB.isConnected();
+    const adminConfig = await adminDB.findOne<AdminConfig>('admin_configs', {});
+    const allConfigs = await adminDB.find('admin_configs', {} as never, { limit: 10 });
+    const attackLogCount = await adminDB.countDocuments('attack_logs', {});
+
+    res.json({
+      success: true,
+      data: {
+        dbConnected: dbStatus,
+        envQuestion: DEFAULT_QUESTION,
+        envAnswer: DEFAULT_ANSWER ? '***已设置***' : '未设置',
+        configCount: allConfigs.length,
+        firstConfig: adminConfig ? {
+          hasSecurity: !!adminConfig.security,
+          security: adminConfig.security || null,
+          hasPasswordHash: !!adminConfig.passwordHash,
+        } : null,
+        allConfigIds: allConfigs.map((c: Record<string, unknown>) => c._id?.toString()),
+        attackLogCount,
+      },
+    });
+  } catch (error) {
+    console.error('调试查询失败:', error);
+    res.status(500).json({
+      success: false,
+      error: error instanceof Error ? error.message : String(error),
+      envQuestion: DEFAULT_QUESTION,
+    });
   }
 });
 
 /**
  * 获取完整攻击日志（管理员用）
- * 需要登录认证
  */
 router.get('/admin/attack-logs', async (req: Request, res: Response) => {
   try {
@@ -195,7 +258,6 @@ router.get('/admin/attack-logs', async (req: Request, res: Response) => {
 
 /**
  * 更新安全配置（管理员用）
- * 修改秘密问题和答案
  */
 router.put('/admin/security-config', async (req: Request, res: Response) => {
   try {
@@ -254,10 +316,6 @@ router.delete('/admin/attack-logs', async (req: Request, res: Response) => {
   }
 });
 
-/**
- * 遮蔽IP地址，保护隐私
- * 192.168.1.100 → 192.168.*.*00
- */
 function maskIp(ip: string): string {
   const parts = ip.split('.');
   if (parts.length === 4) {
@@ -270,9 +328,6 @@ function maskIp(ip: string): string {
   return '***.***.***.***';
 }
 
-/**
- * 获取最常尝试的密码TOP5
- */
 async function getTopPasswords(): Promise<Array<{ password: string; count: number }>> {
   const logs = await adminDB.find('attack_logs', {} as never, { limit: 1000 });
   const passwordCount: Record<string, number> = {};

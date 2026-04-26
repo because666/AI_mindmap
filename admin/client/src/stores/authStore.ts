@@ -44,7 +44,7 @@ export const useAuthStore = create<AuthState>((set) => ({
         });
       }
     } catch {
-      set({ isLoading: false, isIpAllowed: false });
+      set({ isLoading: false, isIpAllowed: false, isFirstVisit: true });
     }
   },
 

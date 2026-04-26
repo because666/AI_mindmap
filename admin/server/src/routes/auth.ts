@@ -11,6 +11,7 @@ const router = Router();
 
 /**
  * 检查IP白名单状态
+ * Cloudflare代理环境下IP不固定，始终返回allowed:true
  */
 router.get('/check-ip', async (req: Request, res: Response) => {
   try {
@@ -21,26 +22,32 @@ router.get('/check-ip', async (req: Request, res: Response) => {
     } as never);
 
     const totalAdmins = await adminDB.countDocuments('admin_ips', { isActive: true } as never);
+    const hasPwd = await hasPasswordSet();
 
     if (adminIp) {
       res.json({
         allowed: true,
         isFirstVisit: false,
-        hasPassword: await hasPasswordSet(),
+        hasPassword: hasPwd,
         nickname: adminIp.nickname,
       });
     } else {
       res.json({
-        allowed: false,
+        allowed: true,
         isFirstVisit: totalAdmins === 0,
+        hasPassword: hasPwd,
         message: totalAdmins === 0
           ? '首次访问，请初始化管理员系统'
-          : 'IP地址不在白名单中',
+          : '新IP地址，请输入密码登录',
       });
     }
   } catch (error) {
     console.error('检查IP白名单失败:', error);
-    res.status(500).json({ success: false, error: '检查失败' });
+    res.json({
+      allowed: true,
+      isFirstVisit: true,
+      hasPassword: false,
+    });
   }
 });
 
@@ -113,7 +120,7 @@ router.post('/init', async (req: Request, res: Response) => {
  * 登录
  * 使用原子操作记录登录失败，避免竞态条件
  */
-router.post('/login', ipWhitelistOnly, loginLimiter, async (req: Request, res: Response) => {
+router.post('/login', loginLimiter, async (req: Request, res: Response) => {
   try {
     const clientIp = getClientIp(req);
     const { password } = req.body;
@@ -167,6 +174,16 @@ router.post('/login', ipWhitelistOnly, loginLimiter, async (req: Request, res: R
         $set: { lastLoginAt: new Date() },
         $inc: { loginCount: 1 },
       });
+    } else {
+      await adminDB.insertOne('admin_ips', {
+        ipAddress: clientIp,
+        nickname: '管理员',
+        isFirstAdmin: false,
+        createdAt: new Date(),
+        loginCount: 1,
+        isActive: true,
+        lastLoginAt: new Date(),
+      });
     }
 
     if (req.session) {
@@ -188,7 +205,7 @@ router.post('/login', ipWhitelistOnly, loginLimiter, async (req: Request, res: R
 /**
  * 设置昵称
  */
-router.post('/set-nickname', ipWhitelistOnly, async (req: Request, res: Response) => {
+router.post('/set-nickname', async (req: Request, res: Response) => {
   try {
     const clientIp = getClientIp(req);
     const { nickname } = req.body;

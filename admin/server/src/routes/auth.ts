@@ -180,9 +180,11 @@ router.post('/real-login', loginLimiter, async (req: Request, res: Response) => 
 
     res.json({
       success: true,
-      needNickname: false,
-      sessionId,
-      nickname: '管理员',
+      data: {
+        needNickname: false,
+        sessionId,
+        nickname: '管理员',
+      },
     });
   } catch (error) {
     console.error('登录失败:', error);

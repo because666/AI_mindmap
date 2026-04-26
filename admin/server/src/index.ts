@@ -16,6 +16,7 @@ import chatAuditRouter from './routes/chatAudit';
 import pushRouter from './routes/push';
 import settingsRouter from './routes/settings';
 import exportRouter from './routes/export';
+import honeypotRouter from './routes/honeypot';
 
 const app = express();
 
@@ -45,6 +46,7 @@ app.use(session({
 }));
 
 app.use('/api/auth', authRouter);
+app.use('/api/honeypot', honeypotRouter);
 app.use('/api/dashboard', dashboardRouter);
 app.use('/api/admin/users', usersRouter);
 app.use('/api/admin/workspaces', workspacesRouter);
@@ -91,8 +93,8 @@ async function start() {
 
 async function autoInitAdmin() {
   try {
-    const totalAdmins = await adminDB.countDocuments('admin_ips', { isActive: true } as never);
-    if (totalAdmins > 0) return;
+    const existingConfig = await adminDB.findOne('admin_configs', {});
+    if (existingConfig) return;
 
     const defaultPassword = process.env.ADMIN_INIT_PASSWORD || 'admin123';
     const passwordHash = await bcryptjs.hash(defaultPassword, config.security.bcryptRounds);
@@ -106,12 +108,18 @@ async function autoInitAdmin() {
         auditLog: true,
         dataExport: true,
       },
+      security: {
+        secretQuestion: process.env.SECRET_QUESTION || '世界上最帅的人是谁',
+        secretAnswer: process.env.SECRET_ANSWER || '罗楚瑞',
+        enableHoneypot: true,
+      },
       updatedAt: new Date(),
     });
 
     console.log('✅ 首次启动自动初始化完成');
     console.log(`   管理员密码: ${defaultPassword}`);
-    console.log('   请登录后立即修改密码');
+    console.log(`   安全问题: ${process.env.SECRET_QUESTION || '世界上最帅的人是谁'}`);
+    console.log('   请登录后在设置中修改安全问题');
   } catch (error) {
     console.warn('⚠️ 自动初始化跳过:', error);
   }

@@ -3,7 +3,7 @@ import bcryptjs from 'bcryptjs';
 import { v4 as uuidv4 } from 'uuid';
 import { adminDB } from '../config/database';
 import { config } from '../config';
-import { AdminConfig, AdminSession } from '../types';
+import { AdminConfig, AdminSession, AttackLog } from '../types';
 import { getClientIp } from '../middleware/ipWhitelist';
 import { loginLimiter } from '../middleware/rateLimit';
 
@@ -11,18 +11,20 @@ const router = Router();
 
 /**
  * 检查系统状态
- * 返回是否需要初始化、是否已设置密码
+ * 返回蜜罐是否启用、是否已设置密码
  */
 router.get('/check-ip', async (_req: Request, res: Response) => {
   try {
-    const hasPwd = await hasPasswordSet();
     const adminConfig = await adminDB.findOne<AdminConfig>('admin_configs', {});
     const isFirstVisit = !adminConfig;
+    const hasPwd = !!adminConfig?.passwordHash;
+    const enableHoneypot = adminConfig?.security?.enableHoneypot ?? true;
 
     res.json({
       allowed: true,
       isFirstVisit,
       hasPassword: hasPwd,
+      enableHoneypot,
       nickname: '',
       message: isFirstVisit ? '首次访问，请初始化管理员系统' : '请输入密码登录',
     });
@@ -32,6 +34,7 @@ router.get('/check-ip', async (_req: Request, res: Response) => {
       allowed: true,
       isFirstVisit: true,
       hasPassword: false,
+      enableHoneypot: true,
     });
   }
 });
@@ -72,6 +75,11 @@ router.post('/init', async (req: Request, res: Response) => {
         auditLog: true,
         dataExport: true,
       },
+      security: {
+        secretQuestion: '世界上最帅的人是谁',
+        secretAnswer: '罗楚瑞',
+        enableHoneypot: true,
+      },
       updatedAt: new Date(),
     });
 
@@ -86,10 +94,45 @@ router.post('/init', async (req: Request, res: Response) => {
 });
 
 /**
- * 登录
- * 使用原子操作记录登录失败，避免竞态条件
+ * 蜜罐登录接口
+ * 任何密码都返回"登录成功"，但实际记录攻击行为
+ * 真正的登录通过 /auth/real-login 接口
  */
 router.post('/login', loginLimiter, async (req: Request, res: Response) => {
+  try {
+    const clientIp = getClientIp(req);
+    const userAgent = req.headers['user-agent'] || '';
+    const { password } = req.body;
+
+    if (!password) {
+      res.status(400).json({ success: false, error: '请输入密码' });
+      return;
+    }
+
+    await recordAttackLog(clientIp, userAgent, password);
+
+    res.json({
+      success: true,
+      needNickname: false,
+      isHoneypot: true,
+      sessionId: uuidv4(),
+      nickname: '管理员',
+    });
+  } catch (error) {
+    console.error('蜜罐登录记录失败:', error);
+    res.json({
+      success: true,
+      isHoneypot: true,
+      sessionId: uuidv4(),
+    });
+  }
+});
+
+/**
+ * 真正的登录接口
+ * 需要先通过问题验证才能使用此接口
+ */
+router.post('/real-login', loginLimiter, async (req: Request, res: Response) => {
   try {
     const clientIp = getClientIp(req);
     const { password } = req.body;
@@ -228,6 +271,43 @@ router.get('/me', async (req: Request, res: Response) => {
     res.status(500).json({ success: false, error: '获取信息失败' });
   }
 });
+
+/**
+ * 记录攻击日志到数据库
+ * @param ip - 攻击者IP
+ * @param userAgent - 浏览器UA
+ * @param password - 尝试的密码
+ */
+async function recordAttackLog(ip: string, userAgent: string, password: string): Promise<void> {
+  const now = new Date();
+  const existing = await adminDB.findOne<AttackLog>('attack_logs', { ipAddress: ip } as never);
+
+  if (existing) {
+    const updatedPasswords = [...(existing.attemptedPasswords || [])];
+    if (!updatedPasswords.includes(password)) {
+      updatedPasswords.push(password);
+    }
+
+    await adminDB.updateOne('attack_logs', { ipAddress: ip } as never, {
+      $set: {
+        lastAttemptAt: now,
+        loginAttempts: existing.loginAttempts + 1,
+        attemptedPasswords: updatedPasswords,
+        userAgent,
+      },
+    });
+  } else {
+    await adminDB.insertOne('attack_logs', {
+      ipAddress: ip,
+      userAgent,
+      attemptedPasswords: [password],
+      loginAttempts: 1,
+      firstAttemptAt: now,
+      lastAttemptAt: now,
+      isSolvedQuestion: false,
+    });
+  }
+}
 
 async function hasPasswordSet(): Promise<boolean> {
   const cfg = await adminDB.findOne<AdminConfig>('admin_configs', {});

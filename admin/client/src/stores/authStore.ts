@@ -8,11 +8,13 @@ interface AuthState {
   nickname: string;
   isFirstVisit: boolean;
   hasPassword: boolean;
+  enableHoneypot: boolean;
   needNickname: boolean;
 
   checkSystemStatus: () => Promise<void>;
   init: (password: string, confirmPassword: string) => Promise<boolean>;
   login: (password: string) => Promise<boolean>;
+  realLogin: (password: string) => Promise<boolean>;
   setNickname: (nickname: string) => Promise<boolean>;
   logout: () => Promise<void>;
   fetchMe: () => Promise<void>;
@@ -25,6 +27,7 @@ export const useAuthStore = create<AuthState>((set) => ({
   nickname: '',
   isFirstVisit: false,
   hasPassword: false,
+  enableHoneypot: true,
   needNickname: false,
 
   checkSystemStatus: async () => {
@@ -35,13 +38,14 @@ export const useAuthStore = create<AuthState>((set) => ({
         set({
           isFirstVisit: d.isFirstVisit,
           hasPassword: d.hasPassword ?? false,
+          enableHoneypot: d.enableHoneypot ?? true,
           nickname: d.nickname || '',
           needNickname: false,
           isLoading: false,
         });
       }
     } catch {
-      set({ isLoading: false, isFirstVisit: true });
+      set({ isLoading: false, isFirstVisit: true, enableHoneypot: true });
     }
   },
 
@@ -61,6 +65,23 @@ export const useAuthStore = create<AuthState>((set) => ({
   login: async (password) => {
     try {
       const res = await authApi.login(password);
+      if (res.data.success) {
+        const d = res.data.data;
+        set({
+          needNickname: d?.needNickname ?? false,
+          nickname: d?.nickname || '',
+        });
+        return true;
+      }
+      return false;
+    } catch {
+      return false;
+    }
+  },
+
+  realLogin: async (password) => {
+    try {
+      const res = await authApi.realLogin(password);
       if (res.data.success) {
         const d = res.data.data;
         set({

@@ -2,7 +2,9 @@ import React, { useEffect } from 'react';
 import { BrowserRouter, Routes, Route, Navigate } from 'react-router-dom';
 import { useAuthStore } from './stores/authStore';
 import AdminLayout from './components/Layout/AdminLayout';
-import LoginPage from './pages/Login/LoginPage';
+import FakeLoginPage from './pages/Login/FakeLoginPage';
+import RealLoginPage from './pages/Login/RealLoginPage';
+import HoneypotDashboard from './pages/Honeypot/HoneypotDashboard';
 import DashboardPage from './pages/Dashboard/DashboardPage';
 import UsersPage from './pages/Users/UsersPage';
 import WorkspacesPage from './pages/Workspaces/WorkspacesPage';
@@ -12,7 +14,7 @@ import SettingsPage from './pages/Settings/SettingsPage';
 
 /**
  * 受保护的路由组件
- * 未登录时重定向到登录页
+ * 未登录时重定向到蜜罐登录页
  */
 const ProtectedRoute: React.FC<{ children: React.ReactNode }> = ({ children }) => {
   const { isAuthenticated } = useAuthStore();
@@ -25,6 +27,11 @@ const ProtectedRoute: React.FC<{ children: React.ReactNode }> = ({ children }) =
 /**
  * 应用根组件
  * 配置路由和认证守卫
+ * 
+ * 三层蜜罐认证流程：
+ * 1. /login → 蜜罐假登录页（任何密码都"成功"）
+ * 2. /honeypot → 戏耍统计页（挑衅 + 隐藏问题入口）
+ * 3. /portal → 真实登录页（问题验证后才能访问）
  */
 const App: React.FC = () => {
   const { isAuthenticated, fetchMe, isLoading } = useAuthStore();
@@ -44,9 +51,15 @@ const App: React.FC = () => {
   return (
     <BrowserRouter>
       <Routes>
+        {/* 第一层：蜜罐假登录页 */}
         <Route path="/login" element={
-          isAuthenticated ? <Navigate to="/" replace /> : <LoginPage />
+          isAuthenticated ? <Navigate to="/" replace /> : <FakeLoginPage />
         } />
+        {/* 第二层：戏耍统计页 */}
+        <Route path="/honeypot" element={<HoneypotDashboard />} />
+        {/* 第三层：真实登录页 */}
+        <Route path="/portal" element={<RealLoginPage />} />
+        {/* 受保护的后台页面 */}
         <Route path="/" element={
           <ProtectedRoute>
             <AdminLayout>

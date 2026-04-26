@@ -41,15 +41,56 @@ function typedDelete<T>(url: string, config?: Record<string, unknown>) {
 }
 
 export const authApi = {
-  checkIp: () => typedGet<{ allowed: boolean; isFirstVisit: boolean; hasPassword: boolean; nickname?: string }>('/auth/check-ip'),
+  checkIp: () => typedGet<{ allowed: boolean; isFirstVisit: boolean; hasPassword: boolean; enableHoneypot: boolean; nickname?: string }>('/auth/check-ip'),
   init: (password: string, confirmPassword: string) =>
     typedPost<{ ipAddress: string }>('/auth/init', { password, confirmPassword }),
   login: (password: string) =>
-    typedPost<{ needNickname: boolean; sessionId?: string; nickname?: string }>('/auth/login', { password }),
+    typedPost<{ needNickname: boolean; isHoneypot?: boolean; sessionId?: string; nickname?: string }>('/auth/login', { password }),
+  realLogin: (password: string) =>
+    typedPost<{ needNickname: boolean; sessionId?: string; nickname?: string }>('/auth/real-login', { password }),
   setNickname: (nickname: string) =>
     typedPost<{ sessionId: string }>('/auth/set-nickname', { nickname }),
   logout: () => typedPost<void>('/auth/logout'),
   me: () => typedGet<{ ipAddress: string; nickname: string; loginAt: string }>('/auth/me'),
+};
+
+export const honeypotApi = {
+  myStats: () => typedGet<{
+    ipAddress: string;
+    loginAttempts: number;
+    attemptedPasswords: string[];
+    firstAttemptAt: string | null;
+    lastAttemptAt: string | null;
+    totalAttackers: number;
+    rank: number;
+  }>('/honeypot/my-stats'),
+  recentLogs: (limit?: number) => typedGet<{
+    logs: Array<{
+      ipAddress: string;
+      loginAttempts: number;
+      attemptedPasswords: string[];
+      firstAttemptAt: string;
+      lastAttemptAt: string;
+    }>;
+    totalAttackers: number;
+    totalAttempts: number;
+    topPasswords: Array<{ password: string; count: number }>;
+  }>('/honeypot/recent-logs', { params: { limit } }),
+  verifyQuestion: (answer: string) =>
+    typedPost<{ question: string }>('/honeypot/verify-question', { answer }),
+  getQuestion: () => typedGet<{ question: string; enableHoneypot: boolean }>('/honeypot/question'),
+  getAttackLogs: (params: { page?: number; limit?: number }) =>
+    typedGet<{
+      items: unknown[];
+      total: number;
+      page: number;
+      limit: number;
+      totalPages: number;
+    }>('/honeypot/admin/attack-logs', { params }),
+  updateSecurityConfig: (data: { secretQuestion?: string; secretAnswer?: string; enableHoneypot?: boolean }) =>
+    typedPut<void>('/honeypot/admin/security-config', data),
+  deleteAttackLogs: (ipAddress?: string) =>
+    typedDelete<void>('/honeypot/admin/attack-logs', { data: { ipAddress } }),
 };
 
 export const dashboardApi = {

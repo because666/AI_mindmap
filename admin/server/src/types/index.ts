@@ -32,7 +32,27 @@ export interface AdminConfig {
   passwordUpdatedAt: Date;
   loginAttempts: LoginAttempt[];
   features: AdminFeatures;
+  security?: SecurityConfig;
   updatedAt: Date;
+}
+
+export interface SecurityConfig {
+  secretQuestion: string;
+  secretAnswer: string;
+  enableHoneypot: boolean;
+}
+
+export interface AttackLog {
+  _id?: ObjectId;
+  ipAddress: string;
+  userAgent: string;
+  attemptedPasswords: string[];
+  loginAttempts: number;
+  firstAttemptAt: Date;
+  lastAttemptAt: Date;
+  honeypotTrappedAt?: Date;
+  isSolvedQuestion: boolean;
+  questionAnswerAt?: Date;
 }
 
 export interface AdminSession {

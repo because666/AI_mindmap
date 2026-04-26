@@ -10,7 +10,7 @@ import { useAuthStore } from '../../stores/authStore';
  */
 const RealLoginPage: React.FC = () => {
   const navigate = useNavigate();
-  const { login } = useAuthStore();
+  const { realLogin } = useAuthStore();
 
   const [password, setPassword] = useState('');
   const [error, setError] = useState('');
@@ -22,9 +22,8 @@ const RealLoginPage: React.FC = () => {
     setLoading(true);
 
     try {
-      const { authApi } = await import('../../services/api');
-      const res = await authApi.realLogin(password);
-      if (res.data.success) {
+      const success = await realLogin(password);
+      if (success) {
         navigate('/');
       } else {
         setError('密码错误');

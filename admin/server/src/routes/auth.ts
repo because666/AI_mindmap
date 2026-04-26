@@ -3,46 +3,31 @@ import bcryptjs from 'bcryptjs';
 import { v4 as uuidv4 } from 'uuid';
 import { adminDB } from '../config/database';
 import { config } from '../config';
-import { AdminIP, AdminConfig, AdminSession } from '../types';
-import { ipWhitelistOnly, getClientIp } from '../middleware/ipWhitelist';
+import { AdminConfig, AdminSession } from '../types';
+import { getClientIp } from '../middleware/ipWhitelist';
 import { loginLimiter } from '../middleware/rateLimit';
 
 const router = Router();
 
 /**
- * 检查IP白名单状态
- * Cloudflare代理环境下IP不固定，始终返回allowed:true
+ * 检查系统状态
+ * 返回是否需要初始化、是否已设置密码
  */
-router.get('/check-ip', async (req: Request, res: Response) => {
+router.get('/check-ip', async (_req: Request, res: Response) => {
   try {
-    const clientIp = getClientIp(req);
-    const adminIp = await adminDB.findOne<AdminIP>('admin_ips', {
-      ipAddress: clientIp,
-      isActive: true,
-    } as never);
-
-    const totalAdmins = await adminDB.countDocuments('admin_ips', { isActive: true } as never);
     const hasPwd = await hasPasswordSet();
+    const adminConfig = await adminDB.findOne<AdminConfig>('admin_configs', {});
+    const isFirstVisit = !adminConfig;
 
-    if (adminIp) {
-      res.json({
-        allowed: true,
-        isFirstVisit: false,
-        hasPassword: hasPwd,
-        nickname: adminIp.nickname,
-      });
-    } else {
-      res.json({
-        allowed: true,
-        isFirstVisit: totalAdmins === 0,
-        hasPassword: hasPwd,
-        message: totalAdmins === 0
-          ? '首次访问，请初始化管理员系统'
-          : '新IP地址，请输入密码登录',
-      });
-    }
+    res.json({
+      allowed: true,
+      isFirstVisit,
+      hasPassword: hasPwd,
+      nickname: '',
+      message: isFirstVisit ? '首次访问，请初始化管理员系统' : '请输入密码登录',
+    });
   } catch (error) {
-    console.error('检查IP白名单失败:', error);
+    console.error('检查系统状态失败:', error);
     res.json({
       allowed: true,
       isFirstVisit: true,
@@ -53,62 +38,46 @@ router.get('/check-ip', async (req: Request, res: Response) => {
 
 /**
  * 初始化第一个管理员
- * 当admin_ips集合为空时，允许任何IP初始化
- * 如果admin_configs已存在（自动初始化），则只创建IP白名单条目
+ * 当admin_configs集合为空时，允许设置密码
  */
 router.post('/init', async (req: Request, res: Response) => {
   try {
-    const totalAdmins = await adminDB.countDocuments('admin_ips', { isActive: true } as never);
-    if (totalAdmins > 0) {
+    const existingConfig = await adminDB.findOne<AdminConfig>('admin_configs', {});
+    if (existingConfig) {
       res.status(400).json({ success: false, error: '系统已初始化，不可重复初始化' });
       return;
     }
 
-    const clientIp = getClientIp(req);
-    const existingConfig = await adminDB.findOne<AdminConfig>('admin_configs', {});
-
-    if (!existingConfig) {
-      const { password, confirmPassword } = req.body;
-      if (!password || !confirmPassword) {
-        res.status(400).json({ success: false, error: '请输入密码和确认密码' });
-        return;
-      }
-      if (password !== confirmPassword) {
-        res.status(400).json({ success: false, error: '两次密码不一致' });
-        return;
-      }
-      if (password.length < 6) {
-        res.status(400).json({ success: false, error: '密码长度不能少于6位' });
-        return;
-      }
-
-      const passwordHash = await bcryptjs.hash(password, config.security.bcryptRounds);
-      await adminDB.insertOne('admin_configs', {
-        passwordHash,
-        passwordUpdatedAt: new Date(),
-        loginAttempts: [],
-        features: {
-          sensitiveWordCheck: true,
-          auditLog: true,
-          dataExport: true,
-        },
-        updatedAt: new Date(),
-      });
+    const { password, confirmPassword } = req.body;
+    if (!password || !confirmPassword) {
+      res.status(400).json({ success: false, error: '请输入密码和确认密码' });
+      return;
+    }
+    if (password !== confirmPassword) {
+      res.status(400).json({ success: false, error: '两次密码不一致' });
+      return;
+    }
+    if (password.length < 6) {
+      res.status(400).json({ success: false, error: '密码长度不能少于6位' });
+      return;
     }
 
-    await adminDB.insertOne('admin_ips', {
-      ipAddress: clientIp,
-      nickname: '超级管理员',
-      isFirstAdmin: true,
-      createdAt: new Date(),
-      loginCount: 0,
-      isActive: true,
+    const passwordHash = await bcryptjs.hash(password, config.security.bcryptRounds);
+    await adminDB.insertOne('admin_configs', {
+      passwordHash,
+      passwordUpdatedAt: new Date(),
+      loginAttempts: [],
+      features: {
+        sensitiveWordCheck: true,
+        auditLog: true,
+        dataExport: true,
+      },
+      updatedAt: new Date(),
     });
 
     res.json({
       success: true,
       message: '管理员系统初始化成功',
-      ipAddress: clientIp,
     });
   } catch (error) {
     console.error('初始化管理员失败:', error);
@@ -151,40 +120,16 @@ router.post('/login', loginLimiter, async (req: Request, res: Response) => {
 
     await clearLoginFailuresAtomic(clientIp);
 
-    const adminIp = await adminDB.findOne<AdminIP>('admin_ips', {
-      ipAddress: clientIp,
-      isActive: true,
-    } as never);
-
-    const needNickname = !adminIp?.nickname || adminIp.nickname === '超级管理员';
-
     const sessionId = uuidv4();
     await adminDB.insertOne('admin_sessions', {
       sessionId,
       ipAddress: clientIp,
-      nickname: adminIp?.nickname || '',
+      nickname: '管理员',
       userAgent: req.headers['user-agent'] || '',
       createdAt: new Date(),
       lastActivityAt: new Date(),
       isActive: true,
     });
-
-    if (adminIp) {
-      await adminDB.updateOne('admin_ips', { ipAddress: clientIp } as never, {
-        $set: { lastLoginAt: new Date() },
-        $inc: { loginCount: 1 },
-      });
-    } else {
-      await adminDB.insertOne('admin_ips', {
-        ipAddress: clientIp,
-        nickname: '管理员',
-        isFirstAdmin: false,
-        createdAt: new Date(),
-        loginCount: 1,
-        isActive: true,
-        lastLoginAt: new Date(),
-      });
-    }
 
     if (req.session) {
       req.session.sessionId = sessionId;
@@ -192,9 +137,9 @@ router.post('/login', loginLimiter, async (req: Request, res: Response) => {
 
     res.json({
       success: true,
-      needNickname,
+      needNickname: false,
       sessionId,
-      nickname: adminIp?.nickname,
+      nickname: '管理员',
     });
   } catch (error) {
     console.error('登录失败:', error);
@@ -207,7 +152,6 @@ router.post('/login', loginLimiter, async (req: Request, res: Response) => {
  */
 router.post('/set-nickname', async (req: Request, res: Response) => {
   try {
-    const clientIp = getClientIp(req);
     const { nickname } = req.body;
 
     if (!nickname || nickname.trim().length < 2 || nickname.trim().length > 20) {
@@ -215,26 +159,17 @@ router.post('/set-nickname', async (req: Request, res: Response) => {
       return;
     }
 
-    await adminDB.updateOne('admin_ips', { ipAddress: clientIp } as never, {
+    const sessionId = req.session?.sessionId;
+    if (!sessionId) {
+      res.status(401).json({ success: false, error: '未登录' });
+      return;
+    }
+
+    await adminDB.updateOne('admin_sessions', { sessionId } as never, {
       $set: { nickname: nickname.trim() },
     });
 
-    const sessionId = uuidv4();
-    await adminDB.insertOne('admin_sessions', {
-      sessionId,
-      ipAddress: clientIp,
-      nickname: nickname.trim(),
-      userAgent: req.headers['user-agent'] || '',
-      createdAt: new Date(),
-      lastActivityAt: new Date(),
-      isActive: true,
-    });
-
-    if (req.session) {
-      req.session.sessionId = sessionId;
-    }
-
-    res.json({ success: true, sessionId, nickname: nickname.trim() });
+    res.json({ success: true, nickname: nickname.trim() });
   } catch (error) {
     console.error('设置昵称失败:', error);
     res.status(500).json({ success: false, error: '设置昵称失败' });

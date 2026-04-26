@@ -2,7 +2,6 @@ import { Router, Request, Response } from 'express';
 import { v4 as uuidv4 } from 'uuid';
 import { adminDB } from '../config/database';
 import { ExportTask } from '../types';
-import { ipWhitelist } from '../middleware/ipWhitelist';
 import { requireAuth } from '../middleware/auth';
 import { getClientIp } from '../middleware/ipWhitelist';
 import { auditLog } from '../middleware/auditLog';
@@ -12,7 +11,7 @@ const router = Router();
 /**
  * 创建导出任务
  */
-router.post('/', ipWhitelist, requireAuth, auditLog('CREATE_EXPORT', 'export'), async (req: Request, res: Response) => {
+router.post('/', requireAuth, auditLog('CREATE_EXPORT', 'export'), async (req: Request, res: Response) => {
   try {
     const { type, format, filter } = req.body;
 
@@ -73,7 +72,7 @@ router.post('/', ipWhitelist, requireAuth, auditLog('CREATE_EXPORT', 'export'), 
 /**
  * 查询导出状态
  */
-router.get('/:id/status', ipWhitelist, requireAuth, async (req: Request, res: Response) => {
+router.get('/:id/status', requireAuth, async (req: Request, res: Response) => {
   try {
     const { id } = req.params;
     const task = await adminDB.findOne<ExportTask>('export_tasks', { id } as never);
@@ -103,7 +102,7 @@ router.get('/:id/status', ipWhitelist, requireAuth, async (req: Request, res: Re
 /**
  * 下载导出文件
  */
-router.get('/:id/download', ipWhitelist, requireAuth, async (req: Request, res: Response) => {
+router.get('/:id/download', requireAuth, async (req: Request, res: Response) => {
   try {
     const { id } = req.params;
     const task = await adminDB.findOne<ExportTask>('export_tasks', { id } as never);

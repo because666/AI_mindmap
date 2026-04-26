@@ -2,7 +2,6 @@ import { Router, Request, Response } from 'express';
 import axios from 'axios';
 import { adminDB } from '../config/database';
 import { config } from '../config';
-import { ipWhitelist } from '../middleware/ipWhitelist';
 import { requireAuth } from '../middleware/auth';
 import { auditLog } from '../middleware/auditLog';
 
@@ -12,7 +11,7 @@ const router = Router();
  * 发送广播消息
  * 通过极光推送REST API发送
  */
-router.post('/broadcast', ipWhitelist, requireAuth, auditLog('BROADCAST_PUSH', 'push'), async (req: Request, res: Response) => {
+router.post('/broadcast', requireAuth, auditLog('BROADCAST_PUSH', 'push'), async (req: Request, res: Response) => {
   try {
     const { title, content, targetType, targetUserIds, forceRead } = req.body;
 
@@ -106,7 +105,7 @@ router.post('/broadcast', ipWhitelist, requireAuth, auditLog('BROADCAST_PUSH', '
 /**
  * 获取推送消息列表
  */
-router.get('/messages', ipWhitelist, requireAuth, async (req: Request, res: Response) => {
+router.get('/messages', requireAuth, async (req: Request, res: Response) => {
   try {
     const page = parseInt(req.query.page as string) || 1;
     const limit = parseInt(req.query.limit as string) || 20;
@@ -141,7 +140,7 @@ router.get('/messages', ipWhitelist, requireAuth, async (req: Request, res: Resp
 /**
  * 获取推送消息已读统计
  */
-router.get('/messages/:id/stats', ipWhitelist, requireAuth, async (req: Request, res: Response) => {
+router.get('/messages/:id/stats', requireAuth, async (req: Request, res: Response) => {
   try {
     const { id } = req.params;
     const ObjectId = (await import('mongodb')).ObjectId;

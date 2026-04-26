@@ -1,7 +1,6 @@
 import { Router, Request, Response } from 'express';
 import { adminDB } from '../config/database';
 import { WorkspaceListItem, PaginationResult } from '../types';
-import { ipWhitelist } from '../middleware/ipWhitelist';
 import { requireAuth } from '../middleware/auth';
 import { auditLog } from '../middleware/auditLog';
 import { escapeRegex, sanitizePagination } from '../utils/validators';
@@ -11,7 +10,7 @@ const router = Router();
 /**
  * 获取工作区列表
  */
-router.get('/', ipWhitelist, requireAuth, async (req: Request, res: Response) => {
+router.get('/', requireAuth, async (req: Request, res: Response) => {
   try {
     const { page, limit, skip } = sanitizePagination(req.query.page, req.query.limit, 100);
     const search = req.query.search as string;
@@ -98,7 +97,7 @@ router.get('/', ipWhitelist, requireAuth, async (req: Request, res: Response) =>
 /**
  * 获取工作区详情
  */
-router.get('/:id', ipWhitelist, requireAuth, async (req: Request, res: Response) => {
+router.get('/:id', requireAuth, async (req: Request, res: Response) => {
   try {
     const { id } = req.params;
     const workspace = await adminDB.findOne('workspaces', { id } as never);
@@ -136,7 +135,7 @@ router.get('/:id', ipWhitelist, requireAuth, async (req: Request, res: Response)
 /**
  * 获取工作区内容
  */
-router.get('/:id/content', ipWhitelist, requireAuth, async (req: Request, res: Response) => {
+router.get('/:id/content', requireAuth, async (req: Request, res: Response) => {
   try {
     const { id } = req.params;
     const nodes = await adminDB.find('nodes', { workspaceId: id } as never, { limit: 100 });
@@ -158,7 +157,7 @@ router.get('/:id/content', ipWhitelist, requireAuth, async (req: Request, res: R
 /**
  * 强制关闭工作区
  */
-router.post('/:id/close', ipWhitelist, requireAuth, auditLog('CLOSE_WORKSPACE', 'workspace'), async (req: Request, res: Response) => {
+router.post('/:id/close', requireAuth, auditLog('CLOSE_WORKSPACE', 'workspace'), async (req: Request, res: Response) => {
   try {
     const { id } = req.params;
     const { reason } = req.body;
@@ -192,7 +191,7 @@ router.post('/:id/close', ipWhitelist, requireAuth, auditLog('CLOSE_WORKSPACE', 
  * 向工作区成员发送通知
  * 通过极光推送发送通知给工作区成员
  */
-router.post('/:id/notify', ipWhitelist, requireAuth, auditLog('NOTIFY_WORKSPACE', 'workspace'), async (req: Request, res: Response) => {
+router.post('/:id/notify', requireAuth, auditLog('NOTIFY_WORKSPACE', 'workspace'), async (req: Request, res: Response) => {
   try {
     const { id } = req.params;
     const { title, content } = req.body;

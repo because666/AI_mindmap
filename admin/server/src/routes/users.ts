@@ -1,7 +1,6 @@
 import { Router, Request, Response } from 'express';
 import { adminDB } from '../config/database';
 import { UserListItem, PaginationResult } from '../types';
-import { ipWhitelist } from '../middleware/ipWhitelist';
 import { requireAuth } from '../middleware/auth';
 import { auditLog } from '../middleware/auditLog';
 import { escapeRegex, sanitizePagination, verifyConfirmCode } from '../utils/validators';
@@ -14,7 +13,7 @@ const ALLOWED_SORT_FIELDS = ['createdAt', 'nickname', 'lastSeen', 'loginCount'];
  * 获取用户列表
  * 支持分页、筛选、排序（白名单校验）
  */
-router.get('/', ipWhitelist, requireAuth, async (req: Request, res: Response) => {
+router.get('/', requireAuth, async (req: Request, res: Response) => {
   try {
     const { page, limit, skip } = sanitizePagination(req.query.page, req.query.limit, 100);
     const status = req.query.status as string;
@@ -84,7 +83,7 @@ router.get('/', ipWhitelist, requireAuth, async (req: Request, res: Response) =>
 /**
  * 获取用户详情
  */
-router.get('/:id', ipWhitelist, requireAuth, async (req: Request, res: Response) => {
+router.get('/:id', requireAuth, async (req: Request, res: Response) => {
   try {
     const { id } = req.params;
     const visitor = await adminDB.findOne('visitors', { id } as never);
@@ -133,7 +132,7 @@ router.get('/:id', ipWhitelist, requireAuth, async (req: Request, res: Response)
 /**
  * 封禁用户
  */
-router.post('/:id/ban', ipWhitelist, requireAuth, auditLog('BAN_USER', 'user'), async (req: Request, res: Response) => {
+router.post('/:id/ban', requireAuth, auditLog('BAN_USER', 'user'), async (req: Request, res: Response) => {
   try {
     const { id } = req.params;
     const { reason, duration } = req.body;
@@ -174,7 +173,7 @@ router.post('/:id/ban', ipWhitelist, requireAuth, auditLog('BAN_USER', 'user'), 
 /**
  * 解封用户
  */
-router.post('/:id/unban', ipWhitelist, requireAuth, auditLog('UNBAN_USER', 'user'), async (req: Request, res: Response) => {
+router.post('/:id/unban', requireAuth, auditLog('UNBAN_USER', 'user'), async (req: Request, res: Response) => {
   try {
     const { id } = req.params;
     const { reason } = req.body;
@@ -205,7 +204,7 @@ router.post('/:id/unban', ipWhitelist, requireAuth, auditLog('UNBAN_USER', 'user
  * 删除用户（危险操作）
  * 需要有效的确认码（格式验证）
  */
-router.delete('/:id', ipWhitelist, requireAuth, auditLog('DELETE_USER', 'user'), async (req: Request, res: Response) => {
+router.delete('/:id', requireAuth, auditLog('DELETE_USER', 'user'), async (req: Request, res: Response) => {
   try {
     const { id } = req.params;
     const confirmCode = req.headers['x-confirm-code'];

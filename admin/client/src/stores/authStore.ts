@@ -6,12 +6,11 @@ interface AuthState {
   isLoading: boolean;
   ipAddress: string;
   nickname: string;
-  isIpAllowed: boolean;
   isFirstVisit: boolean;
   hasPassword: boolean;
   needNickname: boolean;
 
-  checkIp: () => Promise<void>;
+  checkSystemStatus: () => Promise<void>;
   init: (password: string, confirmPassword: string) => Promise<boolean>;
   login: (password: string) => Promise<boolean>;
   setNickname: (nickname: string) => Promise<boolean>;
@@ -24,18 +23,16 @@ export const useAuthStore = create<AuthState>((set) => ({
   isLoading: true,
   ipAddress: '',
   nickname: '',
-  isIpAllowed: false,
   isFirstVisit: false,
   hasPassword: false,
   needNickname: false,
 
-  checkIp: async () => {
+  checkSystemStatus: async () => {
     try {
       const res = await authApi.checkIp();
       const d = res.data.data;
       if (d) {
         set({
-          isIpAllowed: d.allowed,
           isFirstVisit: d.isFirstVisit,
           hasPassword: d.hasPassword ?? false,
           nickname: d.nickname || '',
@@ -44,7 +41,7 @@ export const useAuthStore = create<AuthState>((set) => ({
         });
       }
     } catch {
-      set({ isLoading: false, isIpAllowed: false, isFirstVisit: true });
+      set({ isLoading: false, isFirstVisit: true });
     }
   },
 
@@ -52,7 +49,7 @@ export const useAuthStore = create<AuthState>((set) => ({
     try {
       const res = await authApi.init(password, confirmPassword);
       if (res.data.success) {
-        set({ isIpAllowed: true, hasPassword: true, isFirstVisit: false });
+        set({ hasPassword: true, isFirstVisit: false });
         return true;
       }
       return false;

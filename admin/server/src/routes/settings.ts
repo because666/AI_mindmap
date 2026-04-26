@@ -2,8 +2,8 @@ import { Router, Request, Response } from 'express';
 import bcryptjs from 'bcryptjs';
 import { adminDB } from '../config/database';
 import { config } from '../config';
-import { AdminIP, AdminConfig } from '../types';
-import { ipWhitelist, getClientIp } from '../middleware/ipWhitelist';
+import { AdminConfig, AdminIP } from '../types';
+import { getClientIp } from '../middleware/ipWhitelist';
 import { requireAuth } from '../middleware/auth';
 import { auditLog } from '../middleware/auditLog';
 
@@ -12,7 +12,7 @@ const router = Router();
 /**
  * 获取IP白名单列表
  */
-router.get('/ip-whitelist', ipWhitelist, requireAuth, async (req: Request, res: Response) => {
+router.get('/ip-whitelist', requireAuth, async (req: Request, res: Response) => {
   try {
     const currentIp = getClientIp(req);
     const whitelist = await adminDB.find('admin_ips', { isActive: true } as never, {
@@ -35,7 +35,7 @@ router.get('/ip-whitelist', ipWhitelist, requireAuth, async (req: Request, res: 
 /**
  * 添加IP到白名单
  */
-router.post('/ip-whitelist', ipWhitelist, requireAuth, auditLog('ADD_IP_WHITELIST', 'settings'), async (req: Request, res: Response) => {
+router.post('/ip-whitelist', requireAuth, auditLog('ADD_IP_WHITELIST', 'settings'), async (req: Request, res: Response) => {
   try {
     const { ipAddress, nickname, description } = req.body;
 
@@ -75,7 +75,7 @@ router.post('/ip-whitelist', ipWhitelist, requireAuth, auditLog('ADD_IP_WHITELIS
 /**
  * 从白名单删除IP
  */
-router.delete('/ip-whitelist/:ip', ipWhitelist, requireAuth, auditLog('REMOVE_IP_WHITELIST', 'settings'), async (req: Request, res: Response) => {
+router.delete('/ip-whitelist/:ip', requireAuth, auditLog('REMOVE_IP_WHITELIST', 'settings'), async (req: Request, res: Response) => {
   try {
     const { ip } = req.params;
     const { confirm } = req.body;
@@ -109,7 +109,7 @@ router.delete('/ip-whitelist/:ip', ipWhitelist, requireAuth, auditLog('REMOVE_IP
 /**
  * 修改密码
  */
-router.post('/password', ipWhitelist, requireAuth, auditLog('CHANGE_PASSWORD', 'settings'), async (req: Request, res: Response) => {
+router.post('/password', requireAuth, auditLog('CHANGE_PASSWORD', 'settings'), async (req: Request, res: Response) => {
   try {
     const { oldPassword, newPassword, confirmPassword } = req.body;
 
@@ -158,7 +158,7 @@ router.post('/password', ipWhitelist, requireAuth, auditLog('CHANGE_PASSWORD', '
 /**
  * 获取功能开关
  */
-router.get('/features', ipWhitelist, requireAuth, async (_req: Request, res: Response) => {
+router.get('/features', requireAuth, async (_req: Request, res: Response) => {
   try {
     const adminConfig = await adminDB.findOne<AdminConfig>('admin_configs', {});
     if (!adminConfig) {
@@ -183,7 +183,7 @@ router.get('/features', ipWhitelist, requireAuth, async (_req: Request, res: Res
 /**
  * 更新功能开关
  */
-router.put('/features', ipWhitelist, requireAuth, auditLog('UPDATE_FEATURES', 'settings'), async (req: Request, res: Response) => {
+router.put('/features', requireAuth, auditLog('UPDATE_FEATURES', 'settings'), async (req: Request, res: Response) => {
   try {
     const { sensitiveWordCheck, auditLog, dataExport } = req.body;
 

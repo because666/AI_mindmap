@@ -1,21 +1,21 @@
 import React, { useState, useEffect } from 'react';
 import { useNavigate } from 'react-router-dom';
-import { Shield, Lock, UserPlus } from 'lucide-react';
+import { Lock, UserPlus } from 'lucide-react';
 import { useAuthStore } from '../../stores/authStore';
 
 /**
  * 登录页面
- * 支持三种状态：首次初始化、登录、设置昵称
+ * 支持两种状态：首次初始化、登录
+ * 移除IP白名单后，仅通过密码认证
  */
 const LoginPage: React.FC = () => {
   const navigate = useNavigate();
   const {
-    isIpAllowed,
     isFirstVisit,
     hasPassword,
     needNickname,
     isLoading,
-    checkIp,
+    checkSystemStatus,
     init,
     login,
     setNickname,
@@ -25,38 +25,27 @@ const LoginPage: React.FC = () => {
   const [confirmPassword, setConfirmPassword] = useState('');
   const [nickname, setNicknameValue] = useState('');
   const [error, setError] = useState('');
-  const [step, setStep] = useState<'checking' | 'init' | 'login' | 'nickname' | 'denied'>('checking');
+  const [step, setStep] = useState<'checking' | 'init' | 'login' | 'nickname'>('checking');
 
   useEffect(() => {
-    checkIp();
+    checkSystemStatus();
   }, []);
 
   useEffect(() => {
     if (isLoading) return;
-    if (!isIpAllowed && !isFirstVisit) {
-      setStep('denied');
-    } else if (isFirstVisit) {
+    if (isFirstVisit) {
       setStep('init');
     } else if (needNickname) {
       setStep('nickname');
     } else {
       setStep('login');
     }
-  }, [isLoading, isIpAllowed, isFirstVisit, needNickname]);
+  }, [isLoading, isFirstVisit, needNickname]);
 
   const handleInit = async (e: React.FormEvent) => {
     e.preventDefault();
     setError('');
-    if (hasPassword) {
-      const success = await init('', '');
-      if (success) {
-        setStep('login');
-        setPassword('');
-      } else {
-        setError('初始化失败');
-      }
-      return;
-    }
+
     if (password !== confirmPassword) {
       setError('两次密码不一致');
       return;
@@ -103,19 +92,7 @@ const LoginPage: React.FC = () => {
   if (step === 'checking') {
     return (
       <div className="min-h-screen flex items-center justify-center bg-gray-50">
-        <div className="text-gray-500">正在检查访问权限...</div>
-      </div>
-    );
-  }
-
-  if (step === 'denied') {
-    return (
-      <div className="min-h-screen flex items-center justify-center bg-gray-50">
-        <div className="bg-white rounded-xl p-8 shadow-sm max-w-md w-full text-center">
-          <Shield className="w-16 h-16 text-red-400 mx-auto mb-4" />
-          <h2 className="text-xl font-bold text-gray-800 mb-2">访问被拒绝</h2>
-          <p className="text-gray-500">您的IP地址不在管理员白名单中</p>
-        </div>
+        <div className="text-gray-500">正在检查系统状态...</div>
       </div>
     );
   }
@@ -134,7 +111,7 @@ const LoginPage: React.FC = () => {
           <form onSubmit={handleInit} className="space-y-4">
             {hasPassword ? (
               <>
-                <p className="text-sm text-gray-500 text-center">首次访问，请点击按钮将您的IP加入管理员白名单</p>
+                <p className="text-sm text-gray-500 text-center">系统已初始化，请输入密码登录</p>
                 <p className="text-sm text-amber-600 text-center">默认密码：admin123（登录后请修改）</p>
               </>
             ) : (
@@ -161,7 +138,7 @@ const LoginPage: React.FC = () => {
               type="submit"
               className="w-full py-2.5 bg-blue-600 text-white rounded-lg hover:bg-blue-700 font-medium"
             >
-              {hasPassword ? '加入白名单并登录' : '初始化系统'}
+              {hasPassword ? '去登录' : '初始化系统'}
             </button>
           </form>
         )}

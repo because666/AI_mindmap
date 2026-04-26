@@ -1,14 +1,13 @@
 import { Router, Request, Response } from 'express';
 import { dashboardService } from '../services/dashboardService';
 import { requireAuth } from '../middleware/auth';
-import { ipWhitelist } from '../middleware/ipWhitelist';
 
 const router = Router();
 
 /**
  * 获取核心统计指标
  */
-router.get('/stats', ipWhitelist, requireAuth, async (_req: Request, res: Response) => {
+router.get('/stats', requireAuth, async (_req: Request, res: Response) => {
   try {
     const stats = await dashboardService.getStats();
     res.json({ success: true, data: stats });
@@ -23,7 +22,7 @@ router.get('/stats', ipWhitelist, requireAuth, async (_req: Request, res: Respon
  * @query type - 趋势类型
  * @query days - 统计天数
  */
-router.get('/trends', ipWhitelist, requireAuth, async (req: Request, res: Response) => {
+router.get('/trends', requireAuth, async (req: Request, res: Response) => {
   try {
     const type = (req.query.type as string) || 'user_growth';
     const days = parseInt(req.query.days as string) || 30;

@@ -1,7 +1,6 @@
 import { Router, Request, Response } from 'express';
 import { adminDB } from '../config/database';
 import { ChatAuditItem, SensitiveWordConfig, PaginationResult } from '../types';
-import { ipWhitelist } from '../middleware/ipWhitelist';
 import { requireAuth } from '../middleware/auth';
 import { auditLog } from '../middleware/auditLog';
 
@@ -10,7 +9,7 @@ const router = Router();
 /**
  * 获取敏感词配置
  */
-router.get('/config', ipWhitelist, requireAuth, async (_req: Request, res: Response) => {
+router.get('/config', requireAuth, async (_req: Request, res: Response) => {
   try {
     let config = await adminDB.findOne<SensitiveWordConfig>('admin_configs', {});
     if (!config) {
@@ -31,7 +30,7 @@ router.get('/config', ipWhitelist, requireAuth, async (_req: Request, res: Respo
 /**
  * 更新敏感词配置
  */
-router.put('/config', ipWhitelist, requireAuth, auditLog('UPDATE_SENSITIVE_WORDS', 'config'), async (req: Request, res: Response) => {
+router.put('/config', requireAuth, auditLog('UPDATE_SENSITIVE_WORDS', 'config'), async (req: Request, res: Response) => {
   try {
     const { enabled, words, matchMode, autoFlag } = req.body;
 
@@ -60,7 +59,7 @@ router.put('/config', ipWhitelist, requireAuth, auditLog('UPDATE_SENSITIVE_WORDS
 /**
  * 获取消息审计列表
  */
-router.get('/messages', ipWhitelist, requireAuth, async (req: Request, res: Response) => {
+router.get('/messages', requireAuth, async (req: Request, res: Response) => {
   try {
     const page = parseInt(req.query.page as string) || 1;
     const limit = parseInt(req.query.limit as string) || 20;
@@ -102,7 +101,7 @@ router.get('/messages', ipWhitelist, requireAuth, async (req: Request, res: Resp
 /**
  * 扫描消息（手动触发敏感词检测）
  */
-router.post('/scan', ipWhitelist, requireAuth, auditLog('SCAN_MESSAGES', 'audit'), async (req: Request, res: Response) => {
+router.post('/scan', requireAuth, auditLog('SCAN_MESSAGES', 'audit'), async (req: Request, res: Response) => {
   try {
     const { startTime, endTime } = req.body;
 
@@ -170,7 +169,7 @@ router.post('/scan', ipWhitelist, requireAuth, auditLog('SCAN_MESSAGES', 'audit'
 /**
  * 标记消息为安全
  */
-router.post('/:id/mark-safe', ipWhitelist, requireAuth, auditLog('MARK_SAFE', 'audit'), async (req: Request, res: Response) => {
+router.post('/:id/mark-safe', requireAuth, auditLog('MARK_SAFE', 'audit'), async (req: Request, res: Response) => {
   try {
     const { id } = req.params;
     const { reason } = req.body;
@@ -204,7 +203,7 @@ router.post('/:id/mark-safe', ipWhitelist, requireAuth, auditLog('MARK_SAFE', 'a
 /**
  * 删除审计消息
  */
-router.delete('/:id/message', ipWhitelist, requireAuth, auditLog('DELETE_AUDIT_MESSAGE', 'audit'), async (req: Request, res: Response) => {
+router.delete('/:id/message', requireAuth, auditLog('DELETE_AUDIT_MESSAGE', 'audit'), async (req: Request, res: Response) => {
   try {
     const { id } = req.params;
     const { reason } = req.body;

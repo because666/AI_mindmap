@@ -179,9 +179,9 @@ const ChatPanel: React.FC<ChatPanelProps> = ({ nodeId }) => {
    */
   const loadWorkspaceFiles = useCallback(async () => {
     try {
-      const response = await fileApi.list();
-      if (response.data.success) {
-        setWorkspaceFiles(response.data.data);
+      const result = await fileApi.list() as unknown as { success: boolean; data: FileInfo[] };
+      if (result.success && result.data) {
+        setWorkspaceFiles(result.data);
       }
     } catch {
       // 静默处理
@@ -201,9 +201,15 @@ const ChatPanel: React.FC<ChatPanelProps> = ({ nodeId }) => {
 
     setIsUploading(true);
     try {
-      const response = await fileApi.upload(Array.from(files));
-      if (response.data.success) {
-        const { uploaded, errors } = response.data.data;
+      const result = await fileApi.upload(Array.from(files)) as unknown as {
+        success: boolean;
+        data: {
+          uploaded: Array<{ id: string; originalName: string; size: number; mimeType: string }>;
+          errors: Array<{ filename: string; error: string }>;
+        };
+      };
+      if (result.success && result.data) {
+        const { uploaded, errors } = result.data;
         if (errors.length > 0) {
           setError(errors.map(e => `${e.filename}: ${e.error}`).join('; '));
         }

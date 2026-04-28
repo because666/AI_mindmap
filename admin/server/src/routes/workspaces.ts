@@ -45,14 +45,18 @@ router.get('/', requireAuth, async (req: Request, res: Response) => {
 
     const wsIds = workspaces.map((w: Record<string, unknown>) => w.id as string);
     const nodeCountMap = new Map<string, number>();
-    if (wsIds.length > 0) {
-      const nodeCounts = await adminDB.aggregate('nodes', [
-        { $match: { workspaceId: { $in: wsIds } } },
-        { $group: { _id: '$workspaceId', count: { $sum: 1 } } },
-      ]);
-      for (const nc of nodeCounts) {
-        nodeCountMap.set((nc as Record<string, unknown>)._id as string, (nc as Record<string, unknown>).count as number);
+    try {
+      if (wsIds.length > 0) {
+        const nodeCounts = await adminDB.aggregate('nodes', [
+          { $match: { workspaceId: { $in: wsIds } } },
+          { $group: { _id: '$workspaceId', count: { $sum: 1 } } },
+        ]);
+        for (const nc of nodeCounts) {
+          nodeCountMap.set((nc as Record<string, unknown>)._id as string, (nc as Record<string, unknown>).count as number);
+        }
       }
+    } catch {
+      // nodes 集合可能不存在（节点数据存储在 Neo4j 中）
     }
 
     const items: WorkspaceListItem[] = workspaces.map((w: Record<string, unknown>) => {
@@ -107,7 +111,12 @@ router.get('/:id', requireAuth, async (req: Request, res: Response) => {
       return;
     }
 
-    const nodeCount = await adminDB.countDocuments('nodes', { workspaceId: id } as never);
+    let nodeCount = 0;
+    try {
+      nodeCount = await adminDB.countDocuments('nodes', { workspaceId: id } as never);
+    } catch {
+      nodeCount = 0;
+    }
     const memberCount = (workspace.members as unknown[])?.length || 0;
 
     res.json({
@@ -138,7 +147,12 @@ router.get('/:id', requireAuth, async (req: Request, res: Response) => {
 router.get('/:id/content', requireAuth, async (req: Request, res: Response) => {
   try {
     const { id } = req.params;
-    const nodes = await adminDB.find('nodes', { workspaceId: id } as never, { limit: 100 });
+    let nodes: unknown[] = [];
+    try {
+      nodes = await adminDB.find('nodes', { workspaceId: id } as never, { limit: 100 });
+    } catch {
+      nodes = [];
+    }
     const conversations = await adminDB.find('conversations', { workspaceId: id } as never, {
       sort: { createdAt: -1 },
       limit: 50,

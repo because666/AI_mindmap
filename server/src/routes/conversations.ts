@@ -2,6 +2,8 @@ import { Router, Request, Response } from 'express';
 import { conversationService } from '../services/conversationService';
 import { nodeService } from '../services/nodeService';
 import { aiService } from '../services/aiService';
+import { sensitiveWordService } from '../services/sensitiveWordService';
+import { fileService } from '../services/fileService';
 import { workspaceMemberAuth } from '../middleware';
 
 const router = Router();
@@ -45,10 +47,23 @@ router.get('/:nodeId', workspaceMemberAuth, async (req: Request, res: Response) 
 
 /**
  * 发送消息
+ * 新增敏感词检测：用户消息包含敏感词时，拒绝发送并返回提示
  */
 router.post('/:nodeId/message', workspaceMemberAuth, async (req: Request, res: Response) => {
   try {
-    const { content, role = 'user' } = req.body;
+    const { content, role = 'user', fileIds } = req.body;
+
+    if (role === 'user' && content) {
+      const checkResult = await sensitiveWordService.check(content);
+      if (checkResult.hasSensitiveWord) {
+        return res.status(400).json({
+          success: false,
+          error: '消息包含敏感内容，请修改后重试',
+          sensitiveWords: checkResult.matchedWords,
+          riskLevel: checkResult.riskLevel,
+        });
+      }
+    }
 
     let conversation = await conversationService.getConversationByNodeId(req.params.nodeId);
 
@@ -60,7 +75,18 @@ router.post('/:nodeId/message', workspaceMemberAuth, async (req: Request, res: R
 
     if (role === 'user') {
       const contextMessages = await buildContextMessages(req.params.nodeId);
-      contextMessages.push({ role: 'user', content });
+
+      let fileContext = '';
+      if (fileIds && Array.isArray(fileIds) && fileIds.length > 0) {
+        const filesText = await fileService.getFilesTextForContext(fileIds);
+        if (filesText.length > 0) {
+          const fileParts = filesText.map(f => `--- 文件: ${f.filename} ---\n${f.text}`).join('\n\n');
+          fileContext = `\n\n[用户上传的文件内容]\n${fileParts}\n[/文件内容结束]`;
+        }
+      }
+
+      const userContent = content + fileContext;
+      contextMessages.push({ role: 'user', content: userContent });
 
       const aiResponse = await aiService.chat({
         messages: contextMessages,
@@ -94,6 +120,7 @@ router.post('/:nodeId/message', workspaceMemberAuth, async (req: Request, res: R
 
 /**
  * 保存消息（不触发AI回复）
+ * 新增敏感词检测
  */
 router.post('/:nodeId/save-message', workspaceMemberAuth, async (req: Request, res: Response) => {
   try {
@@ -101,6 +128,19 @@ router.post('/:nodeId/save-message', workspaceMemberAuth, async (req: Request, r
 
     if (!role || !content) {
       return res.status(400).json({ success: false, error: 'role和content不能为空' });
+    }
+
+    // 敏感词检测（仅检测用户消息）
+    if (role === 'user') {
+      const checkResult = await sensitiveWordService.check(content);
+      if (checkResult.hasSensitiveWord) {
+        return res.status(400).json({
+          success: false,
+          error: '消息包含敏感内容，请修改后重试',
+          sensitiveWords: checkResult.matchedWords,
+          riskLevel: checkResult.riskLevel,
+        });
+      }
     }
 
     let conversation = await conversationService.getConversationByNodeId(req.params.nodeId);
@@ -130,6 +170,34 @@ router.delete('/:nodeId', workspaceMemberAuth, async (req: Request, res: Respons
     }
 
     await conversationService.clearConversation(conversation.id);
+    res.json({ success: true });
+  } catch (error: unknown) {
+    const message = error instanceof Error ? error.message : String(error);
+    res.status(500).json({ success: false, error: message });
+  }
+});
+
+/**
+ * 刷新对话缓存（内部API，供admin server调用）
+ * POST /api/conversations/internal/refresh-cache
+ */
+router.post('/internal/refresh-cache', async (req: Request, res: Response) => {
+  try {
+    const { conversationId } = req.body;
+    const internalToken = req.headers['x-internal-token'];
+
+    // 简单的内部令牌校验（生产环境应使用更安全的机制）
+    if (internalToken !== process.env.INTERNAL_API_TOKEN) {
+      return res.status(403).json({ success: false, error: 'Forbidden' });
+    }
+
+    if (conversationId) {
+      await conversationService.reloadConversation(conversationId);
+    } else {
+      // 如果没有指定conversationId，刷新所有缓存
+      // 这里简单处理：不做全量刷新，只返回成功
+    }
+
     res.json({ success: true });
   } catch (error: unknown) {
     const message = error instanceof Error ? error.message : String(error);

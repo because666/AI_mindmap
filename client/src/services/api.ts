@@ -186,6 +186,30 @@ export const nodeApi = {
 
   deleteRelation: (id: string) =>
     api.delete<{ success: boolean }>(`/nodes/relations/${id}`),
+
+  /**
+   * 导出工作区数据
+   * @param format - 导出格式：json 或 markdown
+   * @returns 导出数据（JSON格式返回对象，Markdown格式返回字符串）
+   */
+  exportData: (format: 'json' | 'markdown' = 'json') => {
+    const config = format === 'markdown'
+      ? { responseType: 'text' as const, transformResponse: [(data: string) => data] }
+      : {};
+    return api.get(`/nodes/export`, { params: { format }, ...config });
+  },
+
+  /**
+   * 批量导入数据到工作区
+   * @param format - 导入格式：json 或 markdown
+   * @param data - 导入数据字符串
+   * @returns 导入结果计数
+   */
+  importData: (format: 'json' | 'markdown', data: string) =>
+    api.post<{ success: boolean; data: { nodes: number; relations: number; conversations: number } }>(
+      '/nodes/import',
+      { format, data }
+    ),
 };
 
 /**
@@ -197,10 +221,10 @@ export const conversationApi = {
       params: conversationId ? { id: conversationId } : undefined,
     }),
 
-  sendMessage: (nodeId: string, content: string, model?: string) =>
+  sendMessage: (nodeId: string, content: string, model?: string, fileIds?: string[]) =>
     api.post<{ success: boolean; data: { userMessage: string; assistantMessage?: string; error?: string } }>(
       `/conversations/${nodeId}/message`,
-      { content, role: 'user', model }
+      { content, role: 'user', model, fileIds }
     ),
 
   saveMessage: (nodeId: string, role: string, content: string) =>
@@ -253,6 +277,70 @@ export const aiApi = {
   }),
 
   getModels: () => api.get<{ success: boolean; data: string[] }>('/ai/models'),
+};
+
+/**
+ * 文件信息接口
+ */
+export interface FileInfo {
+  id: string;
+  filename: string;
+  originalName: string;
+  mimeType: string;
+  size: number;
+  workspaceId: string;
+  uploadedBy: string;
+  createdAt: string;
+}
+
+/**
+ * 文件API
+ */
+export const fileApi = {
+  /**
+   * 上传文件到工作区
+   * @param files - 文件列表
+   * @returns 上传结果
+   */
+  upload: (files: File[]) => {
+    const formData = new FormData();
+    for (const file of files) {
+      formData.append('files', file);
+    }
+    return api.post<{
+      success: boolean;
+      data: {
+        uploaded: Array<{ id: string; originalName: string; size: number; mimeType: string }>;
+        errors: Array<{ filename: string; error: string }>;
+      };
+    }>('/files/upload', formData, {
+      headers: { 'Content-Type': 'multipart/form-data' },
+      timeout: 300000,
+    });
+  },
+
+  /**
+   * 获取工作区文件列表
+   * @returns 文件列表
+   */
+  list: () =>
+    api.get<{ success: boolean; data: FileInfo[] }>('/files/list'),
+
+  /**
+   * 获取单个文件信息
+   * @param fileId - 文件ID
+   * @returns 文件信息
+   */
+  getById: (fileId: string) =>
+    api.get<{ success: boolean; data: FileInfo }>(`/files/${fileId}`),
+
+  /**
+   * 删除文件
+   * @param fileId - 文件ID
+   * @returns 是否成功
+   */
+  delete: (fileId: string) =>
+    api.delete<{ success: boolean }>(`/files/${fileId}`),
 };
 
 export default api;

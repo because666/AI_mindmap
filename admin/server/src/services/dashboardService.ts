@@ -37,7 +37,12 @@ class DashboardService {
       type: 'public',
     } as never);
 
-    const totalNodes = await adminDB.countDocuments('nodes');
+    let totalNodes = 0;
+    try {
+      totalNodes = await adminDB.countDocuments('nodes');
+    } catch {
+      totalNodes = 0;
+    }
     const totalConversations = await adminDB.countDocuments('conversations');
     const todayConversations = await adminDB.countDocuments('conversations', {
       createdAt: { $gte: today },

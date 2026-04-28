@@ -18,23 +18,26 @@ const getApiBaseUrl = () => {
 const API_BASE_URL = getApiBaseUrl();
 
 /**
- * 获取本地存储的访客ID
- * 与主应用api.ts保持一致，确保推送服务使用相同的用户标识
+ * 创建推送服务专用 axios 实例
+ * 使用 baseURL 方式避免路径拼接产生双斜杠
  */
-function getLocalVisitorId(): string | null {
-  return localStorage.getItem('visitorId');
-}
+const pushApi = axios.create({
+  baseURL: API_BASE_URL,
+  headers: {
+    'Content-Type': 'application/json',
+  },
+});
 
 /**
- * 创建带用户标识的axios请求配置
- * @returns 包含X-Visitor-Id头的请求配置
+ * 请求拦截器：自动添加访客ID头
  */
-function getAuthConfig(): Record<string, unknown> {
-  const visitorId = getLocalVisitorId();
-  return {
-    headers: visitorId ? { 'X-Visitor-Id': visitorId } : {},
-  };
-}
+pushApi.interceptors.request.use((config) => {
+  const visitorId = localStorage.getItem('visitorId');
+  if (visitorId) {
+    config.headers['X-Visitor-Id'] = visitorId;
+  }
+  return config;
+});
 
 interface PushMessage {
   id: string;
@@ -138,10 +141,10 @@ class PushClientService {
 
   async registerDevice(registrationId: string): Promise<boolean> {
     try {
-      const response = await axios.post(`${API_BASE_URL}/push/register`, {
+      const response = await pushApi.post('/push/register', {
         registrationId,
         platform: Capacitor.getPlatform(),
-      }, getAuthConfig());
+      });
       return response.data.success === true;
     } catch (error) {
       console.error('[PushClient] 设备注册失败:', error);
@@ -151,9 +154,8 @@ class PushClientService {
 
   async getMessageList(page: number = 1, limit: number = 20, type: string = 'all'): Promise<MessageListResponse> {
     try {
-      const response = await axios.get(`${API_BASE_URL}/push/messages`, {
+      const response = await pushApi.get('/push/messages', {
         params: { page, limit, type },
-        ...getAuthConfig(),
       });
       return response.data.data;
     } catch (error) {
@@ -164,7 +166,7 @@ class PushClientService {
 
   async getMessageDetail(messageId: string): Promise<MessageDetail> {
     try {
-      const response = await axios.get(`${API_BASE_URL}/push/messages/${messageId}`, getAuthConfig());
+      const response = await pushApi.get(`/push/messages/${messageId}`);
       return response.data.data;
     } catch (error) {
       console.error('[PushClient] 获取消息详情失败:', error);
@@ -174,7 +176,7 @@ class PushClientService {
 
   async markAsRead(messageId: string): Promise<boolean> {
     try {
-      const response = await axios.post(`${API_BASE_URL}/push/messages/${messageId}/read`, {}, getAuthConfig());
+      const response = await pushApi.post(`/push/messages/${messageId}/read`);
       return response.data.success === true;
     } catch (error) {
       console.error('[PushClient] 标记已读失败:', error);
@@ -184,7 +186,7 @@ class PushClientService {
 
   async markAllAsRead(): Promise<number> {
     try {
-      const response = await axios.post(`${API_BASE_URL}/push/messages/read-all`, {}, getAuthConfig());
+      const response = await pushApi.post('/push/messages/read-all');
       return response.data.data?.markedCount || 0;
     } catch (error) {
       console.error('[PushClient] 全部标记已读失败:', error);
@@ -194,7 +196,7 @@ class PushClientService {
 
   async getUnreadCount(): Promise<UnreadCount> {
     try {
-      const response = await axios.get(`${API_BASE_URL}/push/messages/unread-count`, getAuthConfig());
+      const response = await pushApi.get('/push/messages/unread-count');
       return response.data.data;
     } catch (error) {
       console.error('[PushClient] 获取未读数量失败:', error);

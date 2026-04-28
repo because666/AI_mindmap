@@ -75,6 +75,55 @@ router.get('/messages', async (req, res) => {
 });
 
 /**
+ * 获取未读消息数量
+ * GET /api/push/messages/unread-count
+ * 用于显示红点提示和未读数
+ * 注意：此路由必须放在 /messages/:id 之前，否则 unread-count 会被当作 :id 参数匹配
+ */
+router.get('/messages/unread-count', async (req, res) => {
+  try {
+    const userId = (req.headers['x-visitor-id'] as string) || 'anonymous';
+
+    const unreadCount = await pushService.getUnreadCount(userId);
+
+    res.json({
+      success: true,
+      data: unreadCount,
+    });
+  } catch (error: any) {
+    console.error('[Push] 获取未读数量失败:', error.message);
+    res.status(500).json({
+      success: false,
+      error: '获取未读数量失败',
+    });
+  }
+});
+
+/**
+ * 标记所有消息已读
+ * POST /api/push/messages/read-all
+ * 注意：此路由必须放在 /messages/:id 之前
+ */
+router.post('/messages/read-all', async (req, res) => {
+  try {
+    const userId = (req.headers['x-visitor-id'] as string) || 'anonymous';
+
+    const markedCount = await pushService.markAllAsRead(userId);
+
+    res.json({
+      success: true,
+      data: { markedCount },
+    });
+  } catch (error: any) {
+    console.error('[Push] 全部标记已读失败:', error.message);
+    res.status(500).json({
+      success: false,
+      error: '全部标记已读失败',
+    });
+  }
+});
+
+/**
  * 获取消息详情
  * GET /api/push/messages/:id
  * 返回消息完整内容（Markdown格式）
@@ -130,53 +179,6 @@ router.post('/messages/:id/read', async (req, res) => {
     res.status(500).json({
       success: false,
       error: '标记已读失败',
-    });
-  }
-});
-
-/**
- * 标记所有消息已读
- * POST /api/push/messages/read-all
- */
-router.post('/messages/read-all', async (req, res) => {
-  try {
-    const userId = (req.headers['x-visitor-id'] as string) || 'anonymous';
-
-    const markedCount = await pushService.markAllAsRead(userId);
-
-    res.json({
-      success: true,
-      data: { markedCount },
-    });
-  } catch (error: any) {
-    console.error('[Push] 全部标记已读失败:', error.message);
-    res.status(500).json({
-      success: false,
-      error: '全部标记已读失败',
-    });
-  }
-});
-
-/**
- * 获取未读消息数量
- * GET /api/push/messages/unread-count
- * 用于显示红点提示和未读数
- */
-router.get('/messages/unread-count', async (req, res) => {
-  try {
-    const userId = (req.headers['x-visitor-id'] as string) || 'anonymous';
-
-    const unreadCount = await pushService.getUnreadCount(userId);
-
-    res.json({
-      success: true,
-      data: unreadCount,
-    });
-  } catch (error: any) {
-    console.error('[Push] 获取未读数量失败:', error.message);
-    res.status(500).json({
-      success: false,
-      error: '获取未读数量失败',
     });
   }
 });

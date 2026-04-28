@@ -730,7 +730,7 @@ const DreamyUniverseBackground: React.FC = () => {
         width: '100vw',
         height: '100vh',
         zIndex: 0,
-        pointerEvents: 'auto'
+        pointerEvents: 'none'
       }}
     />
   );

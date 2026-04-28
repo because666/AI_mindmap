@@ -5,6 +5,7 @@ import ChatPanel from '../Chat/ChatPanel';
 import SearchPanel from '../Search/SearchPanel';
 import HistoryPanel from '../History/HistoryPanel';
 import WorkspaceSettingsModal from '../Workspace/WorkspaceSettingsModal';
+import FilePanel from '../File/FilePanel';
 import { UnreadBadge, MessageCenter } from '../MessageCenter';
 import { useAppStore } from '../../stores/appStore';
 import { useUISettingsStore } from '../../stores/uiSettingsStore';
@@ -21,6 +22,7 @@ const MainLayout: React.FC<{ children: React.ReactNode }> = ({ children }) => {
   const [isSearchOpen, setIsSearchOpen] = useState(false);
   const [isHistoryOpen, setIsHistoryOpen] = useState(false);
   const [isWorkspaceSettingsOpen, setIsWorkspaceSettingsOpen] = useState(false);
+  const [isFilePanelOpen, setIsFilePanelOpen] = useState(false);
   const [activeTab, setActiveTab] = useState<'canvas' | 'chat'>('canvas');
   const [showWorkspaceInfo, setShowWorkspaceInfo] = useState(false);
   const [isDrawerOpen, setIsDrawerOpen] = useState(false);
@@ -225,6 +227,7 @@ const MainLayout: React.FC<{ children: React.ReactNode }> = ({ children }) => {
         </button>
 
         <button
+          onClick={() => { setIsFilePanelOpen(true); setIsDrawerOpen(false); }}
           className="w-full flex items-center gap-3 px-4 py-3 text-left text-dark-300 hover:text-white hover:bg-dark-800 transition-colors"
         >
           <FolderOpen className="w-5 h-5" />
@@ -557,6 +560,7 @@ const MainLayout: React.FC<{ children: React.ReactNode }> = ({ children }) => {
         </button>
 
         <button
+          onClick={() => setIsFilePanelOpen(true)}
           className="w-10 h-10 rounded-xl flex items-center justify-center text-dark-400 hover:text-white hover:bg-dark-700 transition-colors"
           title="文件"
         >
@@ -722,6 +726,35 @@ const MainLayout: React.FC<{ children: React.ReactNode }> = ({ children }) => {
         isOpen={isWorkspaceSettingsOpen}
         onClose={() => setIsWorkspaceSettingsOpen(false)}
       />
+
+      <FilePanel
+        isOpen={isFilePanelOpen}
+        onClose={() => setIsFilePanelOpen(false)}
+      />
+
+      {/* ICP备案号与联系邮箱 */}
+      <footer className="shrink-0 bg-dark-900 border-t border-dark-700 py-2 text-center space-y-1">
+        <div>
+          <a
+            href="https://beian.miit.gov.cn"
+            target="_blank"
+            rel="noopener noreferrer"
+            className="text-dark-400 hover:text-dark-300 text-xs transition-colors"
+            style={{ fontSize: '12px', color: '#6b7280' }}
+          >
+            桂ICP备2026005821号-2
+          </a>
+        </div>
+        <div>
+          <a
+            href="mailto:3694224048@qq.com"
+            className="text-dark-400 hover:text-dark-300 text-xs transition-colors"
+            style={{ fontSize: '12px', color: '#6b7280' }}
+          >
+            联系邮箱：3694224048@qq.com
+          </a>
+        </div>
+      </footer>
     </div>
   );
 };

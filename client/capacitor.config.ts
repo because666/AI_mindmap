@@ -5,7 +5,7 @@ const config: CapacitorConfig = {
   appName: 'DeepMindMap',
   webDir: 'dist',
   server: {
-    url: 'http://43.139.43.112',
+    url: 'https://deepmindmap.work',
     cleartext: true
   },
   android: {

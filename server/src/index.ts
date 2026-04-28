@@ -21,7 +21,10 @@ import searchRouter from './routes/search';
 import aiRouter from './routes/ai';
 import workspacesRouter from './routes/workspaces';
 import pushRouter from './routes/push';
+import filesRouter from './routes/files';
 import { pushService } from './services/pushService';
+import { workspaceService } from './services/workspaceService';
+import { fileService } from './services/fileService';
 import { initScheduledJobs } from './jobs/scheduledJobs';
 
 console.log('='.repeat(50));
@@ -76,6 +79,7 @@ app.get('/api', (req, res) => {
 
 app.use('/api/workspaces', workspacesRouter);
 app.use('/api/push', pushRouter);
+app.use('/api/files', filesRouter);
 app.use('/api/nodes', nodesRouter);
 app.use('/api/conversations', conversationsRouter);
 app.use('/api/search', searchRouter);
@@ -147,6 +151,12 @@ async function startServer() {
     
     await pushService.initializeIndexes();
     console.log('✅ 推送服务初始化完成');
+    
+    await workspaceService.initialize();
+    console.log('✅ 工作区服务初始化完成');
+    
+    await fileService.initialize();
+    console.log('✅ 文件服务初始化完成');
     
     initScheduledJobs();
     

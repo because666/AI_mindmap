@@ -2,10 +2,15 @@ import type { APIConfig, ChatMessage, StreamEvent, StreamCallback } from '../typ
 
 /**
  * 获取 API 基础 URL
+ * chatService 的路径已经包含 /api 前缀，所以 baseURL 不应重复添加 /api
  */
 const getApiBaseUrl = () => {
   if (import.meta.env.VITE_API_URL) {
-    return import.meta.env.VITE_API_URL;
+    const url = import.meta.env.VITE_API_URL;
+    if (url.endsWith('/api')) {
+      return url.slice(0, -4);
+    }
+    return url;
   }
   if (import.meta.env.PROD) {
     return '';
@@ -93,12 +98,14 @@ export const chatService = {
    * @param messages - 消息列表
    * @param config - API 配置
    * @param onStream - 流式回调函数
+   * @param fileIds - 引用的文件ID列表
    * @returns 最终结果
    */
   async sendMessageStream(
     messages: ChatMessage[],
     config: APIConfig,
-    onStream: StreamCallback
+    onStream: StreamCallback,
+    fileIds?: string[]
   ): Promise<{ success: boolean; content?: string; thinkingContent?: string; error?: string }> {
     try {
       const response = await fetch(`${API_BASE_URL}/api/ai/chat/stream`, {
@@ -114,7 +121,8 @@ export const chatService = {
             model: config.modelId,
             apiKey: config.apiKey,
             baseUrl: config.baseUrl
-          }
+          },
+          fileIds,
         }),
       });
 

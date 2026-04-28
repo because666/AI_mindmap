@@ -141,8 +141,32 @@ const AdminLayout: React.FC<{ children: React.ReactNode }> = ({ children }) => {
       )}
 
       {/* 主内容区域 */}
-      <main className="md:ml-52 min-h-screen">
-        <div className="p-4 md:p-6 max-w-7xl mx-auto">{children}</div>
+      <main className="md:ml-52 min-h-screen flex flex-col">
+        <div className="flex-1 p-4 md:p-6 max-w-7xl mx-auto w-full">{children}</div>
+
+        {/* ICP备案号与联系邮箱 */}
+        <footer className="shrink-0 bg-white border-t border-gray-200 py-3 text-center space-y-1">
+          <div>
+            <a
+              href="https://beian.miit.gov.cn"
+              target="_blank"
+              rel="noopener noreferrer"
+              className="text-gray-500 hover:text-gray-700 text-xs transition-colors"
+              style={{ fontSize: '12px' }}
+            >
+              桂ICP备2026005821号-2
+            </a>
+          </div>
+          <div>
+            <a
+              href="mailto:3694224048@qq.com"
+              className="text-gray-500 hover:text-gray-700 text-xs transition-colors"
+              style={{ fontSize: '12px' }}
+            >
+              联系邮箱：3694224048@qq.com
+            </a>
+          </div>
+        </footer>
       </main>
     </div>
   );

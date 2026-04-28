@@ -1,5 +1,6 @@
 import { Router, Request, Response } from 'express';
 import { aiService } from '../services/aiService';
+import { fileService } from '../services/fileService';
 import { optionalVisitorAuth } from '../middleware';
 
 const router = Router();
@@ -45,13 +46,25 @@ router.post('/chat', optionalVisitorAuth, async (req: Request, res: Response) =>
  */
 router.post('/chat/stream', optionalVisitorAuth, async (req: Request, res: Response) => {
   try {
-    const { messages, config, model, temperature, maxTokens } = req.body;
+    const { messages, config, model, temperature, maxTokens, fileIds } = req.body;
 
     if (!messages || !Array.isArray(messages)) {
       return res.status(400).json({
         success: false,
         error: '消息数组不能为空',
       });
+    }
+
+    if (fileIds && Array.isArray(fileIds) && fileIds.length > 0) {
+      const filesText = await fileService.getFilesTextForContext(fileIds);
+      if (filesText.length > 0) {
+        const lastUserMsgIndex = messages.map((m: { role: string }) => m.role).lastIndexOf('user');
+        if (lastUserMsgIndex >= 0) {
+          const fileParts = filesText.map(f => `--- 文件: ${f.filename} ---\n${f.text}`).join('\n\n');
+          const fileContext = `\n\n[用户上传的文件内容]\n${fileParts}\n[/文件内容结束]`;
+          messages[lastUserMsgIndex].content += fileContext;
+        }
+      }
     }
 
     res.setHeader('Content-Type', 'text/event-stream');

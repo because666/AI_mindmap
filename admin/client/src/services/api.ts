@@ -133,6 +133,12 @@ export const auditApi = {
     typedPost<void>(`/admin/audit/${id}/mark-safe`, { reason }),
   deleteMessage: (id: string, reason: string) =>
     typedDelete<void>(`/admin/audit/${id}/message`, { data: { reason } }),
+  getConversations: (params: { page?: number; limit?: number; search?: string; workspaceId?: string }) =>
+    typedGet<unknown>('/admin/audit/conversations', { params }),
+  getConversationDetail: (id: string) =>
+    typedGet<unknown>(`/admin/audit/conversations/${id}`),
+  deleteConversationMessage: (convId: string, msgIndex: number, reason: string) =>
+    typedDelete<void>(`/admin/audit/conversations/${convId}/messages/${msgIndex}`, { data: { reason } }),
 };
 
 export const pushApi = {

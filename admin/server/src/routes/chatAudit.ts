@@ -3,23 +3,37 @@ import { adminDB } from '../config/database';
 import { ChatAuditItem, SensitiveWordConfig, PaginationResult } from '../types';
 import { requireAuth } from '../middleware/auth';
 import { auditLog } from '../middleware/auditLog';
+import { sanitizePagination } from '../utils/validators';
 
 const router = Router();
 
 /**
  * 获取敏感词配置
+ * 从 admin_configs 中提取敏感词相关字段，统一返回格式
  */
 router.get('/config', requireAuth, async (_req: Request, res: Response) => {
   try {
-    let config = await adminDB.findOne<SensitiveWordConfig>('admin_configs', {});
-    if (!config) {
-      config = {
+    const adminConfig = await adminDB.findOne('admin_configs', {}) as Record<string, unknown> | null;
+
+    if (!adminConfig) {
+      const defaultConfig: SensitiveWordConfig = {
         enabled: true,
         words: [],
         matchMode: 'exact',
         autoFlag: true,
       };
+      res.json({ success: true, data: defaultConfig });
+      return;
     }
+
+    const features = adminConfig.features as Record<string, unknown> | undefined;
+    const config: SensitiveWordConfig = {
+      enabled: (adminConfig.sensitiveWordEnabled as boolean) ?? (features?.sensitiveWordCheck as boolean) ?? true,
+      words: (adminConfig.sensitiveWords as string[]) || [],
+      matchMode: (adminConfig.sensitiveWordMatchMode as 'exact' | 'fuzzy') || 'exact',
+      autoFlag: (adminConfig.sensitiveWordAutoFlag as boolean) ?? true,
+    };
+
     res.json({ success: true, data: config });
   } catch (error) {
     console.error('获取敏感词配置失败:', error);
@@ -29,6 +43,7 @@ router.get('/config', requireAuth, async (_req: Request, res: Response) => {
 
 /**
  * 更新敏感词配置
+ * 将前端字段映射到数据库字段，确保读写一致
  */
 router.put('/config', requireAuth, auditLog('UPDATE_SENSITIVE_WORDS', 'config'), async (req: Request, res: Response) => {
   try {
@@ -40,9 +55,9 @@ router.put('/config', requireAuth, auditLog('UPDATE_SENSITIVE_WORDS', 'config'),
       return;
     }
 
-    await adminDB.updateOne('admin_configs', { _id: adminConfig._id } as never, {
+    await adminDB.updateOne('admin_configs', { _id: (adminConfig as Record<string, unknown>)._id } as never, {
       $set: {
-        'features.sensitiveWordCheck': enabled,
+        sensitiveWordEnabled: enabled ?? true,
         sensitiveWords: words || [],
         sensitiveWordMatchMode: matchMode || 'exact',
         sensitiveWordAutoFlag: autoFlag !== false,
@@ -232,6 +247,166 @@ router.delete('/:id/message', requireAuth, auditLog('DELETE_AUDIT_MESSAGE', 'aud
   } catch (error) {
     console.error('删除消息失败:', error);
     res.status(500).json({ success: false, error: '删除失败' });
+  }
+});
+
+/**
+ * 获取对话列表
+ * 查看主应用中所有对话记录，用于内容审核
+ */
+router.get('/conversations', requireAuth, async (req: Request, res: Response) => {
+  try {
+    const { page, limit, skip } = sanitizePagination(req.query.page, req.query.limit, 50);
+    const search = req.query.search as string;
+    const workspaceId = req.query.workspaceId as string;
+
+    const filter: Record<string, unknown> = {};
+    if (workspaceId) {
+      filter.workspaceId = workspaceId;
+    }
+    if (search) {
+      filter.$or = [
+        { 'messages.content': { $regex: search, $options: 'i' } },
+        { title: { $regex: search, $options: 'i' } },
+      ];
+    }
+
+    const conversations = await adminDB.find('conversations', filter as never, {
+      sort: { createdAt: -1 },
+      skip,
+      limit,
+    });
+
+    const total = await adminDB.countDocuments('conversations', filter as never);
+
+    const items = conversations.map((conv: Record<string, unknown>) => {
+      const messages = (conv.messages as Array<Record<string, unknown>>) || [];
+      const userMessages = messages.filter((m) => m.role === 'user');
+      const assistantMessages = messages.filter((m) => m.role === 'assistant');
+      return {
+        _id: (conv._id as { toString(): string }).toString(),
+        id: conv.id as string,
+        title: conv.title as string || '未命名对话',
+        workspaceId: conv.workspaceId as string,
+        createdBy: conv.createdBy as string,
+        createdAt: conv.createdAt as string,
+        updatedAt: conv.updatedAt as string,
+        messageCount: messages.length,
+        userMessageCount: userMessages.length,
+        assistantMessageCount: assistantMessages.length,
+        lastMessage: messages.length > 0
+          ? (messages[messages.length - 1].content as string || '').substring(0, 100)
+          : '',
+      };
+    });
+
+    const result: PaginationResult<unknown> = {
+      items,
+      total,
+      page,
+      limit,
+      totalPages: Math.ceil(total / limit),
+    };
+
+    res.json({ success: true, data: result });
+  } catch (error) {
+    console.error('获取对话列表失败:', error);
+    res.status(500).json({ success: false, error: '获取对话列表失败' });
+  }
+});
+
+/**
+ * 获取对话详情
+ * 查看指定对话的完整消息记录，用于内容审核
+ */
+router.get('/conversations/:id', requireAuth, async (req: Request, res: Response) => {
+  try {
+    const { id } = req.params;
+
+    let conversation: Record<string, unknown> | null = null;
+
+    if (/^[0-9a-fA-F]{24}$/.test(id)) {
+      conversation = await adminDB.findOne('conversations', { _id: id } as never) as Record<string, unknown> | null;
+    }
+    if (!conversation) {
+      conversation = await adminDB.findOne('conversations', { id } as never) as Record<string, unknown> | null;
+    }
+
+    if (!conversation) {
+      res.status(404).json({ success: false, error: '对话不存在' });
+      return;
+    }
+
+    const messages = (conversation.messages as Array<Record<string, unknown>>) || [];
+
+    res.json({
+      success: true,
+      data: {
+        _id: (conversation._id as { toString(): string }).toString(),
+        id: conversation.id,
+        title: conversation.title || '未命名对话',
+        workspaceId: conversation.workspaceId,
+        createdBy: conversation.createdBy,
+        createdAt: conversation.createdAt,
+        updatedAt: conversation.updatedAt,
+        messages: messages.map((msg) => ({
+          role: msg.role as string,
+          content: msg.content as string,
+          timestamp: msg.timestamp as string,
+        })),
+      },
+    });
+  } catch (error) {
+    console.error('获取对话详情失败:', error);
+    res.status(500).json({ success: false, error: '获取对话详情失败' });
+  }
+});
+
+/**
+ * 删除对话中的指定消息
+ * 用于移除不安全内容
+ */
+router.delete('/conversations/:convId/messages/:msgIndex', requireAuth, auditLog('DELETE_MESSAGE', 'chat'), async (req: Request, res: Response) => {
+  try {
+    const { convId, msgIndex } = req.params;
+    const index = parseInt(msgIndex, 10);
+
+    if (isNaN(index) || index < 0) {
+      res.status(400).json({ success: false, error: '无效的消息索引' });
+      return;
+    }
+
+    let conversation: Record<string, unknown> | null = null;
+
+    if (/^[0-9a-fA-F]{24}$/.test(convId)) {
+      conversation = await adminDB.findOne('conversations', { _id: convId } as never) as Record<string, unknown> | null;
+    }
+    if (!conversation) {
+      conversation = await adminDB.findOne('conversations', { id: convId } as never) as Record<string, unknown> | null;
+    }
+
+    if (!conversation) {
+      res.status(404).json({ success: false, error: '对话不存在' });
+      return;
+    }
+
+    const messages = (conversation.messages as Array<Record<string, unknown>>) || [];
+    if (index >= messages.length) {
+      res.status(400).json({ success: false, error: '消息索引超出范围' });
+      return;
+    }
+
+    const deletedContent = (messages[index].content as string || '').substring(0, 100);
+    messages.splice(index, 1);
+
+    await adminDB.updateOne('conversations', { _id: conversation._id } as never, {
+      $set: { messages },
+    });
+
+    res.json({ success: true, message: '消息已删除', deletedContentPreview: deletedContent });
+  } catch (error) {
+    console.error('删除消息失败:', error);
+    res.status(500).json({ success: false, error: '删除消息失败' });
   }
 });
 

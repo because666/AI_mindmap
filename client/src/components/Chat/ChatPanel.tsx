@@ -1,8 +1,10 @@
 import React, { useState, useRef, useEffect, useMemo, useCallback } from 'react';
-import { Send, Loader2, Trash2, User, Bot, Sparkles, GitBranch, MessageSquare, Copy, Check, Plus, Brain, ChevronDown, ChevronUp } from 'lucide-react';
+import { Send, Loader2, Trash2, User, Bot, Sparkles, GitBranch, MessageSquare, Copy, Check, Plus, Brain, ChevronDown, ChevronUp, Paperclip, X, FileText, File, Image } from 'lucide-react';
 import { useAppStore } from '../../stores/appStore';
 import { useAPIConfigStore } from '../../stores/apiConfigStore';
 import { chatService } from '../../services/chatService';
+import { fileApi } from '../../services/api';
+import type { FileInfo } from '../../services/api';
 import useMobile from '../../hooks/useMobile';
 import type { StreamEvent } from '../../types';
 import MarkdownRenderer from './MarkdownRenderer';
@@ -139,7 +141,12 @@ const ChatPanel: React.FC<ChatPanelProps> = ({ nodeId }) => {
   const [streamingThinkingContent, setStreamingThinkingContent] = useState<string>('');
   const [branchCreating, setBranchCreating] = useState(false);
   const [hasBuiltInKey, setHasBuiltInKey] = useState(false);
+  const [workspaceFiles, setWorkspaceFiles] = useState<FileInfo[]>([]);
+  const [selectedFileIds, setSelectedFileIds] = useState<string[]>([]);
+  const [isUploading, setIsUploading] = useState(false);
+  const [showFilePanel, setShowFilePanel] = useState(false);
   const messagesEndRef = useRef<HTMLDivElement>(null);
+  const fileInputRef = useRef<HTMLInputElement>(null);
 
   const node = nodeId ? nodes.get(nodeId) : null;
   const conversation = node?.conversationId ? conversations.get(node.conversationId) : null;
@@ -166,6 +173,102 @@ const ChatPanel: React.FC<ChatPanelProps> = ({ nodeId }) => {
     };
     fetchStatus();
   }, []);
+
+  /**
+   * 加载工作区文件列表
+   */
+  const loadWorkspaceFiles = useCallback(async () => {
+    try {
+      const response = await fileApi.list();
+      if (response.data.success) {
+        setWorkspaceFiles(response.data.data);
+      }
+    } catch {
+      // 静默处理
+    }
+  }, []);
+
+  useEffect(() => {
+    loadWorkspaceFiles();
+  }, [loadWorkspaceFiles]);
+
+  /**
+   * 处理文件选择上传
+   */
+  const handleFileSelect = async (event: React.ChangeEvent<HTMLInputElement>) => {
+    const files = event.target.files;
+    if (!files || files.length === 0) return;
+
+    setIsUploading(true);
+    try {
+      const response = await fileApi.upload(Array.from(files));
+      if (response.data.success) {
+        const { uploaded, errors } = response.data.data;
+        if (errors.length > 0) {
+          setError(errors.map(e => `${e.filename}: ${e.error}`).join('; '));
+        }
+        const newFileIds = uploaded.map(f => f.id);
+        setSelectedFileIds(prev => [...prev, ...newFileIds]);
+        await loadWorkspaceFiles();
+      }
+    } catch (err) {
+      setError('文件上传失败，请重试');
+    } finally {
+      setIsUploading(false);
+      if (fileInputRef.current) {
+        fileInputRef.current.value = '';
+      }
+    }
+  };
+
+  /**
+   * 切换文件选中状态
+   */
+  const toggleFileSelection = (fileId: string) => {
+    setSelectedFileIds(prev =>
+      prev.includes(fileId)
+        ? prev.filter(id => id !== fileId)
+        : [...prev, fileId]
+    );
+  };
+
+  /**
+   * 移除已选文件
+   */
+  const removeSelectedFile = (fileId: string) => {
+    setSelectedFileIds(prev => prev.filter(id => id !== fileId));
+  };
+
+  /**
+   * 删除工作区文件
+   */
+  const handleDeleteFile = async (fileId: string) => {
+    try {
+      await fileApi.delete(fileId);
+      setSelectedFileIds(prev => prev.filter(id => id !== fileId));
+      await loadWorkspaceFiles();
+    } catch {
+      setError('删除文件失败');
+    }
+  };
+
+  /**
+   * 格式化文件大小
+   */
+  const formatFileSize = (bytes: number): string => {
+    if (bytes < 1024) return `${bytes}B`;
+    if (bytes < 1024 * 1024) return `${(bytes / 1024).toFixed(1)}KB`;
+    return `${(bytes / (1024 * 1024)).toFixed(1)}MB`;
+  };
+
+  /**
+   * 获取文件图标
+   */
+  const getFileIcon = (mimeType: string) => {
+    if (mimeType.startsWith('image/')) return <Image className="w-3.5 h-3.5" />;
+    if (mimeType === 'application/pdf') return <FileText className="w-3.5 h-3.5 text-red-400" />;
+    return <File className="w-3.5 h-3.5" />;
+  };
 
   /**
    * 获取上下文信息
@@ -226,6 +329,20 @@ const ChatPanel: React.FC<ChatPanelProps> = ({ nodeId }) => {
       { role: 'user' as const, content: userMessage }
     ];
 
+    if (selectedFileIds.length > 0) {
+      const fileContextParts = selectedFileIds.map(fileId => {
+        const f = workspaceFiles.find(wf => wf.id === fileId);
+        return f ? f.originalName : '';
+      }).filter(Boolean);
+
+      if (fileContextParts.length > 0) {
+        allMessages.push({
+          role: 'system' as const,
+          content: `[用户引用了以下文件: ${fileContextParts.join(', ')}，请在回答时参考这些文件内容]`
+        });
+      }
+    }
+
     const handleStream = (event: StreamEvent) => {
       if (event.type === 'content' && event.fullContent) {
         setStreamingContent(event.fullContent);
@@ -238,11 +355,12 @@ const ChatPanel: React.FC<ChatPanelProps> = ({ nodeId }) => {
       }
     };
 
-    const result = await chatService.sendMessageStream(allMessages, config, handleStream);
+    const result = await chatService.sendMessageStream(allMessages, config, handleStream, selectedFileIds.length > 0 ? selectedFileIds : undefined);
 
     setIsLoading(false);
     setStreamingContent('');
     setStreamingThinkingContent('');
+    setSelectedFileIds([]);
 
     if (result.success && result.content) {
       addMessage(convId, { role: 'assistant', content: result.content });
@@ -466,16 +584,65 @@ const ChatPanel: React.FC<ChatPanelProps> = ({ nodeId }) => {
 
       {/* 输入区域 */}
       <div className="p-4 border-t border-dark-700">
+        {/* 已选文件标签 */}
+        {selectedFileIds.length > 0 && (
+          <div className="flex flex-wrap gap-1.5 mb-2">
+            {selectedFileIds.map(fileId => {
+              const file = workspaceFiles.find(f => f.id === fileId);
+              if (!file) return null;
+              return (
+                <div
+                  key={fileId}
+                  className="flex items-center gap-1 px-2 py-1 bg-primary-600/15 border border-primary-500/30 rounded-lg text-xs text-primary-400"
+                >
+                  {getFileIcon(file.mimeType)}
+                  <span className="max-w-[120px] truncate">{file.originalName}</span>
+                  <button
+                    onClick={() => removeSelectedFile(fileId)}
+                    className="p-0.5 hover:text-white transition-colors"
+                  >
+                    <X className="w-3 h-3" />
+                  </button>
+                </div>
+              );
+            })}
+          </div>
+        )}
+
         <div className="flex gap-2">
+          <input
+            ref={fileInputRef}
+            type="file"
+            multiple
+            onChange={handleFileSelect}
+            className="hidden"
+          />
+          <button
+            onClick={() => fileInputRef.current?.click()}
+            disabled={isLoading || isUploading}
+            className="px-3 py-2.5 bg-dark-700 border border-dark-600 rounded-xl text-dark-400 hover:text-white hover:border-primary-500/50 transition-colors disabled:opacity-50"
+            title="上传文件"
+          >
+            {isUploading ? <Loader2 className="w-4 h-4 animate-spin" /> : <Paperclip className="w-4 h-4" />}
+          </button>
           <textarea
             value={input}
             onChange={(e) => setInput(e.target.value)}
             onKeyDown={handleKeyDown}
-            placeholder="输入消息... (Enter发送，Shift+Enter换行)"
+            placeholder={selectedFileIds.length > 0 ? `已引用${selectedFileIds.length}个文件，输入问题...` : "输入消息... (Enter发送，Shift+Enter换行)"}
             rows={1}
             disabled={isLoading}
             className="flex-1 px-4 py-2.5 bg-dark-700 border border-dark-600 rounded-xl text-white placeholder-dark-400 focus:border-primary-500 focus:outline-none resize-none transition-colors text-sm disabled:opacity-50"
           />
+          <button
+            onClick={() => setShowFilePanel(!showFilePanel)}
+            className={`px-3 py-2.5 rounded-xl border transition-colors ${
+              showFilePanel ? 'bg-primary-600/20 border-primary-500/50 text-primary-400' : 'bg-dark-700 border-dark-600 text-dark-400 hover:text-white hover:border-primary-500/50'
+            }`}
+            title="工作区文件"
+          >
+            <FileText className="w-4 h-4" />
+          </button>
           <button
             onClick={handleSend}
             disabled={isLoading || !input.trim()}
@@ -485,9 +652,55 @@ const ChatPanel: React.FC<ChatPanelProps> = ({ nodeId }) => {
           </button>
         </div>
         <p className="text-xs text-dark-500 mt-2 text-center">
-          对话上下文将自动包含父节点历史 · 支持流式输出与思考过程展示
+          对话上下文将自动包含父节点历史 · 支持文件上传与AI分析
         </p>
       </div>
+
+      {/* 文件面板 */}
+      {showFilePanel && (
+        <div className="border-t border-dark-700 bg-dark-800 max-h-60 overflow-y-auto">
+          <div className="p-3">
+            <div className="flex items-center justify-between mb-2">
+              <h4 className="text-xs font-medium text-dark-300">工作区文件</h4>
+              <button
+                onClick={() => fileInputRef.current?.click()}
+                disabled={isUploading}
+                className="text-xs text-primary-400 hover:text-primary-300 transition-colors"
+              >
+                {isUploading ? '上传中...' : '+ 上传'}
+              </button>
+            </div>
+            {workspaceFiles.length === 0 ? (
+              <p className="text-xs text-dark-500 text-center py-3">暂无文件，点击上传或📎按钮添加</p>
+            ) : (
+              <div className="space-y-1">
+                {workspaceFiles.map(file => (
+                  <div
+                    key={file.id}
+                    className={`flex items-center gap-2 px-2 py-1.5 rounded-lg cursor-pointer transition-colors ${
+                      selectedFileIds.includes(file.id)
+                        ? 'bg-primary-600/15 border border-primary-500/30'
+                        : 'hover:bg-dark-700 border border-transparent'
+                    }`}
+                    onClick={() => toggleFileSelection(file.id)}
+                  >
+                    {getFileIcon(file.mimeType)}
+                    <span className="flex-1 text-xs text-dark-300 truncate">{file.originalName}</span>
+                    <span className="text-xs text-dark-500">{formatFileSize(file.size)}</span>
+                    <button
+                      onClick={(e) => { e.stopPropagation(); handleDeleteFile(file.id); }}
+                      className="p-0.5 text-dark-500 hover:text-red-400 transition-colors"
+                      title="删除文件"
+                    >
+                      <Trash2 className="w-3 h-3" />
+                    </button>
+                  </div>
+                ))}
+              </div>
+            )}
+          </div>
+        </div>
+      )}
     </div>
   );
 };

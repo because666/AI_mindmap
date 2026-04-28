@@ -7,13 +7,54 @@ import { Workspace, Visitor, WorkspaceMember, WorkspaceType, MemberRole } from '
  */
 const INVITE_CODE_EXPIRY_DAYS = 7;
 
+interface CacheEntry<T> {
+  data: T;
+  loadedAt: number;
+}
+
 /**
  * 工作区服务类
  * 提供工作区和访客的CRUD操作
+ * 使用带TTL的内存缓存 + MongoDB持久化
  */
 class WorkspaceService {
-  private memoryWorkspaces: Map<string, Workspace> = new Map();
-  private memoryVisitors: Map<string, Visitor> = new Map();
+  private workspaceCache: Map<string, CacheEntry<Workspace>> = new Map();
+  private visitorCache: Map<string, CacheEntry<Visitor>> = new Map();
+  private readonly CACHE_TTL = 60 * 1000; // 1分钟缓存过期
+  private initialized = false;
+
+  /**
+   * 初始化：从MongoDB加载所有数据到内存缓存
+   * 应在服务器启动时调用
+   */
+  async initialize(): Promise<void> {
+    if (this.initialized) return;
+
+    if (!mongoDBService.isConnected()) {
+      console.log('[WorkspaceService] MongoDB未连接，跳过初始化加载');
+      this.initialized = true;
+      return;
+    }
+
+    try {
+      const visitors = await mongoDBService.find<Visitor>('visitors', {});
+      for (const visitor of visitors) {
+        this.visitorCache.set(visitor.id, { data: visitor, loadedAt: Date.now() });
+      }
+      console.log(`[WorkspaceService] 从MongoDB加载了 ${visitors.length} 个访客`);
+
+      const workspaces = await mongoDBService.find<Workspace>('workspaces', {});
+      for (const workspace of workspaces) {
+        this.workspaceCache.set(workspace.id, { data: workspace, loadedAt: Date.now() });
+      }
+      console.log(`[WorkspaceService] 从MongoDB加载了 ${workspaces.length} 个工作区`);
+
+      this.initialized = true;
+    } catch (error) {
+      console.error('[WorkspaceService] 初始化加载失败:', error);
+      this.initialized = true;
+    }
+  }
 
   /**
    * 注册或更新访客信息
@@ -22,15 +63,19 @@ class WorkspaceService {
    * @returns 访客数据
    */
   async registerVisitor(visitorId?: string, nickname?: string): Promise<Visitor> {
-    if (visitorId && this.memoryVisitors.has(visitorId)) {
-      const existing = this.memoryVisitors.get(visitorId)!;
-      if (nickname) {
-        existing.nickname = nickname;
+    await this.ensureInitialized();
+
+    if (visitorId) {
+      const existing = await this.getVisitorFromCacheOrDB(visitorId);
+      if (existing) {
+        if (nickname) {
+          existing.nickname = nickname;
+        }
+        existing.lastSeen = new Date();
+        this.visitorCache.set(visitorId, { data: existing, loadedAt: Date.now() });
+        await this.persistVisitor(existing);
+        return existing;
       }
-      existing.lastSeen = new Date();
-      this.memoryVisitors.set(visitorId, existing);
-      await this.persistVisitor(existing);
-      return existing;
     }
 
     const newVisitor: Visitor = {
@@ -41,7 +86,7 @@ class WorkspaceService {
       createdAt: new Date(),
     };
 
-    this.memoryVisitors.set(newVisitor.id, newVisitor);
+    this.visitorCache.set(newVisitor.id, { data: newVisitor, loadedAt: Date.now() });
     await this.persistVisitor(newVisitor);
     return newVisitor;
   }
@@ -52,16 +97,33 @@ class WorkspaceService {
    * @returns 访客数据或null
    */
   async getVisitor(visitorId: string): Promise<Visitor | null> {
-    if (this.memoryVisitors.has(visitorId)) {
-      return this.memoryVisitors.get(visitorId) || null;
+    await this.ensureInitialized();
+    return this.getVisitorFromCacheOrDB(visitorId);
+  }
+
+  /**
+   * 从缓存或数据库获取访客
+   */
+  private async getVisitorFromCacheOrDB(visitorId: string): Promise<Visitor | null> {
+    const cached = this.visitorCache.get(visitorId);
+    if (cached && Date.now() - cached.loadedAt < this.CACHE_TTL) {
+      return cached.data;
     }
 
     if (mongoDBService.isConnected()) {
-      const visitor = await mongoDBService.findOne<Visitor>('visitors', { id: visitorId } as never);
-      if (visitor) {
-        this.memoryVisitors.set(visitorId, visitor);
-        return visitor;
+      try {
+        const visitor = await mongoDBService.findOne<Visitor>('visitors', { id: visitorId } as never);
+        if (visitor) {
+          this.visitorCache.set(visitorId, { data: visitor, loadedAt: Date.now() });
+          return visitor;
+        }
+      } catch (error) {
+        console.error('[WorkspaceService] 从DB获取访客失败:', error);
       }
+    }
+
+    if (cached) {
+      return cached.data;
     }
 
     return null;
@@ -81,6 +143,8 @@ class WorkspaceService {
     type: WorkspaceType = 'public',
     description?: string
   ): Promise<Workspace> {
+    await this.ensureInitialized();
+
     const owner = await this.getVisitor(ownerId);
     const ownerNickname = owner?.nickname || '未知用户';
 
@@ -104,9 +168,8 @@ class WorkspaceService {
       updatedAt: new Date(),
     };
 
-    this.memoryWorkspaces.set(workspace.id, workspace);
+    this.workspaceCache.set(workspace.id, { data: workspace, loadedAt: Date.now() });
     await this.persistWorkspace(workspace);
-
     await this.addWorkspaceToVisitor(ownerId, workspace.id);
 
     return workspace;
@@ -118,16 +181,27 @@ class WorkspaceService {
    * @returns 工作区数据或null
    */
   async getWorkspace(workspaceId: string): Promise<Workspace | null> {
-    if (this.memoryWorkspaces.has(workspaceId)) {
-      return this.memoryWorkspaces.get(workspaceId) || null;
+    await this.ensureInitialized();
+
+    const cached = this.workspaceCache.get(workspaceId);
+    if (cached && Date.now() - cached.loadedAt < this.CACHE_TTL) {
+      return cached.data;
     }
 
     if (mongoDBService.isConnected()) {
-      const workspace = await mongoDBService.findOne<Workspace>('workspaces', { id: workspaceId } as never);
-      if (workspace) {
-        this.memoryWorkspaces.set(workspaceId, workspace);
-        return workspace;
+      try {
+        const workspace = await mongoDBService.findOne<Workspace>('workspaces', { id: workspaceId } as never);
+        if (workspace) {
+          this.workspaceCache.set(workspaceId, { data: workspace, loadedAt: Date.now() });
+          return workspace;
+        }
+      } catch (error) {
+        console.error('[WorkspaceService] 从DB获取工作区失败:', error);
       }
+    }
+
+    if (cached) {
+      return cached.data;
     }
 
     return null;
@@ -139,13 +213,16 @@ class WorkspaceService {
    * @returns 工作区列表
    */
   async getVisitorWorkspaces(visitorId: string): Promise<Workspace[]> {
-    const workspaces: Workspace[] = [];
+    await this.ensureInitialized();
 
-    this.memoryWorkspaces.forEach((workspace) => {
-      if (workspace.members.some(m => m.visitorId === visitorId)) {
-        workspaces.push(workspace);
+    const workspaces: Workspace[] = [];
+    const now = Date.now();
+
+    for (const entry of this.workspaceCache.values()) {
+      if (entry.data.members.some(m => m.visitorId === visitorId)) {
+        workspaces.push(entry.data);
       }
-    });
+    }
 
     if (mongoDBService.isConnected()) {
       try {
@@ -155,11 +232,11 @@ class WorkspaceService {
         for (const ws of dbWorkspaces) {
           if (!workspaces.some(w => w.id === ws.id)) {
             workspaces.push(ws);
-            this.memoryWorkspaces.set(ws.id, ws);
           }
+          this.workspaceCache.set(ws.id, { data: ws, loadedAt: now });
         }
       } catch (error) {
-        console.error('从MongoDB获取访客工作区失败:', error);
+        console.error('[WorkspaceService] 从DB获取访客工作区失败:', error);
       }
     }
 
@@ -172,16 +249,19 @@ class WorkspaceService {
    * @returns 公开工作区列表
    */
   async getPublicWorkspaces(excludeVisitorId?: string): Promise<Workspace[]> {
-    const workspaces: Workspace[] = [];
+    await this.ensureInitialized();
 
-    this.memoryWorkspaces.forEach((workspace) => {
-      if (workspace.type === 'public') {
-        if (excludeVisitorId && workspace.members.some(m => m.visitorId === excludeVisitorId)) {
-          return;
+    const workspaces: Workspace[] = [];
+    const now = Date.now();
+
+    for (const entry of this.workspaceCache.values()) {
+      if (entry.data.type === 'public') {
+        if (excludeVisitorId && entry.data.members.some(m => m.visitorId === excludeVisitorId)) {
+          continue;
         }
-        workspaces.push(workspace);
+        workspaces.push(entry.data);
       }
-    });
+    }
 
     if (mongoDBService.isConnected()) {
       try {
@@ -191,12 +271,12 @@ class WorkspaceService {
             if (excludeVisitorId && ws.members.some(m => m.visitorId === excludeVisitorId)) {
               continue;
             }
-            this.memoryWorkspaces.set(ws.id, ws);
             workspaces.push(ws);
           }
+          this.workspaceCache.set(ws.id, { data: ws, loadedAt: now });
         }
       } catch (error) {
-        console.error('从MongoDB获取公开工作区失败:', error);
+        console.error('[WorkspaceService] 从DB获取公开工作区失败:', error);
       }
     }
 
@@ -215,6 +295,8 @@ class WorkspaceService {
     visitorId: string,
     inviteCode?: string
   ): Promise<{ success: boolean; workspace?: Workspace; error?: string }> {
+    await this.ensureInitialized();
+
     const workspace = await this.getWorkspace(workspaceId);
     if (!workspace) {
       return { success: false, error: '工作区不存在' };
@@ -246,7 +328,7 @@ class WorkspaceService {
     workspace.members.push(newMember);
     workspace.updatedAt = new Date();
 
-    this.memoryWorkspaces.set(workspace.id, workspace);
+    this.workspaceCache.set(workspace.id, { data: workspace, loadedAt: Date.now() });
     await this.persistWorkspace(workspace);
     await this.addWorkspaceToVisitor(visitorId, workspace.id);
 
@@ -263,21 +345,28 @@ class WorkspaceService {
     inviteCode: string,
     visitorId: string
   ): Promise<{ success: boolean; workspace?: Workspace; error?: string }> {
+    await this.ensureInitialized();
+
     let targetWorkspace: Workspace | null = null;
 
-    this.memoryWorkspaces.forEach((workspace) => {
-      if (workspace.inviteCode === inviteCode) {
-        targetWorkspace = workspace;
+    for (const entry of this.workspaceCache.values()) {
+      if (entry.data.inviteCode === inviteCode) {
+        targetWorkspace = entry.data;
+        break;
       }
-    });
+    }
 
     if (!targetWorkspace && mongoDBService.isConnected()) {
-      const results = await mongoDBService.find<Workspace>('workspaces', {
-        inviteCode
-      } as never);
-      if (results.length > 0) {
-        targetWorkspace = results[0];
-        this.memoryWorkspaces.set(targetWorkspace.id, targetWorkspace);
+      try {
+        const results = await mongoDBService.find<Workspace>('workspaces', {
+          inviteCode
+        } as never);
+        if (results.length > 0) {
+          targetWorkspace = results[0];
+          this.workspaceCache.set(targetWorkspace.id, { data: targetWorkspace, loadedAt: Date.now() });
+        }
+      } catch (error) {
+        console.error('[WorkspaceService] 通过邀请码查找工作区失败:', error);
       }
     }
 
@@ -295,6 +384,8 @@ class WorkspaceService {
    * @returns 是否成功
    */
   async leaveWorkspace(workspaceId: string, visitorId: string): Promise<{ success: boolean; error?: string }> {
+    await this.ensureInitialized();
+
     const workspace = await this.getWorkspace(workspaceId);
     if (!workspace) {
       return { success: false, error: '工作区不存在' };
@@ -307,7 +398,7 @@ class WorkspaceService {
     workspace.members = workspace.members.filter(m => m.visitorId !== visitorId);
     workspace.updatedAt = new Date();
 
-    this.memoryWorkspaces.set(workspace.id, workspace);
+    this.workspaceCache.set(workspace.id, { data: workspace, loadedAt: Date.now() });
     await this.persistWorkspace(workspace);
     await this.removeWorkspaceFromVisitor(visitorId, workspace.id);
 
@@ -326,6 +417,8 @@ class WorkspaceService {
     updates: Partial<Pick<Workspace, 'name' | 'description' | 'type'>>,
     visitorId: string
   ): Promise<{ success: boolean; workspace?: Workspace; error?: string }> {
+    await this.ensureInitialized();
+
     const workspace = await this.getWorkspace(workspaceId);
     if (!workspace) {
       return { success: false, error: '工作区不存在' };
@@ -354,7 +447,7 @@ class WorkspaceService {
     }
 
     workspace.updatedAt = new Date();
-    this.memoryWorkspaces.set(workspace.id, workspace);
+    this.workspaceCache.set(workspace.id, { data: workspace, loadedAt: Date.now() });
     await this.persistWorkspace(workspace);
 
     return { success: true, workspace };
@@ -370,6 +463,8 @@ class WorkspaceService {
     workspaceId: string,
     visitorId: string
   ): Promise<{ success: boolean; inviteCode?: string; error?: string }> {
+    await this.ensureInitialized();
+
     const workspace = await this.getWorkspace(workspaceId);
     if (!workspace) {
       return { success: false, error: '工作区不存在' };
@@ -383,7 +478,7 @@ class WorkspaceService {
     workspace.inviteCodeExpiry = new Date(Date.now() + INVITE_CODE_EXPIRY_DAYS * 24 * 60 * 60 * 1000);
     workspace.updatedAt = new Date();
 
-    this.memoryWorkspaces.set(workspace.id, workspace);
+    this.workspaceCache.set(workspace.id, { data: workspace, loadedAt: Date.now() });
     await this.persistWorkspace(workspace);
 
     return { success: true, inviteCode: workspace.inviteCode };
@@ -401,6 +496,8 @@ class WorkspaceService {
     targetVisitorId: string,
     operatorVisitorId: string
   ): Promise<{ success: boolean; error?: string }> {
+    await this.ensureInitialized();
+
     const workspace = await this.getWorkspace(workspaceId);
     if (!workspace) {
       return { success: false, error: '工作区不存在' };
@@ -422,7 +519,7 @@ class WorkspaceService {
     workspace.members.splice(memberIndex, 1);
     workspace.updatedAt = new Date();
 
-    this.memoryWorkspaces.set(workspace.id, workspace);
+    this.workspaceCache.set(workspace.id, { data: workspace, loadedAt: Date.now() });
     await this.persistWorkspace(workspace);
     await this.removeWorkspaceFromVisitor(targetVisitorId, workspace.id);
 
@@ -439,6 +536,8 @@ class WorkspaceService {
     workspaceId: string,
     visitorId: string
   ): Promise<{ success: boolean; error?: string }> {
+    await this.ensureInitialized();
+
     const workspace = await this.getWorkspace(workspaceId);
     if (!workspace) {
       return { success: false, error: '工作区不存在' };
@@ -452,7 +551,7 @@ class WorkspaceService {
       await this.removeWorkspaceFromVisitor(member.visitorId, workspaceId);
     }
 
-    this.memoryWorkspaces.delete(workspaceId);
+    this.workspaceCache.delete(workspaceId);
 
     if (mongoDBService.isConnected()) {
       await mongoDBService.deleteOne('workspaces', { id: workspaceId } as never);
@@ -488,9 +587,6 @@ class WorkspaceService {
 
   /**
    * 判断访客是否为工作区创建者
-   * @param workspace - 工作区数据
-   * @param visitorId - 访客ID
-   * @returns 是否为创建者
    */
   private isOwner(workspace: Workspace, visitorId: string): boolean {
     return workspace.ownerId === visitorId;
@@ -498,7 +594,6 @@ class WorkspaceService {
 
   /**
    * 生成6位邀请码
-   * @returns 邀请码字符串
    */
   private generateInviteCode(): string {
     const chars = 'ABCDEFGHJKLMNPQRSTUVWXYZ23456789';
@@ -511,65 +606,74 @@ class WorkspaceService {
 
   /**
    * 将工作区添加到访客的工作区列表
-   * @param visitorId - 访客ID
-   * @param workspaceId - 工作区ID
    */
   private async addWorkspaceToVisitor(visitorId: string, workspaceId: string): Promise<void> {
-    const visitor = this.memoryVisitors.get(visitorId);
+    const visitor = await this.getVisitor(visitorId);
     if (visitor && !visitor.workspaces.includes(workspaceId)) {
       visitor.workspaces.push(workspaceId);
+      this.visitorCache.set(visitorId, { data: visitor, loadedAt: Date.now() });
       await this.persistVisitor(visitor);
     }
   }
 
   /**
    * 从访客的工作区列表中移除
-   * @param visitorId - 访客ID
-   * @param workspaceId - 工作区ID
    */
   private async removeWorkspaceFromVisitor(visitorId: string, workspaceId: string): Promise<void> {
-    const visitor = this.memoryVisitors.get(visitorId);
+    const visitor = await this.getVisitor(visitorId);
     if (visitor) {
       visitor.workspaces = visitor.workspaces.filter(id => id !== workspaceId);
+      this.visitorCache.set(visitorId, { data: visitor, loadedAt: Date.now() });
       await this.persistVisitor(visitor);
     }
   }
 
   /**
    * 持久化访客数据到MongoDB
-   * @param visitor - 访客数据
+   * 使用upsert逻辑：记录存在则更新，不存在则插入
    */
   private async persistVisitor(visitor: Visitor): Promise<void> {
     if (!mongoDBService.isConnected()) return;
     try {
-      await mongoDBService.updateOne('visitors', { id: visitor.id } as never, {
-        $set: visitor
-      } as never);
-    } catch {
-      try {
+      const existing = await mongoDBService.findOne('visitors', { id: visitor.id } as never);
+      if (existing) {
+        await mongoDBService.updateOne('visitors', { id: visitor.id } as never, {
+          $set: visitor
+        } as never);
+      } else {
         await mongoDBService.insertOne('visitors', visitor);
-      } catch (error) {
-        console.error('持久化访客数据失败:', error);
       }
+    } catch (error) {
+      console.error('[WorkspaceService] 持久化访客数据失败:', error);
     }
   }
 
   /**
    * 持久化工作区数据到MongoDB
-   * @param workspace - 工作区数据
+   * 使用upsert逻辑：记录存在则更新，不存在则插入
    */
   private async persistWorkspace(workspace: Workspace): Promise<void> {
     if (!mongoDBService.isConnected()) return;
     try {
-      await mongoDBService.updateOne('workspaces', { id: workspace.id } as never, {
-        $set: workspace
-      } as never);
-    } catch {
-      try {
+      const existing = await mongoDBService.findOne('workspaces', { id: workspace.id } as never);
+      if (existing) {
+        await mongoDBService.updateOne('workspaces', { id: workspace.id } as never, {
+          $set: workspace
+        } as never);
+      } else {
         await mongoDBService.insertOne('workspaces', workspace);
-      } catch (error) {
-        console.error('持久化工作区数据失败:', error);
       }
+    } catch (error) {
+      console.error('[WorkspaceService] 持久化工作区数据失败:', error);
+    }
+  }
+
+  /**
+   * 确保已初始化
+   */
+  private async ensureInitialized(): Promise<void> {
+    if (!this.initialized) {
+      await this.initialize();
     }
   }
 }

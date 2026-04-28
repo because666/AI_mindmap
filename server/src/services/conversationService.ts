@@ -2,13 +2,20 @@ import { v4 as uuidv4 } from 'uuid';
 import { mongoDBService } from '../data/mongodb/connection';
 import { Conversation, Message } from '../types';
 
+interface CacheEntry {
+  conversation: Conversation;
+  loadedAt: number;
+}
+
 /**
  * 对话服务类
  * 提供对话的CRUD操作
  * 所有数据按工作区隔离
+ * 使用带TTL的内存缓存，确保admin server修改后能及时同步
  */
 class ConversationService {
-  private memoryConversations: Map<string, Conversation> = new Map();
+  private memoryConversations: Map<string, CacheEntry> = new Map();
+  private readonly CACHE_TTL = 30 * 1000; // 30秒缓存过期时间
 
   /**
    * 创建对话
@@ -36,26 +43,37 @@ class ConversationService {
       await mongoDBService.insertOne('conversations', conversation);
     }
 
-    this.memoryConversations.set(conversation.id, conversation);
+    this.memoryConversations.set(conversation.id, { conversation, loadedAt: Date.now() });
     return conversation;
   }
 
   /**
    * 获取对话
+   * 优先从缓存获取，缓存过期或不存在时从数据库重新加载
    * @param id - 对话ID
    * @returns 对话数据或null
    */
   async getConversation(id: string): Promise<Conversation | null> {
-    if (this.memoryConversations.has(id)) {
-      return this.memoryConversations.get(id) || null;
+    const cached = this.memoryConversations.get(id);
+    const now = Date.now();
+
+    // 缓存存在且未过期，直接返回
+    if (cached && now - cached.loadedAt < this.CACHE_TTL) {
+      return cached.conversation;
     }
 
+    // 缓存不存在或已过期，从数据库重新加载
     if (mongoDBService.isConnected()) {
       const conv = await mongoDBService.findOne<Conversation>('conversations', { id } as never);
       if (conv) {
-        this.memoryConversations.set(id, conv);
+        this.memoryConversations.set(id, { conversation: conv, loadedAt: now });
         return conv;
       }
+    }
+
+    // 数据库未连接且缓存已过期，返回过期缓存（兜底）
+    if (cached) {
+      return cached.conversation;
     }
 
     return null;
@@ -67,14 +85,18 @@ class ConversationService {
    * @returns 对话数据或null
    */
   async getConversationByNodeId(nodeId: string): Promise<Conversation | null> {
-    for (const conv of this.memoryConversations.values()) {
-      if (conv.nodeId === nodeId) return conv;
+    // 先检查缓存中是否有未过期的匹配项
+    const now = Date.now();
+    for (const entry of this.memoryConversations.values()) {
+      if (entry.conversation.nodeId === nodeId && now - entry.loadedAt < this.CACHE_TTL) {
+        return entry.conversation;
+      }
     }
 
     if (mongoDBService.isConnected()) {
       const conv = await mongoDBService.findOne<Conversation>('conversations', { nodeId } as never);
       if (conv) {
-        this.memoryConversations.set(conv.id, conv);
+        this.memoryConversations.set(conv.id, { conversation: conv, loadedAt: now });
         return conv;
       }
     }
@@ -89,10 +111,11 @@ class ConversationService {
    */
   async getConversationsByWorkspaceId(workspaceId: string): Promise<Conversation[]> {
     const results: Conversation[] = [];
+    const now = Date.now();
 
-    for (const conv of this.memoryConversations.values()) {
-      if (conv.workspaceId === workspaceId) {
-        results.push(conv);
+    for (const entry of this.memoryConversations.values()) {
+      if (entry.conversation.workspaceId === workspaceId && now - entry.loadedAt < this.CACHE_TTL) {
+        results.push(entry.conversation);
       }
     }
 
@@ -100,7 +123,7 @@ class ConversationService {
       const dbConvs = await mongoDBService.find<Conversation>('conversations', { workspaceId } as never);
       for (const conv of dbConvs) {
         if (!results.find(r => r.id === conv.id)) {
-          this.memoryConversations.set(conv.id, conv);
+          this.memoryConversations.set(conv.id, { conversation: conv, loadedAt: now });
           results.push(conv);
         }
       }
@@ -149,7 +172,7 @@ class ConversationService {
       } as never);
     }
 
-    this.memoryConversations.set(conversationId, conversation);
+    this.memoryConversations.set(conversationId, { conversation, loadedAt: Date.now() });
     return newMessage;
   }
 
@@ -171,7 +194,7 @@ class ConversationService {
       } as never);
     }
 
-    this.memoryConversations.set(conversationId, conversation);
+    this.memoryConversations.set(conversationId, { conversation, loadedAt: Date.now() });
     return true;
   }
 
@@ -200,7 +223,7 @@ class ConversationService {
       } as never);
     }
 
-    this.memoryConversations.set(conversationId, conversation);
+    this.memoryConversations.set(conversationId, { conversation, loadedAt: Date.now() });
     return true;
   }
 
@@ -229,6 +252,25 @@ class ConversationService {
 
     this.memoryConversations.delete(conversationId);
     return true;
+  }
+
+  /**
+   * 从内存缓存中移除指定对话
+   * 用于外部（如admin server）修改数据库后，通知主server刷新缓存
+   * @param conversationId - 对话ID
+   */
+  evictFromCache(conversationId: string): void {
+    this.memoryConversations.delete(conversationId);
+  }
+
+  /**
+   * 强制从数据库重新加载对话到缓存
+   * @param conversationId - 对话ID
+   * @returns 重新加载后的对话或null
+   */
+  async reloadConversation(conversationId: string): Promise<Conversation | null> {
+    this.memoryConversations.delete(conversationId);
+    return this.getConversation(conversationId);
   }
 }
 

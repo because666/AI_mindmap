@@ -53,9 +53,44 @@ api.interceptors.request.use((config) => {
   return config;
 });
 
+/**
+ * 封禁/关闭状态错误接口
+ */
+export interface BannedError {
+  success: false;
+  error: string;
+  code: 'BANNED' | 'WORKSPACE_CLOSED';
+}
+
+/**
+ * 判断错误是否为封禁/关闭状态错误
+ * @param error - 错误对象
+ * @returns 是否为封禁/关闭状态错误
+ */
+export function isBannedOrClosedError(error: unknown): error is { response: { status: number; data: BannedError } } {
+  if (!error || typeof error !== 'object') return false;
+  const err = error as { response?: { status?: number; data?: { code?: string } } };
+  return err?.response?.status === 403 &&
+    (err?.response?.data?.code === 'BANNED' || err?.response?.data?.code === 'WORKSPACE_CLOSED');
+}
+
 api.interceptors.response.use(
   (response) => response.data,
   (error) => {
+    if (error.response?.status === 403) {
+      const data = error.response.data as BannedError | undefined;
+      if (data?.code === 'BANNED') {
+        localStorage.removeItem('visitorId');
+        window.dispatchEvent(new CustomEvent('auth:banned', {
+          detail: { error: data.error, code: data.code }
+        }));
+      } else if (data?.code === 'WORKSPACE_CLOSED') {
+        localStorage.removeItem('currentWorkspaceId');
+        window.dispatchEvent(new CustomEvent('auth:workspace-closed', {
+          detail: { error: data.error, code: data.code }
+        }));
+      }
+    }
     console.error('API错误:', error.response?.data || error.message);
     return Promise.reject(error);
   }

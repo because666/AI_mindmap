@@ -3,11 +3,26 @@ import { adminDB } from '../config/database';
 import { UserListItem, PaginationResult } from '../types';
 import { requireAuth } from '../middleware/auth';
 import { auditLog } from '../middleware/auditLog';
-import { escapeRegex, sanitizePagination, verifyConfirmCode } from '../utils/validators';
+import { escapeRegex, sanitizePagination } from '../utils/validators';
+import { notifyVisitorCacheClear } from '../services/cacheNotify';
 
 const router = Router();
 
 const ALLOWED_SORT_FIELDS = ['createdAt', 'nickname', 'lastSeen', 'loginCount'];
+
+/**
+ * 验证危险操作确认码
+ * 确认码必须为6位以上字母数字组合
+ * @param confirmCode - 确认码
+ * @param id - 目标对象ID（用于生成校验）
+ * @returns 是否有效
+ */
+function verifyConfirmCode(confirmCode: unknown, id: string): boolean {
+  if (!confirmCode || typeof confirmCode !== 'string') return false;
+  if (confirmCode.length < 6) return false;
+  if (!/^[a-zA-Z0-9]+$/.test(confirmCode)) return false;
+  return confirmCode.includes(id.substring(0, 4));
+}
 
 /**
  * 获取用户列表
@@ -163,6 +178,8 @@ router.post('/:id/ban', requireAuth, auditLog('BAN_USER', 'user'), async (req: R
       return;
     }
 
+    await notifyVisitorCacheClear(id);
+
     res.json({ success: true, message: '用户已封禁' });
   } catch (error) {
     console.error('封禁用户失败:', error);
@@ -192,6 +209,8 @@ router.post('/:id/unban', requireAuth, auditLog('UNBAN_USER', 'user'), async (re
       res.status(404).json({ success: false, error: '用户不存在' });
       return;
     }
+
+    await notifyVisitorCacheClear(id);
 
     res.json({ success: true, message: '用户已解封' });
   } catch (error) {

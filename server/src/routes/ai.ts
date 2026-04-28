@@ -1,14 +1,28 @@
 import { Router, Request, Response } from 'express';
 import { aiService } from '../services/aiService';
 import { fileService } from '../services/fileService';
-import { optionalVisitorAuth } from '../middleware';
+import { optionalVisitorAuth, visitorAuth } from '../middleware';
+import { sensitiveWordService } from '../services/sensitiveWordService';
 
 const router = Router();
 
 /**
- * 普通聊天接口（非流式）
+ * 从消息数组中提取用户发送的文本内容
+ * @param messages - 消息数组
+ * @returns 拼接后的用户文本
  */
-router.post('/chat', optionalVisitorAuth, async (req: Request, res: Response) => {
+function extractUserText(messages: Array<{ role: string; content: string }>): string {
+  return messages
+    .filter(m => m.role === 'user')
+    .map(m => m.content)
+    .join(' ');
+}
+
+/**
+ * 普通聊天接口（非流式）
+ * 使用 visitorAuth 确保封禁用户无法调用
+ */
+router.post('/chat', visitorAuth, async (req: Request, res: Response) => {
   try {
     const { messages, config, model, temperature, maxTokens } = req.body;
 
@@ -17,6 +31,19 @@ router.post('/chat', optionalVisitorAuth, async (req: Request, res: Response) =>
         success: false,
         error: '消息数组不能为空',
       });
+    }
+
+    const userText = extractUserText(messages);
+    if (userText) {
+      const checkResult = await sensitiveWordService.check(userText);
+      if (checkResult.hasSensitiveWord) {
+        return res.status(400).json({
+          success: false,
+          error: '消息包含敏感内容，请修改后重试',
+          sensitiveWords: checkResult.matchedWords,
+          riskLevel: checkResult.riskLevel,
+        });
+      }
     }
 
     const chatModel = config?.model || model;
@@ -43,8 +70,9 @@ router.post('/chat', optionalVisitorAuth, async (req: Request, res: Response) =>
 
 /**
  * 流式聊天接口（SSE）
+ * 使用 visitorAuth 确保封禁用户无法调用
  */
-router.post('/chat/stream', optionalVisitorAuth, async (req: Request, res: Response) => {
+router.post('/chat/stream', visitorAuth, async (req: Request, res: Response) => {
   try {
     const { messages, config, model, temperature, maxTokens, fileIds } = req.body;
 
@@ -53,6 +81,19 @@ router.post('/chat/stream', optionalVisitorAuth, async (req: Request, res: Respo
         success: false,
         error: '消息数组不能为空',
       });
+    }
+
+    const userText = extractUserText(messages);
+    if (userText) {
+      const checkResult = await sensitiveWordService.check(userText);
+      if (checkResult.hasSensitiveWord) {
+        return res.status(400).json({
+          success: false,
+          error: '消息包含敏感内容，请修改后重试',
+          sensitiveWords: checkResult.matchedWords,
+          riskLevel: checkResult.riskLevel,
+        });
+      }
     }
 
     if (fileIds && Array.isArray(fileIds) && fileIds.length > 0) {

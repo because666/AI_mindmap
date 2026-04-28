@@ -35,6 +35,9 @@ export interface Workspace {
   members: WorkspaceMember[];
   createdAt: Date;
   updatedAt: Date;
+  isClosed?: boolean;
+  closeReason?: string;
+  closedAt?: Date;
 }
 
 /**
@@ -47,6 +50,10 @@ export interface Visitor {
   lastSeen: Date;
   workspaces: string[];
   createdAt: Date;
+  isBanned?: boolean;
+  banReason?: string;
+  bannedAt?: Date;
+  banExpiresAt?: Date;
 }
 
 /**

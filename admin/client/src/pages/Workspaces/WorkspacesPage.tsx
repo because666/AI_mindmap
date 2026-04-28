@@ -3,11 +3,31 @@ import { workspacesApi } from '../../services/api';
 import type { WorkspaceListItem, PaginationResult } from '../../types';
 import { Search, Eye, XCircle, Bell } from 'lucide-react';
 
+/**
+ * 操作反馈提示接口
+ */
+interface ToastMessage {
+  type: 'success' | 'error';
+  text: string;
+}
+
 const WorkspacesPage: React.FC = () => {
   const [data, setData] = useState<PaginationResult<WorkspaceListItem> | null>(null);
   const [loading, setLoading] = useState(true);
   const [search, setSearch] = useState('');
   const [page, setPage] = useState(1);
+  const [toast, setToast] = useState<ToastMessage | null>(null);
+  const [actionLoading, setActionLoading] = useState(false);
+
+  /**
+   * 显示操作反馈提示
+   * @param type - 提示类型
+   * @param text - 提示文本
+   */
+  const showToast = (type: 'success' | 'error', text: string) => {
+    setToast({ type, text });
+    setTimeout(() => setToast(null), 3000);
+  };
 
   useEffect(() => { loadWorkspaces(); }, [page]);
 
@@ -32,16 +52,31 @@ const WorkspacesPage: React.FC = () => {
   const handleClose = async (id: string) => {
     const reason = prompt('请输入关闭原因：');
     if (!reason) return;
+    if (actionLoading) return;
+    setActionLoading(true);
     try {
       await workspacesApi.close(id, reason);
+      showToast('success', '工作区已关闭');
       loadWorkspaces();
     } catch (error) {
       console.error('关闭工作区失败:', error);
+      showToast('error', '关闭工作区失败，请重试');
+    } finally {
+      setActionLoading(false);
     }
   };
 
   return (
     <div>
+      {/* 操作反馈提示 */}
+      {toast && (
+        <div className={`fixed top-4 right-4 z-[60] px-4 py-3 rounded-lg shadow-lg text-sm font-medium transition-all ${
+          toast.type === 'success' ? 'bg-green-500 text-white' : 'bg-red-500 text-white'
+        }`}>
+          {toast.text}
+        </div>
+      )}
+
       <h1 className="text-2xl font-bold text-gray-800 mb-6">工作区管理</h1>
       <div className="bg-white rounded-xl shadow-sm border border-gray-100">
         <div className="p-4 border-b border-gray-100">

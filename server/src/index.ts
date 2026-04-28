@@ -85,6 +85,40 @@ app.use('/api/conversations', conversationsRouter);
 app.use('/api/search', searchRouter);
 app.use('/api/ai', aiRouter);
 
+/**
+ * 内部API：清除服务端缓存
+ * Admin后台操作（封禁用户、关闭工作区、更新敏感词）后调用
+ * 需要提供 x-internal-token 请求头
+ */
+app.post('/api/internal/clear-cache', async (req, res) => {
+  const internalToken = req.headers['x-internal-token'];
+  if (internalToken !== process.env.INTERNAL_API_TOKEN) {
+    return res.status(403).json({ success: false, error: '无权访问' });
+  }
+
+  const { type, visitorId, workspaceId } = req.body;
+
+  try {
+    if (type === 'visitor' && visitorId) {
+      workspaceService.clearVisitorCache(visitorId);
+    } else if (type === 'workspace' && workspaceId) {
+      workspaceService.clearWorkspaceCache(workspaceId);
+    } else if (type === 'sensitive-word') {
+      const { sensitiveWordService } = await import('./services/sensitiveWordService');
+      sensitiveWordService.clearCache();
+    } else {
+      workspaceService.clearAllCache();
+      const { sensitiveWordService } = await import('./services/sensitiveWordService');
+      sensitiveWordService.clearCache();
+    }
+
+    res.json({ success: true });
+  } catch (error) {
+    const message = error instanceof Error ? error.message : String(error);
+    res.status(500).json({ success: false, error: message });
+  }
+});
+
 app.use(errorHandler);
 
 const clientDistPath = process.env.CLIENT_DIST_PATH || path.join(__dirname, '../../client/dist');

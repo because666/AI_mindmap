@@ -371,7 +371,11 @@ const ChatPanel: React.FC<ChatPanelProps> = ({ nodeId }) => {
     if (result.success && result.content) {
       addMessage(convId, { role: 'assistant', content: result.content });
     } else if (!result.success) {
-      setError(result.error || '发送消息失败');
+      if (result.sensitiveWords && result.sensitiveWords.length > 0) {
+        setError(`消息包含敏感内容（${result.sensitiveWords.join('、')}），请修改后重试`);
+      } else {
+        setError(result.error || '发送消息失败');
+      }
     }
   };
 

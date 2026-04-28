@@ -6,6 +6,7 @@ import { AdminConfig, AdminIP } from '../types';
 import { getClientIp } from '../middleware/ipWhitelist';
 import { requireAuth } from '../middleware/auth';
 import { auditLog } from '../middleware/auditLog';
+import { notifySensitiveWordCacheClear } from '../services/cacheNotify';
 
 const router = Router();
 
@@ -198,8 +199,13 @@ router.put('/features', requireAuth, auditLog('UPDATE_FEATURES', 'settings'), as
         'features.sensitiveWordCheck': sensitiveWordCheck,
         'features.auditLog': auditLog,
         'features.dataExport': dataExport,
+        sensitiveWordEnabled: sensitiveWordCheck,
       },
     });
+
+    if (sensitiveWordCheck !== undefined) {
+      await notifySensitiveWordCacheClear();
+    }
 
     res.json({ success: true, message: '功能开关已更新' });
   } catch (error) {

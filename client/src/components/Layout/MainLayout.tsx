@@ -1,5 +1,5 @@
-import React, { useState, useEffect } from 'react';
-import { Settings, FolderOpen, Search, MessageSquare, Network, X, Clock, Undo2, Redo2, Globe, Lock, LogOut, Users, Plus, Menu, RefreshCw, Bell } from 'lucide-react';
+import React, { useState, useEffect, useCallback } from 'react';
+import { Settings, FolderOpen, Search, MessageSquare, Network, X, Clock, Undo2, Redo2, Globe, Lock, LogOut, Users, Plus, Menu, RefreshCw, Bell, AlertTriangle } from 'lucide-react';
 import SettingsModal from '../Settings/SettingsModal';
 import ChatPanel from '../Chat/ChatPanel';
 import SearchPanel from '../Search/SearchPanel';
@@ -11,6 +11,14 @@ import { useAppStore } from '../../stores/appStore';
 import { useUISettingsStore } from '../../stores/uiSettingsStore';
 import { useVisitorWorkspaceStore } from '../../stores/visitorWorkspaceStore';
 import useIsMobile from '../../hooks/useIsMobile';
+
+/**
+ * 全局状态提示接口
+ */
+interface GlobalAlert {
+  type: 'banned' | 'workspace-closed';
+  message: string;
+}
 
 /**
  * 主布局组件
@@ -27,6 +35,7 @@ const MainLayout: React.FC<{ children: React.ReactNode }> = ({ children }) => {
   const [showWorkspaceInfo, setShowWorkspaceInfo] = useState(false);
   const [isDrawerOpen, setIsDrawerOpen] = useState(false);
   const [isMessageCenterOpen, setIsMessageCenterOpen] = useState(false);
+  const [globalAlert, setGlobalAlert] = useState<GlobalAlert | null>(null);
 
   const isMobile = useIsMobile();
 
@@ -37,6 +46,39 @@ const MainLayout: React.FC<{ children: React.ReactNode }> = ({ children }) => {
   const canUndo = historyIndex >= 0;
   const canRedo = historyIndex < history.length - 1;
   const [isSyncing, setIsSyncing] = useState(false);
+
+  /**
+   * 处理用户被封禁事件
+   * 清除本地身份信息并显示封禁提示
+   */
+  const handleBanned = useCallback((event: Event) => {
+    const detail = (event as CustomEvent).detail as { error: string; code: string };
+    setGlobalAlert({
+      type: 'banned',
+      message: detail.error || '账号已被封禁，如有疑问请联系管理员',
+    });
+  }, []);
+
+  /**
+   * 处理工作区被关闭事件
+   * 清除当前工作区信息并显示关闭提示
+   */
+  const handleWorkspaceClosed = useCallback((event: Event) => {
+    const detail = (event as CustomEvent).detail as { error: string; code: string };
+    setGlobalAlert({
+      type: 'workspace-closed',
+      message: detail.error || '该工作区已被管理员关闭',
+    });
+  }, []);
+
+  useEffect(() => {
+    window.addEventListener('auth:banned', handleBanned);
+    window.addEventListener('auth:workspace-closed', handleWorkspaceClosed);
+    return () => {
+      window.removeEventListener('auth:banned', handleBanned);
+      window.removeEventListener('auth:workspace-closed', handleWorkspaceClosed);
+    };
+  }, [handleBanned, handleWorkspaceClosed]);
 
   useEffect(() => {
     if (autoOpenChatOnLoad) {
@@ -752,6 +794,43 @@ const MainLayout: React.FC<{ children: React.ReactNode }> = ({ children }) => {
           联系邮箱：3694224048@qq.com
         </a>
       </footer>
+
+      {/* 全局封禁/关闭状态提示弹窗 */}
+      {globalAlert && (
+        <div className="fixed inset-0 z-[100] flex items-center justify-center bg-black/60 backdrop-blur-sm">
+          <div className="bg-dark-800 border border-red-500/50 rounded-2xl p-6 max-w-md w-full mx-4 shadow-2xl">
+            <div className="flex items-center gap-3 mb-4">
+              <div className="w-12 h-12 rounded-full bg-red-500/20 flex items-center justify-center">
+                <AlertTriangle className="w-6 h-6 text-red-400" />
+              </div>
+              <div>
+                <h3 className="text-white font-semibold text-lg">
+                  {globalAlert.type === 'banned' ? '账号已被封禁' : '工作区已关闭'}
+                </h3>
+                <p className="text-dark-400 text-sm mt-1">
+                  {globalAlert.type === 'banned' ? '您的账号已被管理员封禁' : '该工作区已被管理员关闭'}
+                </p>
+              </div>
+            </div>
+            <p className="text-dark-300 text-sm mb-6 leading-relaxed">
+              {globalAlert.message}
+            </p>
+            <button
+              onClick={() => {
+                setGlobalAlert(null);
+                if (globalAlert.type === 'banned') {
+                  window.location.reload();
+                } else {
+                  clearCurrentWorkspace();
+                }
+              }}
+              className="w-full py-2.5 bg-dark-700 hover:bg-dark-600 text-white rounded-xl transition-colors text-sm font-medium"
+            >
+              确定
+            </button>
+          </div>
+        </div>
+      )}
     </div>
   );
 };

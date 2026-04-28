@@ -43,7 +43,7 @@ class SensitiveWordService {
       }
 
       const config: SensitiveWordConfig = {
-        enabled: (adminConfig.sensitiveWordEnabled as boolean) ?? (adminConfig.features as Record<string, unknown>)?.sensitiveWordCheck as boolean ?? false,
+        enabled: (adminConfig.sensitiveWordEnabled as boolean) ?? (adminConfig.features as Record<string, unknown>)?.sensitiveWordCheck as boolean ?? true,
         words: (adminConfig.sensitiveWords as string[]) || [],
         matchMode: (adminConfig.sensitiveWordMatchMode as 'exact' | 'fuzzy') || 'exact',
         autoFlag: (adminConfig.sensitiveWordAutoFlag as boolean) ?? true,

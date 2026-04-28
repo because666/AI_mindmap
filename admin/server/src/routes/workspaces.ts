@@ -4,6 +4,7 @@ import { WorkspaceListItem, PaginationResult } from '../types';
 import { requireAuth } from '../middleware/auth';
 import { auditLog } from '../middleware/auditLog';
 import { escapeRegex, sanitizePagination } from '../utils/validators';
+import { notifyWorkspaceCacheClear } from '../services/cacheNotify';
 
 const router = Router();
 
@@ -193,6 +194,8 @@ router.post('/:id/close', requireAuth, auditLog('CLOSE_WORKSPACE', 'workspace'),
       res.status(404).json({ success: false, error: '工作区不存在' });
       return;
     }
+
+    await notifyWorkspaceCacheClear(id);
 
     res.json({ success: true, message: '工作区已关闭' });
   } catch (error) {

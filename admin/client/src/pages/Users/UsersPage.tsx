@@ -4,6 +4,14 @@ import type { UserListItem, PaginationResult } from '../../types';
 import { Search, Ban, Unlock, Trash2, Eye } from 'lucide-react';
 
 /**
+ * 操作反馈提示接口
+ */
+interface ToastMessage {
+  type: 'success' | 'error';
+  text: string;
+}
+
+/**
  * 用户管理页面
  * 支持用户列表、搜索、封禁/解封操作
  */
@@ -16,6 +24,18 @@ const UsersPage: React.FC = () => {
   const [banModal, setBanModal] = useState<{ id: string; nickname: string } | null>(null);
   const [banReason, setBanReason] = useState('');
   const [banDuration, setBanDuration] = useState(0);
+  const [toast, setToast] = useState<ToastMessage | null>(null);
+  const [actionLoading, setActionLoading] = useState(false);
+
+  /**
+   * 显示操作反馈提示
+   * @param type - 提示类型
+   * @param text - 提示文本
+   */
+  const showToast = (type: 'success' | 'error', text: string) => {
+    setToast({ type, text });
+    setTimeout(() => setToast(null), 3000);
+  };
 
   useEffect(() => {
     loadUsers();
@@ -41,28 +61,49 @@ const UsersPage: React.FC = () => {
 
   const handleBan = async () => {
     if (!banModal) return;
+    if (actionLoading) return;
+    setActionLoading(true);
     try {
       await usersApi.ban(banModal.id, banReason, banDuration);
       setBanModal(null);
       setBanReason('');
       setBanDuration(0);
+      showToast('success', `用户 ${banModal.nickname} 已封禁`);
       loadUsers();
     } catch (error) {
       console.error('封禁失败:', error);
+      showToast('error', '封禁操作失败，请重试');
+    } finally {
+      setActionLoading(false);
     }
   };
 
   const handleUnban = async (id: string) => {
+    if (actionLoading) return;
+    setActionLoading(true);
     try {
       await usersApi.unban(id, '管理员解封');
+      showToast('success', '用户已解封');
       loadUsers();
     } catch (error) {
       console.error('解封失败:', error);
+      showToast('error', '解封操作失败，请重试');
+    } finally {
+      setActionLoading(false);
     }
   };
 
   return (
     <div>
+      {/* 操作反馈提示 */}
+      {toast && (
+        <div className={`fixed top-4 right-4 z-[60] px-4 py-3 rounded-lg shadow-lg text-sm font-medium transition-all ${
+          toast.type === 'success' ? 'bg-green-500 text-white' : 'bg-red-500 text-white'
+        }`}>
+          {toast.text}
+        </div>
+      )}
+
       <h1 className="text-2xl font-bold text-gray-800 mb-6">用户管理</h1>
 
       <div className="bg-white rounded-xl shadow-sm border border-gray-100">

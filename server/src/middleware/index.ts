@@ -2,6 +2,7 @@ import { Request, Response, NextFunction } from 'express';
 import rateLimit from 'express-rate-limit';
 import { config } from '../config';
 import { workspaceService } from '../services/workspaceService';
+import { mongoDBService } from '../data/mongodb/connection';
 
 export const rateLimiter = rateLimit({
   windowMs: config.rateLimit.windowMs,
@@ -18,6 +19,7 @@ export const rateLimiter = rateLimit({
  * 访客鉴权中间件
  * 从请求头中获取 X-Visitor-Id，验证访客身份
  * 必须提供有效的 visitorId
+ * 检查访客是否被封禁
  */
 export const visitorAuth = async (req: Request, res: Response, next: NextFunction) => {
   const visitorId = req.headers['x-visitor-id'] as string;
@@ -37,6 +39,24 @@ export const visitorAuth = async (req: Request, res: Response, next: NextFunctio
     });
   }
 
+  if (visitor.isBanned === true) {
+    const banReason = visitor.banReason;
+    const banExpiresAt = visitor.banExpiresAt;
+
+    if (banExpiresAt && new Date(banExpiresAt) < new Date()) {
+      await mongoDBService.updateOne('visitors', { id: visitorId } as never, {
+        $set: { isBanned: false, banReason: '', bannedAt: null, banExpiresAt: null },
+      });
+      workspaceService.clearVisitorCache(visitorId);
+    } else {
+      return res.status(403).json({
+        success: false,
+        error: banReason ? `账号已被封禁：${banReason}` : '账号已被封禁，如有疑问请联系管理员',
+        code: 'BANNED',
+      });
+    }
+  }
+
   req.visitorId = visitorId;
   next();
 };
@@ -51,6 +71,13 @@ export const optionalVisitorAuth = async (req: Request, res: Response, next: Nex
   if (visitorId) {
     const visitor = await workspaceService.getVisitor(visitorId);
     if (visitor) {
+      if (visitor.isBanned === true) {
+        const banExpiresAt = visitor.banExpiresAt;
+        if (!banExpiresAt || new Date(banExpiresAt) >= new Date()) {
+          req.visitorId = undefined;
+          return next();
+        }
+      }
       req.visitorId = visitorId;
     }
   }
@@ -61,7 +88,7 @@ export const optionalVisitorAuth = async (req: Request, res: Response, next: Nex
 /**
  * 工作区成员鉴权中间件
  * 验证访客是否为指定工作区的成员
- * 需要路由参数中包含 workspaceId 或请求体中包含 workspaceId
+ * 检查访客封禁状态和工作区关闭状态
  */
 export const workspaceMemberAuth = async (req: Request, res: Response, next: NextFunction) => {
   const visitorId = req.headers['x-visitor-id'] as string;
@@ -86,6 +113,41 @@ export const workspaceMemberAuth = async (req: Request, res: Response, next: Nex
     return res.status(401).json({
       success: false,
       error: '访客标识无效',
+    });
+  }
+
+  if (visitor.isBanned === true) {
+    const banReason = visitor.banReason;
+    const banExpiresAt = visitor.banExpiresAt;
+
+    if (banExpiresAt && new Date(banExpiresAt) < new Date()) {
+      await mongoDBService.updateOne('visitors', { id: visitorId } as never, {
+        $set: { isBanned: false, banReason: '', bannedAt: null, banExpiresAt: null },
+      });
+      workspaceService.clearVisitorCache(visitorId);
+    } else {
+      return res.status(403).json({
+        success: false,
+        error: banReason ? `账号已被封禁：${banReason}` : '账号已被封禁，如有疑问请联系管理员',
+        code: 'BANNED',
+      });
+    }
+  }
+
+  const workspace = await workspaceService.getWorkspace(workspaceId);
+  if (!workspace) {
+    return res.status(404).json({
+      success: false,
+      error: '工作区不存在',
+    });
+  }
+
+  if (workspace.isClosed === true) {
+    const closeReason = workspace.closeReason;
+    return res.status(403).json({
+      success: false,
+      error: closeReason ? `工作区已关闭：${closeReason}` : '该工作区已被管理员关闭',
+      code: 'WORKSPACE_CLOSED',
     });
   }
 

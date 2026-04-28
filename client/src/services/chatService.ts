@@ -51,6 +51,14 @@ async function parseJsonResponse(response: Response): Promise<any> {
 }
 
 /**
+ * 获取本地存储的访客ID
+ * @returns 访客ID或null
+ */
+const getLocalVisitorId = (): string | null => {
+  return localStorage.getItem('visitorId');
+};
+
+/**
  * AI 聊天服务
  */
 export const chatService = {
@@ -60,13 +68,19 @@ export const chatService = {
   async sendMessage(
     messages: ChatMessage[],
     config: APIConfig
-  ): Promise<{ success: boolean; content?: string; error?: string }> {
+  ): Promise<{ success: boolean; content?: string; error?: string; sensitiveWords?: string[] }> {
     try {
+      const headers: Record<string, string> = {
+        'Content-Type': 'application/json',
+      };
+      const visitorId = getLocalVisitorId();
+      if (visitorId) {
+        headers['X-Visitor-Id'] = visitorId;
+      }
+
       const response = await fetch(`${API_BASE_URL}/api/ai/chat`, {
         method: 'POST',
-        headers: {
-          'Content-Type': 'application/json',
-        },
+        headers,
         body: JSON.stringify({
           messages,
           config: {
@@ -83,7 +97,8 @@ export const chatService = {
       return {
         success: result.success,
         content: result.content,
-        error: result.error
+        error: result.error,
+        sensitiveWords: result.sensitiveWords
       };
     } catch (error) {
       return {
@@ -106,14 +121,20 @@ export const chatService = {
     config: APIConfig,
     onStream: StreamCallback,
     fileIds?: string[]
-  ): Promise<{ success: boolean; content?: string; thinkingContent?: string; error?: string }> {
+  ): Promise<{ success: boolean; content?: string; thinkingContent?: string; error?: string; sensitiveWords?: string[] }> {
     try {
+      const headers: Record<string, string> = {
+        'Content-Type': 'application/json',
+        'Accept': 'text/event-stream',
+      };
+      const visitorId = getLocalVisitorId();
+      if (visitorId) {
+        headers['X-Visitor-Id'] = visitorId;
+      }
+
       const response = await fetch(`${API_BASE_URL}/api/ai/chat/stream`, {
         method: 'POST',
-        headers: {
-          'Content-Type': 'application/json',
-          'Accept': 'text/event-stream',
-        },
+        headers,
         body: JSON.stringify({
           messages,
           config: {
@@ -128,9 +149,45 @@ export const chatService = {
 
       if (!response.ok) {
         const errorText = await response.text();
+        let parsedError: string = `HTTP ${response.status}: ${errorText || 'Request failed'}`;
+        let sensitiveWords: string[] | undefined;
+
+        if (response.status === 400) {
+          try {
+            const errorData = JSON.parse(errorText);
+            if (errorData.sensitiveWords) {
+              sensitiveWords = errorData.sensitiveWords;
+              parsedError = errorData.error || '消息包含敏感内容';
+            }
+          } catch {
+            // 非JSON格式，使用原始错误文本
+          }
+        }
+
+        if (response.status === 403) {
+          try {
+            const errorData = JSON.parse(errorText);
+            if (errorData.code === 'BANNED') {
+              localStorage.removeItem('visitorId');
+              window.dispatchEvent(new CustomEvent('auth:banned', {
+                detail: { error: errorData.error, code: errorData.code }
+              }));
+            } else if (errorData.code === 'WORKSPACE_CLOSED') {
+              localStorage.removeItem('currentWorkspaceId');
+              window.dispatchEvent(new CustomEvent('auth:workspace-closed', {
+                detail: { error: errorData.error, code: errorData.code }
+              }));
+            }
+            parsedError = errorData.error || parsedError;
+          } catch {
+            // 非JSON格式，使用原始错误文本
+          }
+        }
+
         return {
           success: false,
-          error: `HTTP ${response.status}: ${errorText || 'Request failed'}`
+          error: parsedError,
+          sensitiveWords
         };
       }
 

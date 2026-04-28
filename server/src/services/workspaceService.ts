@@ -671,6 +671,33 @@ class WorkspaceService {
   /**
    * 确保已初始化
    */
+  /**
+   * 清除指定访客的缓存
+   * 用于封禁/解封操作后确保缓存立即更新
+   * @param visitorId - 访客ID
+   */
+  clearVisitorCache(visitorId: string): void {
+    this.visitorCache.delete(visitorId);
+  }
+
+  /**
+   * 清除指定工作区的缓存
+   * 用于关闭/开启工作区操作后确保缓存立即更新
+   * @param workspaceId - 工作区ID
+   */
+  clearWorkspaceCache(workspaceId: string): void {
+    this.workspaceCache.delete(workspaceId);
+  }
+
+  /**
+   * 清除所有缓存
+   * 用于敏感词等全局配置更新后强制重新加载
+   */
+  clearAllCache(): void {
+    this.visitorCache.clear();
+    this.workspaceCache.clear();
+  }
+
   private async ensureInitialized(): Promise<void> {
     if (!this.initialized) {
       await this.initialize();

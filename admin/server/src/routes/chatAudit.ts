@@ -4,6 +4,7 @@ import { ChatAuditItem, SensitiveWordConfig, PaginationResult } from '../types';
 import { requireAuth } from '../middleware/auth';
 import { auditLog } from '../middleware/auditLog';
 import { sanitizePagination } from '../utils/validators';
+import { notifySensitiveWordCacheClear } from '../services/cacheNotify';
 
 const router = Router();
 
@@ -63,6 +64,8 @@ router.put('/config', requireAuth, auditLog('UPDATE_SENSITIVE_WORDS', 'config'),
         sensitiveWordAutoFlag: autoFlag !== false,
       },
     });
+
+    await notifySensitiveWordCacheClear();
 
     res.json({ success: true, message: '敏感词配置已更新' });
   } catch (error) {

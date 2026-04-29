@@ -31,11 +31,22 @@ class AdminDBService {
       this.client = new MongoClient(uri);
       await this.client.connect();
       this.db = this.client.db(database);
-      console.log('✅ 后台系统MongoDB连接成功');
+
+      const adminResult = await this.db.command({ ping: 1 });
+      if (adminResult.ok !== 1) {
+        throw new Error('MongoDB ping命令失败');
+      }
+
+      const collections = await this.db.listCollections().toArray();
+      const collectionNames = collections.map(c => c.name);
+      console.log(`✅ 后台系统MongoDB连接成功，数据库: ${database}，集合: [${collectionNames.join(', ')}]`);
+
       await this.initializeIndexes();
     } catch (error: unknown) {
       const errorMsg = error instanceof Error ? error.message : String(error);
       console.error('❌ 后台系统MongoDB连接失败:', errorMsg);
+      this.client = null;
+      this.db = null;
       throw error;
     }
   }
@@ -69,8 +80,18 @@ class AdminDBService {
     }
   }
 
+  /**
+   * 获取集合实例
+   * 当数据库未连接时输出警告日志而非静默返回null
+   * @param name - 集合名称
+   * @returns 集合实例或null
+   */
   getCollection<T extends Document>(name: string): Collection<T> | null {
-    return this.db?.collection<T>(name) || null;
+    if (!this.db) {
+      console.warn(`⚠️ [AdminDB] 数据库未连接，无法获取集合: ${name}`);
+      return null;
+    }
+    return this.db.collection<T>(name);
   }
 
   async findOne<T extends Document>(collection: string, filter: Filter<T>): Promise<T | null> {

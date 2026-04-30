@@ -66,6 +66,7 @@ class AdminDBService {
       await this.db.collection('export_tasks').createIndex({ id: 1 }, { unique: true });
       await this.db.collection('chat_audits').createIndex({ 'auditResult.status': 1 });
       await this.db.collection('chat_audits').createIndex({ 'auditResult.riskLevel': 1 });
+      await this.db.collection('ip_bans').createIndex({ ip: 1 }, { unique: true });
       console.log('✅ 后台系统索引初始化完成');
     } catch (error) {
       console.warn('后台系统索引创建警告:', error);

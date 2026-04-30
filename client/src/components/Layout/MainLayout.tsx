@@ -16,7 +16,7 @@ import useIsMobile from '../../hooks/useIsMobile';
  * 全局状态提示接口
  */
 interface GlobalAlert {
-  type: 'banned' | 'workspace-closed';
+  type: 'banned' | 'workspace-closed' | 'ip-banned';
   message: string;
 }
 
@@ -71,14 +71,24 @@ const MainLayout: React.FC<{ children: React.ReactNode }> = ({ children }) => {
     });
   }, []);
 
+  const handleIpBanned = useCallback((event: Event) => {
+    const detail = (event as CustomEvent).detail as { error: string; code: string };
+    setGlobalAlert({
+      type: 'ip-banned',
+      message: detail.error || '当前IP已被封禁',
+    });
+  }, []);
+
   useEffect(() => {
     window.addEventListener('auth:banned', handleBanned);
     window.addEventListener('auth:workspace-closed', handleWorkspaceClosed);
+    window.addEventListener('auth:ip-banned', handleIpBanned);
     return () => {
       window.removeEventListener('auth:banned', handleBanned);
       window.removeEventListener('auth:workspace-closed', handleWorkspaceClosed);
+      window.removeEventListener('auth:ip-banned', handleIpBanned);
     };
-  }, [handleBanned, handleWorkspaceClosed]);
+  }, [handleBanned, handleWorkspaceClosed, handleIpBanned]);
 
   useEffect(() => {
     if (autoOpenChatOnLoad) {
@@ -805,10 +815,10 @@ const MainLayout: React.FC<{ children: React.ReactNode }> = ({ children }) => {
               </div>
               <div>
                 <h3 className="text-white font-semibold text-lg">
-                  {globalAlert.type === 'banned' ? '账号已被封禁' : '工作区已关闭'}
+                  {globalAlert.type === 'banned' ? '账号已被封禁' : globalAlert.type === 'ip-banned' ? 'IP已被封禁' : '工作区已关闭'}
                 </h3>
                 <p className="text-dark-400 text-sm mt-1">
-                  {globalAlert.type === 'banned' ? '您的账号已被管理员封禁' : '该工作区已被管理员关闭'}
+                  {globalAlert.type === 'banned' ? '您的账号已被管理员封禁' : globalAlert.type === 'ip-banned' ? '您当前使用的IP地址已被管理员封禁' : '该工作区已被管理员关闭'}
                 </p>
               </div>
             </div>

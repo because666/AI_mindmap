@@ -11,6 +11,7 @@ import WorkspacesPage from './pages/Workspaces/WorkspacesPage';
 import ChatAuditPage from './pages/ChatAudit/ChatAuditPage';
 import PushPage from './pages/Push/PushPage';
 import SettingsPage from './pages/Settings/SettingsPage';
+import IpBansPage from './pages/IpBans/IpBansPage';
 
 /**
  * 受保护的路由组件
@@ -99,6 +100,13 @@ const App: React.FC = () => {
           <ProtectedRoute>
             <AdminLayout>
               <SettingsPage />
+            </AdminLayout>
+          </ProtectedRoute>
+        } />
+        <Route path="/ip-bans" element={
+          <ProtectedRoute>
+            <AdminLayout>
+              <IpBansPage />
             </AdminLayout>
           </ProtectedRoute>
         } />

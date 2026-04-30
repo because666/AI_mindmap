@@ -54,6 +54,8 @@ export interface Visitor {
   banReason?: string;
   bannedAt?: Date;
   banExpiresAt?: Date;
+  lastIp?: string;
+  ipHistory?: string[];
 }
 
 /**

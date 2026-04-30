@@ -59,7 +59,7 @@ api.interceptors.request.use((config) => {
 export interface BannedError {
   success: false;
   error: string;
-  code: 'BANNED' | 'WORKSPACE_CLOSED';
+  code: 'BANNED' | 'WORKSPACE_CLOSED' | 'IP_BANNED';
 }
 
 /**
@@ -71,7 +71,7 @@ export function isBannedOrClosedError(error: unknown): error is { response: { st
   if (!error || typeof error !== 'object') return false;
   const err = error as { response?: { status?: number; data?: { code?: string } } };
   return err?.response?.status === 403 &&
-    (err?.response?.data?.code === 'BANNED' || err?.response?.data?.code === 'WORKSPACE_CLOSED');
+    (err?.response?.data?.code === 'BANNED' || err?.response?.data?.code === 'WORKSPACE_CLOSED' || err?.response?.data?.code === 'IP_BANNED');
 }
 
 api.interceptors.response.use(
@@ -87,6 +87,10 @@ api.interceptors.response.use(
       } else if (data?.code === 'WORKSPACE_CLOSED') {
         localStorage.removeItem('currentWorkspaceId');
         window.dispatchEvent(new CustomEvent('auth:workspace-closed', {
+          detail: { error: data.error, code: data.code }
+        }));
+      } else if (data?.code === 'IP_BANNED') {
+        window.dispatchEvent(new CustomEvent('auth:ip-banned', {
           detail: { error: data.error, code: data.code }
         }));
       }

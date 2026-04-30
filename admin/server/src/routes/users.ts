@@ -77,6 +77,8 @@ router.get('/', requireAuth, async (req: Request, res: Response) => {
         isBanned: (v.isBanned as boolean) || false,
         banReason: v.banReason as string | undefined,
         banExpiresAt: v.banExpiresAt as string | undefined,
+        lastIp: v.lastIp as string | undefined,
+        ipHistory: v.ipHistory as string[] | undefined,
       };
     });
 
@@ -249,6 +251,121 @@ router.delete('/:id', requireAuth, auditLog('DELETE_USER', 'user'), async (req: 
   } catch (error) {
     console.error('删除用户失败:', error);
     res.status(500).json({ success: false, error: '删除用户失败' });
+  }
+});
+
+/**
+ * 查询同IP的用户列表
+ * 根据IP地址查找所有使用过该IP的访客
+ */
+router.get('/ip/:ip/visitors', requireAuth, async (req: Request, res: Response) => {
+  try {
+    const { ip } = req.params;
+
+    if (!ip) {
+      res.status(400).json({ success: false, error: '请提供IP地址' });
+      return;
+    }
+
+    const visitors = await adminDB.find('visitors', {
+      $or: [
+        { lastIp: ip },
+        { ipHistory: ip },
+      ],
+    } as never);
+
+    const items = visitors.map((v: Record<string, unknown>) => ({
+      id: v.id as string,
+      nickname: (v.nickname as string) || '未知用户',
+      lastIp: v.lastIp as string | undefined,
+      isBanned: (v.isBanned as boolean) || false,
+      banReason: v.banReason as string | undefined,
+      createdAt: v.createdAt as string,
+      lastSeen: v.lastSeen as string,
+    }));
+
+    res.json({ success: true, data: { ip, visitors: items, total: items.length } });
+  } catch (error) {
+    console.error('查询同IP用户失败:', error);
+    res.status(500).json({ success: false, error: '查询同IP用户失败' });
+  }
+});
+
+/**
+ * 封禁IP地址
+ * 同时封禁该IP下的所有关联账号
+ */
+router.post('/ip-ban', requireAuth, auditLog('BAN_IP', 'ip'), async (req: Request, res: Response) => {
+  try {
+    const { ip, reason, duration, autoBanAccounts = true } = req.body;
+    const adminReq = req as Request & { adminNickname?: string };
+
+    if (!ip || !reason) {
+      res.status(400).json({ success: false, error: '请提供IP地址和封禁原因' });
+      return;
+    }
+
+    const existingBan = await adminDB.findOne('ip_bans', { ip } as never);
+    if (existingBan) {
+      res.status(400).json({ success: false, error: '该IP已在封禁列表中' });
+      return;
+    }
+
+    const visitors = await adminDB.find('visitors', {
+      $or: [
+        { lastIp: ip },
+        { ipHistory: ip },
+      ],
+    } as never);
+
+    const visitorIds: string[] = visitors.map((v: Record<string, unknown>) => v.id as string);
+
+    const banData: Record<string, unknown> = {
+      ip,
+      reason,
+      bannedAt: new Date(),
+      bannedBy: adminReq.adminNickname || 'unknown',
+      visitorIds,
+      autoBanAccounts,
+    };
+
+    if (duration && duration > 0) {
+      const expiresAt = new Date();
+      expiresAt.setHours(expiresAt.getHours() + duration);
+      banData.banExpiresAt = expiresAt;
+    }
+
+    await adminDB.insertOne('ip_bans', banData);
+
+    if (autoBanAccounts && visitorIds.length > 0) {
+      const accountUpdateData: Record<string, unknown> = {
+        isBanned: true,
+        banReason: `IP封禁关联：${reason}`,
+        bannedAt: new Date(),
+      };
+
+      if (duration && duration > 0) {
+        const expiresAt = new Date();
+        expiresAt.setHours(expiresAt.getHours() + duration);
+        accountUpdateData.banExpiresAt = expiresAt;
+      }
+
+      for (const visitorId of visitorIds) {
+        await adminDB.updateOne('visitors', { id: visitorId } as never, {
+          $set: accountUpdateData,
+        });
+        await notifyVisitorCacheClear(visitorId);
+      }
+    }
+
+    res.json({
+      success: true,
+      message: `IP ${ip} 已封禁，关联账号 ${visitorIds.length} 个`,
+      data: { ip, bannedVisitors: visitorIds.length },
+    });
+  } catch (error) {
+    console.error('封禁IP失败:', error);
+    res.status(500).json({ success: false, error: '封禁IP失败' });
   }
 });
 

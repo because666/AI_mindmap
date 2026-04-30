@@ -177,6 +177,10 @@ export const chatService = {
               window.dispatchEvent(new CustomEvent('auth:workspace-closed', {
                 detail: { error: errorData.error, code: errorData.code }
               }));
+            } else if (errorData.code === 'IP_BANNED') {
+              window.dispatchEvent(new CustomEvent('auth:ip-banned', {
+                detail: { error: errorData.error, code: errorData.code }
+              }));
             }
             parsedError = errorData.error || parsedError;
           } catch {

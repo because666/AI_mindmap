@@ -109,6 +109,18 @@ export const usersApi = {
     typedPost<void>(`/admin/users/${id}/unban`, { reason }),
   delete: (id: string, confirmCode: string) =>
     typedDelete<void>(`/admin/users/${id}`, { headers: { 'X-Confirm-Code': confirmCode } }),
+  getIpVisitors: (ip: string) =>
+    typedGet<{ ip: string; visitors: unknown[]; total: number }>(`/admin/users/ip/${ip}/visitors`),
+  banIp: (ip: string, reason: string, duration: number, autoBanAccounts: boolean) =>
+    typedPost<{ ip: string; bannedVisitors: number }>('/admin/users/ip-ban', { ip, reason, duration, autoBanAccounts }),
+};
+
+export const ipBansApi = {
+  getList: (params: { page?: number; limit?: number; search?: string }) =>
+    typedGet<unknown>('/admin/ip-bans', { params }),
+  getDetail: (ip: string) => typedGet<unknown>(`/admin/ip-bans/${ip}`),
+  unban: (ip: string, reason?: string) =>
+    typedPost<void>(`/admin/ip-bans/${ip}/unban`, { reason }),
 };
 
 export const workspacesApi = {

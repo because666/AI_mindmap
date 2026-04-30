@@ -115,6 +115,31 @@ export interface UserListItem {
   isBanned: boolean;
   banReason?: string;
   banExpiresAt?: string;
+  lastIp?: string;
+  ipHistory?: string[];
+}
+
+export interface IpBan {
+  _id?: ObjectId;
+  ip: string;
+  reason: string;
+  bannedAt: Date;
+  banExpiresAt?: Date;
+  bannedBy: string;
+  visitorIds: string[];
+  autoBanAccounts: boolean;
+}
+
+export interface IpBanListItem {
+  _id: string;
+  ip: string;
+  reason: string;
+  bannedAt: string;
+  banExpiresAt?: string;
+  bannedBy: string;
+  visitorIds: string[];
+  autoBanAccounts: boolean;
+  associatedVisitorCount: number;
 }
 
 export interface WorkspaceListItem {

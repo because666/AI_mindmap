@@ -34,6 +34,8 @@ export interface UserListItem {
   isBanned: boolean;
   banReason?: string;
   banExpiresAt?: string;
+  lastIp?: string;
+  ipHistory?: string[];
 }
 
 export interface WorkspaceListItem {

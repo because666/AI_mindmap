@@ -16,13 +16,91 @@ export const rateLimiter = rateLimit({
 });
 
 /**
+ * 获取客户端真实IP地址
+ * 支持Nginx反向代理和Cloudflare CDN场景
+ * @param req - Express请求对象
+ * @returns 客户端IP地址
+ */
+export function getClientIp(req: Request): string {
+  const cfIp = req.headers['cf-connecting-ip'] as string | undefined;
+  if (cfIp) return cfIp.trim();
+
+  const forwarded = req.headers['x-forwarded-for'] as string | undefined;
+  if (forwarded) {
+    const ips = forwarded.split(',').map(ip => ip.trim());
+    if (ips.length > 0 && ips[0]) return ips[0];
+  }
+
+  const realIp = req.headers['x-real-ip'] as string | undefined;
+  if (realIp) return realIp.trim();
+
+  return req.ip || req.socket.remoteAddress || 'unknown';
+}
+
+/**
+ * 检查IP是否被封禁
+ * 查询ip_bans集合，检查IP是否在封禁列表中且未过期
+ * @param ip - 客户端IP地址
+ * @returns 封禁信息或null
+ */
+async function checkIpBan(ip: string): Promise<{ reason: string; expiresAt?: Date } | null> {
+  if (!ip || ip === 'unknown') return null;
+
+  const ban = await mongoDBService.findOne<{ ip: string; reason: string; banExpiresAt?: Date; bannedAt: Date }>('ip_bans', {
+    ip,
+  } as never);
+
+  if (!ban) return null;
+
+  if (ban.banExpiresAt && new Date(ban.banExpiresAt) < new Date()) {
+    await mongoDBService.deleteOne('ip_bans', { ip } as never);
+    return null;
+  }
+
+  return { reason: ban.reason, expiresAt: ban.banExpiresAt };
+}
+
+/**
+ * 更新访客IP记录
+ * 更新lastIp并将新IP添加到ipHistory（去重，最多10个）
+ * @param visitorId - 访客ID
+ * @param ip - 客户端IP地址
+ */
+async function updateVisitorIp(visitorId: string, ip: string): Promise<void> {
+  if (!ip || ip === 'unknown') return;
+
+  const visitor = await workspaceService.getVisitor(visitorId);
+  if (!visitor) return;
+
+  if (visitor.lastIp === ip) return;
+
+  const ipHistory: string[] = visitor.ipHistory || [];
+  const updatedHistory = [ip, ...ipHistory.filter(h => h !== ip)].slice(0, 10);
+
+  await mongoDBService.updateOne('visitors', { id: visitorId } as never, {
+    $set: { lastIp: ip, ipHistory: updatedHistory },
+  });
+  workspaceService.clearVisitorCache(visitorId);
+}
+
+/**
  * 访客鉴权中间件
  * 从请求头中获取 X-Visitor-Id，验证访客身份
- * 必须提供有效的 visitorId
- * 检查访客是否被封禁
+ * 检查IP封禁状态（优先）和账号封禁状态
+ * 更新访客IP记录
  */
 export const visitorAuth = async (req: Request, res: Response, next: NextFunction) => {
   const visitorId = req.headers['x-visitor-id'] as string;
+  const clientIp = getClientIp(req);
+
+  const ipBan = await checkIpBan(clientIp);
+  if (ipBan) {
+    return res.status(403).json({
+      success: false,
+      error: ipBan.reason ? `当前IP已被封禁：${ipBan.reason}` : '当前IP已被封禁，如有疑问请联系管理员',
+      code: 'IP_BANNED',
+    });
+  }
 
   if (!visitorId) {
     return res.status(401).json({
@@ -58,6 +136,12 @@ export const visitorAuth = async (req: Request, res: Response, next: NextFunctio
   }
 
   req.visitorId = visitorId;
+  req.clientIp = clientIp;
+
+  updateVisitorIp(visitorId, clientIp).catch(err => {
+    console.error('更新访客IP失败:', err);
+  });
+
   next();
 };
 
@@ -67,6 +151,13 @@ export const visitorAuth = async (req: Request, res: Response, next: NextFunctio
  */
 export const optionalVisitorAuth = async (req: Request, res: Response, next: NextFunction) => {
   const visitorId = req.headers['x-visitor-id'] as string;
+  const clientIp = getClientIp(req);
+
+  const ipBan = await checkIpBan(clientIp);
+  if (ipBan) {
+    req.visitorId = undefined;
+    return next();
+  }
 
   if (visitorId) {
     const visitor = await workspaceService.getVisitor(visitorId);
@@ -79,20 +170,35 @@ export const optionalVisitorAuth = async (req: Request, res: Response, next: Nex
         }
       }
       req.visitorId = visitorId;
+
+      updateVisitorIp(visitorId, clientIp).catch(err => {
+        console.error('更新访客IP失败:', err);
+      });
     }
   }
 
+  req.clientIp = clientIp;
   next();
 };
 
 /**
  * 工作区成员鉴权中间件
  * 验证访客是否为指定工作区的成员
- * 检查访客封禁状态和工作区关闭状态
+ * 检查IP封禁、账号封禁和工作区关闭状态
  */
 export const workspaceMemberAuth = async (req: Request, res: Response, next: NextFunction) => {
   const visitorId = req.headers['x-visitor-id'] as string;
   const workspaceId = req.params.workspaceId || req.body.workspaceId || req.headers['x-workspace-id'] as string;
+  const clientIp = getClientIp(req);
+
+  const ipBan = await checkIpBan(clientIp);
+  if (ipBan) {
+    return res.status(403).json({
+      success: false,
+      error: ipBan.reason ? `当前IP已被封禁：${ipBan.reason}` : '当前IP已被封禁，如有疑问请联系管理员',
+      code: 'IP_BANNED',
+    });
+  }
 
   if (!visitorId) {
     return res.status(401).json({
@@ -161,6 +267,12 @@ export const workspaceMemberAuth = async (req: Request, res: Response, next: Nex
 
   req.visitorId = visitorId;
   req.workspaceId = workspaceId;
+  req.clientIp = clientIp;
+
+  updateVisitorIp(visitorId, clientIp).catch(err => {
+    console.error('更新访客IP失败:', err);
+  });
+
   next();
 };
 
@@ -227,6 +339,7 @@ declare global {
     interface Request {
       visitorId?: string;
       workspaceId?: string;
+      clientIp?: string;
     }
   }
 }

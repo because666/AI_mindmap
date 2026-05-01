@@ -1,16 +1,32 @@
 import { Router, Request, Response } from 'express';
 import { workspaceService } from '../services/workspaceService';
-import { visitorAuth } from '../middleware';
+import { visitorAuth, getClientIp } from '../middleware';
+import { mongoDBService } from '../data/mongodb/connection';
 
 const router = Router();
 
 /**
  * 注册或更新访客信息
+ * 同时记录访客IP地址
  */
 router.post('/visitor/register', async (req: Request, res: Response) => {
   try {
     const { visitorId, nickname } = req.body;
+    const clientIp = getClientIp(req);
+
     const visitor = await workspaceService.registerVisitor(visitorId, nickname);
+
+    if (visitor && clientIp && clientIp !== 'unknown') {
+      const existingVisitor = await workspaceService.getVisitor(visitorId);
+      const ipHistory: string[] = existingVisitor?.ipHistory || [];
+      const updatedHistory = [clientIp, ...ipHistory.filter(h => h !== clientIp)].slice(0, 10);
+
+      await mongoDBService.updateOne('visitors', { id: visitorId } as never, {
+        $set: { lastIp: clientIp, ipHistory: updatedHistory },
+      });
+      workspaceService.clearVisitorCache(visitorId);
+    }
+
     res.json({ success: true, data: visitor });
   } catch (error: unknown) {
     const message = error instanceof Error ? error.message : String(error);

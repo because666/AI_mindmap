@@ -90,9 +90,7 @@ const OnboardingGuide: React.FC<OnboardingGuideProps> = ({
   const handleClose = useCallback(() => {
     if (!canClose && isForced) return;
     
-    if (isForced) {
-      markOnboardingCompleted();
-    }
+    markOnboardingCompleted();
     
     if (countdownRef.current) {
       clearInterval(countdownRef.current);

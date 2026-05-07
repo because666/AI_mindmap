@@ -209,6 +209,11 @@ function App() {
         <div className="h-screen flex items-center justify-center relative z-10">
           <div className="text-dark-400 text-lg">加载中...</div>
         </div>
+        <OnboardingGuide
+          isOpen={showOnboarding}
+          onClose={() => setShowOnboarding(false)}
+          isForced={true}
+        />
       </>
     );
   }
@@ -223,6 +228,11 @@ function App() {
         <div className="relative z-10">
           <WelcomePage />
         </div>
+        <OnboardingGuide
+          isOpen={showOnboarding}
+          onClose={() => setShowOnboarding(false)}
+          isForced={true}
+        />
       </>
     );
   }

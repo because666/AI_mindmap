@@ -25,7 +25,7 @@ class AdminDBService {
     const uri = config.mongodb.uri;
     const database = config.mongodb.database;
 
-    console.log(`🔌 后台系统连接MongoDB: ${uri}/${database}...`);
+    console.log(`🔌 后台系统连接MongoDB: ${database}...`);
 
     try {
       this.client = new MongoClient(uri);

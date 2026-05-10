@@ -5,8 +5,8 @@ services:
     image: neo4j:5.15.0
     container_name: deepmindmap-neo4j
     ports:
-      - "7474:7474"
-      - "7687:7687"
+      - "127.0.0.1:7474:7474"
+      - "127.0.0.1:7687:7687"
     environment:
       - NEO4J_AUTH=neo4j/deepmindmap123
       - NEO4J_PLUGINS=["apoc"]
@@ -29,14 +29,15 @@ services:
       - deepmindmap-network
 
   mongodb:
-    image: mongo:7.0
+    image: mongo:7.0.28
     container_name: deepmindmap-mongodb
     ports:
-      - "27017:27017"
+      - "127.0.0.1:27017:27017"
     environment:
       - MONGO_INITDB_ROOT_USERNAME=admin
       - MONGO_INITDB_ROOT_PASSWORD=deepmindmap123
       - MONGO_INITDB_DATABASE=deepmindmap
+    command: mongod --networkMessageCompressors snappy,zstd
     volumes:
       - mongodb_data:/data/db
       - mongodb_config:/data/configdb
@@ -53,7 +54,7 @@ services:
     image: redis:7.2-alpine
     container_name: deepmindmap-redis
     ports:
-      - "6379:6379"
+      - "127.0.0.1:6379:6379"
     volumes:
       - redis_data:/data
     healthcheck:

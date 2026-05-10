@@ -26,7 +26,7 @@ class MongoDBService {
       return;
     }
     
-    console.log(`🔌 Connecting to MongoDB at ${uri}...`);
+    console.log('🔌 Connecting to MongoDB...');
     
     try {
       this.client = new MongoClient(uri);

@@ -784,16 +784,27 @@ const MainLayout: React.FC<{ children: React.ReactNode }> = ({ children }) => {
         onClose={() => setIsFilePanelOpen(false)}
       />
 
-      {/* ICP备案号与联系邮箱 - 悬浮底部一行显示 */}
+      {/* ICP备案号、公安备案号与联系邮箱 - 悬浮底部一行显示 */}
       <footer className="fixed bottom-0 left-0 right-0 bg-dark-900/90 backdrop-blur-sm border-t border-dark-700 py-1.5 text-center z-40">
         <a
           href="https://beian.miit.gov.cn"
           target="_blank"
           rel="noopener noreferrer"
-          className="text-dark-400 hover:text-dark-300 transition-colors"
+          className="text-dark-400 hover:text-dark-300 transition-colors inline-flex items-center gap-1"
           style={{ fontSize: '12px', color: '#6b7280' }}
         >
           桂ICP备2026005821号-2
+        </a>
+        <span className="text-dark-600 mx-2" style={{ fontSize: '12px' }}>|</span>
+        <a
+          href="http://www.beian.gov.cn/portal/registerSystemInfo?recordcode=45090202000535"
+          target="_blank"
+          rel="noopener noreferrer"
+          className="text-dark-400 hover:text-dark-300 transition-colors inline-flex items-center gap-1"
+          style={{ fontSize: '12px', color: '#6b7280' }}
+        >
+          <img src="https://www.beian.gov.cn/img/ghs.png" alt="公安备案" style={{ width: '14px', height: '14px' }} />
+          桂公网安备45090202000535号
         </a>
         <span className="text-dark-600 mx-2" style={{ fontSize: '12px' }}>|</span>
         <a

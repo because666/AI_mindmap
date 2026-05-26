@@ -146,17 +146,28 @@ const AdminLayout: React.FC<{ children: React.ReactNode }> = ({ children }) => {
       <main className="md:ml-52 min-h-screen flex flex-col">
         <div className="flex-1 p-4 md:p-6 max-w-7xl mx-auto w-full">{children}</div>
 
-        {/* ICP备案号与联系邮箱 */}
+        {/* ICP备案号、公安备案号与联系邮箱 */}
         <footer className="shrink-0 bg-white border-t border-gray-200 py-3 text-center space-y-1">
-          <div>
+          <div className="flex items-center justify-center gap-3">
             <a
               href="https://beian.miit.gov.cn"
               target="_blank"
               rel="noopener noreferrer"
-              className="text-gray-500 hover:text-gray-700 text-xs transition-colors"
+              className="text-gray-500 hover:text-gray-700 text-xs transition-colors inline-flex items-center gap-1"
               style={{ fontSize: '12px' }}
             >
               桂ICP备2026005821号-2
+            </a>
+            <span className="text-gray-300" style={{ fontSize: '12px' }}>|</span>
+            <a
+              href="http://www.beian.gov.cn/portal/registerSystemInfo?recordcode=45090202000535"
+              target="_blank"
+              rel="noopener noreferrer"
+              className="text-gray-500 hover:text-gray-700 text-xs transition-colors inline-flex items-center gap-1"
+              style={{ fontSize: '12px' }}
+            >
+              <img src="https://www.beian.gov.cn/img/ghs.png" alt="公安备案" style={{ width: '14px', height: '14px' }} />
+              桂公网安备45090202000535号
             </a>
           </div>
           <div>

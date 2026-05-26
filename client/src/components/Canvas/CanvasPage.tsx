@@ -775,7 +775,7 @@ const CanvasPage: React.FC = () => {
 
       {/* 工具提示 */}
       {!isMobile && (
-        <div className="absolute bottom-4 left-4 text-dark-500 text-xs glass-light px-3 py-2 rounded-lg">
+        <div className="absolute bottom-4 left-4 text-dark-500 text-xs bg-dark-800/90 px-3 py-2 rounded-lg border border-dark-600/50">
           <span className="text-dark-400">点击「创建对话」添加根节点</span>
           <span className="mx-2">•</span>
           <span className="text-dark-400">选中节点后可创建分支</span>
@@ -789,7 +789,7 @@ const CanvasPage: React.FC = () => {
 
       {/* 关系统计 */}
       {relations.length > 0 && (
-        <div className={`text-dark-500 text-xs bg-dark-800/80 px-3 py-2 rounded-lg backdrop-blur-sm ${
+        <div className={`text-dark-500 text-xs bg-dark-800 px-3 py-2 rounded-lg border border-dark-600/50 ${
           isMobile ? 'absolute bottom-2 left-2 right-2 text-center' : 'absolute bottom-4 right-4'
         }`}>
           <span className="text-dark-400">节点: {nodes.length}</span>

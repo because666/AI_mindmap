@@ -785,7 +785,7 @@ const MainLayout: React.FC<{ children: React.ReactNode }> = ({ children }) => {
       />
 
       {/* ICP备案号、公安备案号与联系邮箱 - 悬浮底部一行显示 */}
-      <footer className="fixed bottom-0 left-0 right-0 bg-dark-900/90 backdrop-blur-sm border-t border-dark-700 py-1.5 text-center z-40">
+      <footer className="fixed bottom-0 left-0 right-0 bg-dark-900 border-t border-dark-700 py-1.5 text-center z-40">
         <a
           href="https://beian.miit.gov.cn"
           target="_blank"

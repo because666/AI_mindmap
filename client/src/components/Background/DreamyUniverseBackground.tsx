@@ -571,9 +571,10 @@ const DreamyUniverseBackground: React.FC = () => {
       scene.background = new THREE.Color(0x030208);
       scene.fog = new THREE.FogExp2(0x030208, 0.0003);
 
-      renderer = new THREE.WebGLRenderer({ antialias: false, alpha: false });
+      renderer = new THREE.WebGLRenderer({ antialias: false, alpha: false, preserveDrawingBuffer: true });
       renderer.setPixelRatio(pixR);
       renderer.setSize(W, H);
+      renderer.domElement.style.display = 'block';
       if (container) {
         container.appendChild(renderer.domElement);
       }
@@ -730,7 +731,8 @@ const DreamyUniverseBackground: React.FC = () => {
         width: '100vw',
         height: '100vh',
         zIndex: 0,
-        pointerEvents: 'none'
+        pointerEvents: 'none',
+        overflow: 'hidden'
       }}
     />
   );

@@ -35,6 +35,7 @@ const MainLayout: React.FC<{ children: React.ReactNode }> = ({ children }) => {
   const [showWorkspaceInfo, setShowWorkspaceInfo] = useState(false);
   const [isDrawerOpen, setIsDrawerOpen] = useState(false);
   const [isMessageCenterOpen, setIsMessageCenterOpen] = useState(false);
+  const [mobileDrawerClosing, setMobileDrawerClosing] = useState(false);
   const [globalAlert, setGlobalAlert] = useState<GlobalAlert | null>(null);
 
   const isMobile = useIsMobile();
@@ -46,6 +47,18 @@ const MainLayout: React.FC<{ children: React.ReactNode }> = ({ children }) => {
   const canUndo = historyIndex >= 0;
   const canRedo = historyIndex < history.length - 1;
   const [isSyncing, setIsSyncing] = useState(false);
+
+  /**
+   * 处理移动端抽屉关闭动画
+   * 先触发滑出动画，250ms后真正关闭抽屉并重置关闭状态
+   */
+  const handleMobileDrawerClose = useCallback(() => {
+    setMobileDrawerClosing(true);
+    setTimeout(() => {
+      setIsDrawerOpen(false);
+      setMobileDrawerClosing(false);
+    }, 250);
+  }, []);
 
   /**
    * 处理用户被封禁事件
@@ -127,7 +140,7 @@ const MainLayout: React.FC<{ children: React.ReactNode }> = ({ children }) => {
   const openChat = () => {
     setIsChatOpen(true);
     setActiveTab('chat');
-    setIsDrawerOpen(false);
+    handleMobileDrawerClose();
   };
 
   const closeChat = () => {
@@ -175,7 +188,7 @@ const MainLayout: React.FC<{ children: React.ReactNode }> = ({ children }) => {
         </div>
         {isMobile && (
           <button
-            onClick={() => setIsDrawerOpen(false)}
+            onClick={handleMobileDrawerClose}
             className="p-2 text-dark-400 hover:text-white rounded-lg transition-colors"
           >
             <X className="w-5 h-5" />
@@ -189,7 +202,7 @@ const MainLayout: React.FC<{ children: React.ReactNode }> = ({ children }) => {
         </div>
 
         <button
-          onClick={() => { setActiveTab('canvas'); closeChat(); setIsDrawerOpen(false); }}
+          onClick={() => { setActiveTab('canvas'); closeChat(); handleMobileDrawerClose(); }}
           className={`w-full flex items-center gap-3 px-4 py-3 text-left transition-colors ${
             activeTab === 'canvas' && !isChatOpen
               ? 'bg-primary-600/20 text-primary-400 border-r-2 border-primary-500'
@@ -247,7 +260,7 @@ const MainLayout: React.FC<{ children: React.ReactNode }> = ({ children }) => {
         </div>
 
         <button
-          onClick={() => { setIsSearchOpen(true); setIsDrawerOpen(false); }}
+          onClick={() => { setIsSearchOpen(true); handleMobileDrawerClose(); }}
           className="w-full flex items-center gap-3 px-4 py-3 text-left text-dark-300 hover:text-white hover:bg-dark-800 transition-colors"
         >
           <Search className="w-5 h-5" />
@@ -255,7 +268,7 @@ const MainLayout: React.FC<{ children: React.ReactNode }> = ({ children }) => {
         </button>
 
         <button
-          onClick={() => { setIsMessageCenterOpen(true); setIsDrawerOpen(false); }}
+          onClick={() => { setIsMessageCenterOpen(true); handleMobileDrawerClose(); }}
           className={`w-full flex items-center gap-3 px-4 py-3 text-left transition-colors ${
             isMessageCenterOpen
               ? 'bg-primary-600/20 text-primary-400 border-r-2 border-primary-500'
@@ -267,7 +280,7 @@ const MainLayout: React.FC<{ children: React.ReactNode }> = ({ children }) => {
         </button>
 
         <button
-          onClick={() => { setIsHistoryOpen(!isHistoryOpen); setIsDrawerOpen(false); }}
+          onClick={() => { setIsHistoryOpen(!isHistoryOpen); handleMobileDrawerClose(); }}
           className={`w-full flex items-center gap-3 px-4 py-3 text-left transition-colors ${
             isHistoryOpen
               ? 'bg-primary-600/20 text-primary-400 border-r-2 border-primary-500'
@@ -279,7 +292,7 @@ const MainLayout: React.FC<{ children: React.ReactNode }> = ({ children }) => {
         </button>
 
         <button
-          onClick={() => { setIsFilePanelOpen(true); setIsDrawerOpen(false); }}
+          onClick={() => { setIsFilePanelOpen(true); handleMobileDrawerClose(); }}
           className="w-full flex items-center gap-3 px-4 py-3 text-left text-dark-300 hover:text-white hover:bg-dark-800 transition-colors"
         >
           <FolderOpen className="w-5 h-5" />
@@ -303,7 +316,7 @@ const MainLayout: React.FC<{ children: React.ReactNode }> = ({ children }) => {
         <div className="p-3 border-t border-dark-700">
           <button
             onClick={() => { setShowWorkspaceInfo(!showWorkspaceInfo); }}
-            className="w-full flex items-center gap-2 p-2 bg-dark-800 rounded-lg text-left hover:bg-dark-700 transition-colors"
+            className="w-full flex items-center gap-2 p-2 bg-dark-800 rounded-xl text-left hover:bg-dark-700 transition-colors"
           >
             {currentWorkspace.type === 'public' ? (
               <Globe className="w-4 h-4 text-primary-400" />
@@ -335,7 +348,7 @@ const MainLayout: React.FC<{ children: React.ReactNode }> = ({ children }) => {
             <h3 className="text-white font-medium text-sm">工作区</h3>
             <button
               onClick={() => setShowWorkspaceInfo(false)}
-              className="p-1 text-dark-400 hover:text-white rounded transition-colors"
+              className="p-1 text-dark-400 hover:text-white rounded-xl transition-colors"
             >
               <X className="w-4 h-4" />
             </button>
@@ -343,7 +356,7 @@ const MainLayout: React.FC<{ children: React.ReactNode }> = ({ children }) => {
 
           {currentWorkspace && (
             <div className="p-4">
-              <div className="p-3 bg-dark-800 rounded-xl border border-primary-500/30">
+              <div className="p-3 bg-dark-800 rounded-2xl border border-primary-500/30">
                 <div className="flex items-center gap-2 mb-1">
                   {currentWorkspace.type === 'public' ? (
                     <Globe className="w-3.5 h-3.5 text-primary-400" />
@@ -363,7 +376,7 @@ const MainLayout: React.FC<{ children: React.ReactNode }> = ({ children }) => {
                 )}
                 <button
                   onClick={() => { setIsWorkspaceSettingsOpen(true); setShowWorkspaceInfo(false); }}
-                  className="mt-2 w-full flex items-center justify-center gap-1.5 px-3 py-1.5 text-primary-400 hover:text-primary-300 rounded-lg hover:bg-dark-700 transition-colors text-xs border border-primary-500/20"
+                  className="mt-2 w-full flex items-center justify-center gap-1.5 px-3 py-1.5 text-primary-400 hover:text-primary-300 rounded-xl hover:bg-dark-700 transition-colors text-xs border border-primary-500/20"
                 >
                   <Settings className="w-3 h-3" />
                   工作区设置
@@ -385,7 +398,7 @@ const MainLayout: React.FC<{ children: React.ReactNode }> = ({ children }) => {
                 <button
                   key={ws.id}
                   onClick={() => { switchWorkspace(ws.id); setShowWorkspaceInfo(false); }}
-                  className="w-full flex items-center gap-2 p-2 rounded-lg text-left text-dark-400 hover:text-white hover:bg-dark-800 transition-colors"
+                  className="w-full flex items-center gap-2 p-2 rounded-xl text-left text-dark-400 hover:text-white hover:bg-dark-800 transition-colors"
                 >
                   {ws.type === 'public' ? (
                     <Globe className="w-3.5 h-3.5" />
@@ -405,7 +418,7 @@ const MainLayout: React.FC<{ children: React.ReactNode }> = ({ children }) => {
           <div className="p-2 border-t border-dark-700">
             <button
               onClick={() => { setShowWorkspaceInfo(false); clearCurrentWorkspace(); }}
-              className="w-full flex items-center gap-2 px-3 py-2 text-primary-400 hover:text-primary-300 rounded-lg hover:bg-dark-800 transition-colors text-sm"
+              className="w-full flex items-center gap-2 px-3 py-2 text-primary-400 hover:text-primary-300 rounded-xl hover:bg-dark-800 transition-colors text-sm"
             >
               <Plus className="w-3.5 h-3.5" />
               创建或加入新工作区
@@ -415,7 +428,7 @@ const MainLayout: React.FC<{ children: React.ReactNode }> = ({ children }) => {
           <div className="p-2 border-t border-dark-700">
             <button
               onClick={handleLeaveWorkspace}
-              className="w-full flex items-center gap-2 px-3 py-2 text-dark-400 hover:text-red-400 rounded-lg hover:bg-dark-800 transition-colors text-sm"
+              className="w-full flex items-center gap-2 px-3 py-2 text-dark-400 hover:text-red-400 rounded-xl hover:bg-dark-800 transition-colors text-sm"
             >
               <LogOut className="w-3.5 h-3.5" />
               离开工作区
@@ -433,7 +446,7 @@ const MainLayout: React.FC<{ children: React.ReactNode }> = ({ children }) => {
     <header className="h-14 bg-dark-900 border-b border-dark-700 flex items-center justify-between px-4 md:hidden">
       <button
         onClick={() => setIsDrawerOpen(true)}
-        className="p-2 text-dark-400 hover:text-white rounded-lg transition-colors"
+        className="p-2 text-dark-400 hover:text-white rounded-xl transition-colors"
       >
         <Menu className="w-5 h-5" />
       </button>
@@ -449,7 +462,7 @@ const MainLayout: React.FC<{ children: React.ReactNode }> = ({ children }) => {
         <button
           onClick={handleSyncData}
           disabled={isSyncing}
-          className={`p-2 rounded-lg transition-colors ${isSyncing ? 'text-primary-400' : 'text-dark-400 hover:text-white'}`}
+          className={`p-2 rounded-xl transition-colors ${isSyncing ? 'text-primary-400' : 'text-dark-400 hover:text-white'}`}
           title="同步数据"
         >
           <RefreshCw className={`w-5 h-5 ${isSyncing ? 'animate-spin' : ''}`} />
@@ -457,13 +470,13 @@ const MainLayout: React.FC<{ children: React.ReactNode }> = ({ children }) => {
         <UnreadBadge onClick={() => setIsMessageCenterOpen(true)} />
         <button
           onClick={openChat}
-          className="p-2 text-dark-400 hover:text-white rounded-lg transition-colors"
+          className="p-2 text-dark-400 hover:text-white rounded-xl transition-colors"
         >
           <MessageSquare className="w-5 h-5" />
         </button>
         <button
           onClick={() => setIsSettingsOpen(true)}
-          className="p-2 text-dark-400 hover:text-white rounded-lg transition-colors"
+          className="p-2 text-dark-400 hover:text-white rounded-xl transition-colors"
         >
           <Settings className="w-5 h-5" />
         </button>
@@ -478,10 +491,14 @@ const MainLayout: React.FC<{ children: React.ReactNode }> = ({ children }) => {
     isMobile && isDrawerOpen && (
       <div className="fixed inset-0 z-50">
         <div
-          className="absolute inset-0 bg-black/60 backdrop-blur-sm"
-          onClick={() => setIsDrawerOpen(false)}
+          className={`absolute inset-0 bg-black/60 backdrop-blur-sm ${
+            mobileDrawerClosing ? 'animate-fade-out' : 'animate-fade'
+          }`}
+          onClick={handleMobileDrawerClose}
         />
-        <div className="absolute left-0 top-0 bottom-0 w-72 bg-dark-900 border-r border-dark-700 flex flex-col animate-slide-in-left">
+        <div className={`absolute left-0 top-0 bottom-0 w-72 bg-dark-900 border-r border-dark-700 flex flex-col ${
+          mobileDrawerClosing ? 'animate-slide-out-left' : 'animate-slide-in-left'
+        }`}>
           {renderSidebarContent()}
         </div>
       </div>
@@ -498,134 +515,189 @@ const MainLayout: React.FC<{ children: React.ReactNode }> = ({ children }) => {
           <Network className="w-6 h-6 text-white" />
         </div>
 
-        <button
-          onClick={() => setShowWorkspaceInfo(!showWorkspaceInfo)}
-          className="w-10 h-10 rounded-xl flex items-center justify-center transition-colors bg-dark-800 border border-dark-600 hover:border-primary-500"
-          title={currentWorkspace?.name || '工作区'}
-        >
-          {currentWorkspace?.type === 'public' ? (
-            <Globe className="w-4 h-4 text-primary-400" />
-          ) : (
-            <Lock className="w-4 h-4 text-primary-400" />
-          )}
-        </button>
+        <div className="relative group">
+          <button
+            onClick={() => setShowWorkspaceInfo(!showWorkspaceInfo)}
+            className="w-10 h-10 rounded-xl flex items-center justify-center transition-colors bg-dark-800 border border-dark-600 hover:border-primary-500"
+            title={currentWorkspace?.name || '工作区'}
+          >
+            {currentWorkspace?.type === 'public' ? (
+              <Globe className="w-4 h-4 text-primary-400" />
+            ) : (
+              <Lock className="w-4 h-4 text-primary-400" />
+            )}
+          </button>
+          <span className="absolute left-full ml-2 px-2 py-1 bg-dark-800 text-dark-200 text-xs rounded-lg whitespace-nowrap pointer-events-none opacity-0 group-hover:opacity-100 transition-opacity duration-200">
+            工作区
+          </span>
+        </div>
 
         <div className="w-6 h-px bg-dark-700 my-2" />
 
-        <button
-          onClick={handleSyncData}
-          disabled={isSyncing}
-          className={`w-10 h-10 rounded-xl flex items-center justify-center transition-colors ${
-            isSyncing
-              ? 'text-primary-400 bg-primary-600/20'
-              : 'text-dark-400 hover:text-white hover:bg-dark-700'
-          }`}
-          title="同步数据"
-        >
-          <RefreshCw className={`w-4 h-4 ${isSyncing ? 'animate-spin' : ''}`} />
-        </button>
+        <div className="relative group">
+          <button
+            onClick={handleSyncData}
+            disabled={isSyncing}
+            className={`w-10 h-10 rounded-xl flex items-center justify-center transition-colors ${
+              isSyncing
+                ? 'text-primary-400 bg-primary-600/20'
+                : 'text-dark-400 hover:text-white hover:bg-dark-700'
+            }`}
+            title="同步数据"
+          >
+            <RefreshCw className={`w-4 h-4 ${isSyncing ? 'animate-spin' : ''}`} />
+          </button>
+          <span className="absolute left-full ml-2 px-2 py-1 bg-dark-800 text-dark-200 text-xs rounded-lg whitespace-nowrap pointer-events-none opacity-0 group-hover:opacity-100 transition-opacity duration-200">
+            同步
+          </span>
+        </div>
 
-        <button
-          onClick={() => { setActiveTab('canvas'); closeChat(); }}
-          className={`w-10 h-10 rounded-xl flex items-center justify-center transition-colors ${
-            activeTab === 'canvas' && !isChatOpen
-              ? 'bg-primary-600 text-white'
-              : 'text-dark-400 hover:text-white hover:bg-dark-700'
-          }`}
-          title="思维画布"
-        >
-          <Network className="w-5 h-5" />
-        </button>
+        <div className="relative group">
+          <button
+            onClick={() => { setActiveTab('canvas'); closeChat(); }}
+            className={`w-10 h-10 rounded-xl flex items-center justify-center transition-colors ${
+              activeTab === 'canvas' && !isChatOpen
+                ? 'bg-primary-600 text-white'
+                : 'text-dark-400 hover:text-white hover:bg-dark-700'
+            }`}
+            title="思维画布"
+          >
+            <Network className="w-5 h-5" />
+          </button>
+          <span className="absolute left-full ml-2 px-2 py-1 bg-dark-800 text-dark-200 text-xs rounded-lg whitespace-nowrap pointer-events-none opacity-0 group-hover:opacity-100 transition-opacity duration-200">
+            画布
+          </span>
+        </div>
 
-        <button
-          onClick={openChat}
-          className={`w-10 h-10 rounded-xl flex items-center justify-center transition-colors ${
-            isChatOpen
-              ? 'bg-primary-600 text-white'
-              : 'text-dark-400 hover:text-white hover:bg-dark-700'
-          }`}
-          title="对话"
-        >
-          <MessageSquare className="w-5 h-5" />
-        </button>
+        <div className="relative group">
+          <button
+            onClick={openChat}
+            className={`w-10 h-10 rounded-xl flex items-center justify-center transition-colors ${
+              isChatOpen
+                ? 'bg-primary-600 text-white'
+                : 'text-dark-400 hover:text-white hover:bg-dark-700'
+            }`}
+            title="对话"
+          >
+            <MessageSquare className="w-5 h-5" />
+          </button>
+          <span className="absolute left-full ml-2 px-2 py-1 bg-dark-800 text-dark-200 text-xs rounded-lg whitespace-nowrap pointer-events-none opacity-0 group-hover:opacity-100 transition-opacity duration-200">
+            对话
+          </span>
+        </div>
 
-        <button
-          onClick={() => setIsMessageCenterOpen(!isMessageCenterOpen)}
-          className={`w-10 h-10 rounded-xl flex items-center justify-center transition-colors relative ${
-            isMessageCenterOpen
-              ? 'bg-primary-600 text-white'
-              : 'text-dark-400 hover:text-white hover:bg-dark-700'
-          }`}
-          title="消息"
-        >
-          <Bell className="w-5 h-5" />
-        </button>
+        <div className="relative group">
+          <button
+            onClick={() => setIsMessageCenterOpen(!isMessageCenterOpen)}
+            className={`w-10 h-10 rounded-xl flex items-center justify-center transition-colors relative ${
+              isMessageCenterOpen
+                ? 'bg-primary-600 text-white'
+                : 'text-dark-400 hover:text-white hover:bg-dark-700'
+            }`}
+            title="消息"
+          >
+            <Bell className="w-5 h-5" />
+          </button>
+          <span className="absolute left-full ml-2 px-2 py-1 bg-dark-800 text-dark-200 text-xs rounded-lg whitespace-nowrap pointer-events-none opacity-0 group-hover:opacity-100 transition-opacity duration-200">
+            消息
+          </span>
+        </div>
 
         <div className="w-6 h-px bg-dark-700 my-2" />
 
-        <button
-          onClick={undo}
-          disabled={!canUndo}
-          className={`w-10 h-10 rounded-xl flex items-center justify-center transition-colors ${
-            canUndo
-              ? 'text-dark-400 hover:text-white hover:bg-dark-700'
-              : 'text-dark-600 cursor-not-allowed'
-          }`}
-          title="撤销"
-        >
-          <Undo2 className="w-4 h-4" />
-        </button>
+        <div className="relative group">
+          <button
+            onClick={undo}
+            disabled={!canUndo}
+            className={`w-10 h-10 rounded-xl flex items-center justify-center transition-colors ${
+              canUndo
+                ? 'text-dark-400 hover:text-white hover:bg-dark-700'
+                : 'text-dark-600 cursor-not-allowed'
+            }`}
+            title="撤销"
+          >
+            <Undo2 className="w-4 h-4" />
+          </button>
+          <span className="absolute left-full ml-2 px-2 py-1 bg-dark-800 text-dark-200 text-xs rounded-lg whitespace-nowrap pointer-events-none opacity-0 group-hover:opacity-100 transition-opacity duration-200">
+            撤销
+          </span>
+        </div>
 
-        <button
-          onClick={redo}
-          disabled={!canRedo}
-          className={`w-10 h-10 rounded-xl flex items-center justify-center transition-colors ${
-            canRedo
-              ? 'text-dark-400 hover:text-white hover:bg-dark-700'
-              : 'text-dark-600 cursor-not-allowed'
-          }`}
-          title="重做"
-        >
-          <Redo2 className="w-4 h-4" />
-        </button>
+        <div className="relative group">
+          <button
+            onClick={redo}
+            disabled={!canRedo}
+            className={`w-10 h-10 rounded-xl flex items-center justify-center transition-colors ${
+              canRedo
+                ? 'text-dark-400 hover:text-white hover:bg-dark-700'
+                : 'text-dark-600 cursor-not-allowed'
+            }`}
+            title="重做"
+          >
+            <Redo2 className="w-4 h-4" />
+          </button>
+          <span className="absolute left-full ml-2 px-2 py-1 bg-dark-800 text-dark-200 text-xs rounded-lg whitespace-nowrap pointer-events-none opacity-0 group-hover:opacity-100 transition-opacity duration-200">
+            重做
+          </span>
+        </div>
 
         <div className="flex-1" />
 
-        <button
-          onClick={() => setIsSearchOpen(true)}
-          className="w-10 h-10 rounded-xl flex items-center justify-center text-dark-400 hover:text-white hover:bg-dark-700 transition-colors"
-          title="搜索"
-        >
-          <Search className="w-5 h-5" />
-        </button>
+        <div className="relative group">
+          <button
+            onClick={() => setIsSearchOpen(true)}
+            className="w-10 h-10 rounded-xl flex items-center justify-center text-dark-400 hover:text-white hover:bg-dark-700 transition-colors"
+            title="搜索"
+          >
+            <Search className="w-5 h-5" />
+          </button>
+          <span className="absolute left-full ml-2 px-2 py-1 bg-dark-800 text-dark-200 text-xs rounded-lg whitespace-nowrap pointer-events-none opacity-0 group-hover:opacity-100 transition-opacity duration-200">
+            搜索
+          </span>
+        </div>
 
-        <button
-          onClick={() => setIsHistoryOpen(!isHistoryOpen)}
-          className={`w-10 h-10 rounded-xl flex items-center justify-center transition-colors ${
-            isHistoryOpen
-              ? 'bg-primary-600 text-white'
-              : 'text-dark-400 hover:text-white hover:bg-dark-700'
-          }`}
-          title="历史"
-        >
-          <Clock className="w-5 h-5" />
-        </button>
+        <div className="relative group">
+          <button
+            onClick={() => setIsHistoryOpen(!isHistoryOpen)}
+            className={`w-10 h-10 rounded-xl flex items-center justify-center transition-colors ${
+              isHistoryOpen
+                ? 'bg-primary-600 text-white'
+                : 'text-dark-400 hover:text-white hover:bg-dark-700'
+            }`}
+            title="历史"
+          >
+            <Clock className="w-5 h-5" />
+          </button>
+          <span className="absolute left-full ml-2 px-2 py-1 bg-dark-800 text-dark-200 text-xs rounded-lg whitespace-nowrap pointer-events-none opacity-0 group-hover:opacity-100 transition-opacity duration-200">
+            历史
+          </span>
+        </div>
 
-        <button
-          onClick={() => setIsFilePanelOpen(true)}
-          className="w-10 h-10 rounded-xl flex items-center justify-center text-dark-400 hover:text-white hover:bg-dark-700 transition-colors"
-          title="文件"
-        >
-          <FolderOpen className="w-5 h-5" />
-        </button>
+        <div className="relative group">
+          <button
+            onClick={() => setIsFilePanelOpen(true)}
+            className="w-10 h-10 rounded-xl flex items-center justify-center text-dark-400 hover:text-white hover:bg-dark-700 transition-colors"
+            title="文件"
+          >
+            <FolderOpen className="w-5 h-5" />
+          </button>
+          <span className="absolute left-full ml-2 px-2 py-1 bg-dark-800 text-dark-200 text-xs rounded-lg whitespace-nowrap pointer-events-none opacity-0 group-hover:opacity-100 transition-opacity duration-200">
+            文件
+          </span>
+        </div>
 
-        <button
-          onClick={() => setIsSettingsOpen(true)}
-          className="w-10 h-10 rounded-xl flex items-center justify-center text-dark-400 hover:text-white hover:bg-dark-700 transition-colors"
-          title="设置"
-        >
-          <Settings className="w-5 h-5" />
-        </button>
+        <div className="relative group">
+          <button
+            onClick={() => setIsSettingsOpen(true)}
+            className="w-10 h-10 rounded-xl flex items-center justify-center text-dark-400 hover:text-white hover:bg-dark-700 transition-colors"
+            title="设置"
+          >
+            <Settings className="w-5 h-5" />
+          </button>
+          <span className="absolute left-full ml-2 px-2 py-1 bg-dark-800 text-dark-200 text-xs rounded-lg whitespace-nowrap pointer-events-none opacity-0 group-hover:opacity-100 transition-opacity duration-200">
+            设置
+          </span>
+        </div>
       </aside>
     )
   );
@@ -646,8 +718,8 @@ const MainLayout: React.FC<{ children: React.ReactNode }> = ({ children }) => {
 
           {!isMobile && (
             <div
-              className={`border-l border-dark-700 flex flex-col bg-dark-900 transition-all duration-300 ease-in-out ${
-                isChatOpen ? 'opacity-100 translate-x-0' : 'opacity-0 translate-x-full pointer-events-none absolute right-0'
+              className={`border-l border-dark-700 flex flex-col bg-dark-900 transition-all duration-300 ease-out overflow-hidden ${
+                isChatOpen ? 'opacity-100' : 'opacity-0 pointer-events-none'
               }`}
               style={{ width: isChatOpen ? chatPanelWidth : 0 }}
             >
@@ -658,7 +730,7 @@ const MainLayout: React.FC<{ children: React.ReactNode }> = ({ children }) => {
                 </div>
                 <button
                   onClick={closeChat}
-                  className="p-1 text-dark-400 hover:text-white hover:bg-dark-700 rounded transition-colors"
+                  className="p-1 text-dark-400 hover:text-white hover:bg-dark-700 rounded-xl transition-colors"
                 >
                   <X className="w-4 h-4" />
                 </button>
@@ -670,18 +742,23 @@ const MainLayout: React.FC<{ children: React.ReactNode }> = ({ children }) => {
           )}
 
           {!isMobile && (
-            <HistoryPanel
-              isOpen={isHistoryOpen}
-              onClose={() => setIsHistoryOpen(false)}
-            />
+            <div
+              className="transition-all duration-300 ease-out overflow-hidden h-full"
+              style={{ width: isHistoryOpen ? '320px' : 0, opacity: isHistoryOpen ? 1 : 0 }}
+            >
+              <HistoryPanel
+                isOpen={isHistoryOpen}
+                onClose={() => setIsHistoryOpen(false)}
+              />
+            </div>
           )}
 
-          {!isMobile && isMessageCenterOpen && (
+          {!isMobile && (
             <div
-              className={`border-l border-dark-700 flex flex-col bg-dark-900 transition-all duration-300 ease-in-out h-full ${
-                isMessageCenterOpen ? 'opacity-100 translate-x-0' : 'opacity-0 translate-x-full pointer-events-none'
+              className={`border-l border-dark-700 flex flex-col bg-dark-900 transition-all duration-300 ease-out overflow-hidden ${
+                isMessageCenterOpen ? 'opacity-100' : 'opacity-0 pointer-events-none'
               }`}
-              style={{ width: '384px' }}
+              style={{ width: isMessageCenterOpen ? '384px' : 0 }}
             >
               <div className="flex items-center justify-between px-4 py-3 border-b border-dark-700 bg-dark-800">
                 <div className="flex items-center gap-2">
@@ -690,7 +767,7 @@ const MainLayout: React.FC<{ children: React.ReactNode }> = ({ children }) => {
                 </div>
                 <button
                   onClick={() => setIsMessageCenterOpen(false)}
-                  className="p-1.5 text-dark-400 hover:text-white bg-dark-700 rounded-lg hover:bg-dark-600 transition-colors"
+                  className="p-1.5 text-dark-400 hover:text-white bg-dark-700 rounded-xl hover:bg-dark-600 transition-colors"
                 >
                   <X className="w-4 h-4" />
                 </button>
@@ -712,7 +789,7 @@ const MainLayout: React.FC<{ children: React.ReactNode }> = ({ children }) => {
             </div>
             <button
               onClick={closeChat}
-              className="p-2 text-dark-400 hover:text-white hover:bg-dark-700 rounded-lg transition-colors"
+              className="p-2 text-dark-400 hover:text-white hover:bg-dark-700 rounded-xl transition-colors"
             >
               <X className="w-5 h-5" />
             </button>
@@ -732,7 +809,7 @@ const MainLayout: React.FC<{ children: React.ReactNode }> = ({ children }) => {
             </div>
             <button
               onClick={() => setIsHistoryOpen(false)}
-              className="p-2 text-dark-400 hover:text-white hover:bg-dark-700 rounded-lg transition-colors"
+              className="p-2 text-dark-400 hover:text-white hover:bg-dark-700 rounded-xl transition-colors"
             >
               <X className="w-5 h-5" />
             </button>
@@ -752,7 +829,7 @@ const MainLayout: React.FC<{ children: React.ReactNode }> = ({ children }) => {
             </div>
             <button
               onClick={() => setIsMessageCenterOpen(false)}
-              className="p-2 text-dark-400 hover:text-white hover:bg-dark-700 rounded-lg transition-colors"
+              className="p-2 text-dark-400 hover:text-white hover:bg-dark-700 rounded-xl transition-colors"
             >
               <X className="w-5 h-5" />
             </button>
@@ -819,7 +896,7 @@ const MainLayout: React.FC<{ children: React.ReactNode }> = ({ children }) => {
       {/* 全局封禁/关闭状态提示弹窗 */}
       {globalAlert && (
         <div className="fixed inset-0 z-[100] flex items-center justify-center bg-black/60 backdrop-blur-sm">
-          <div className="bg-dark-800 border border-red-500/50 rounded-2xl p-6 max-w-md w-full mx-4 shadow-2xl">
+          <div className="bg-dark-800 border border-red-500/50 rounded-3xl p-6 max-w-md w-full mx-4 shadow-2xl">
             <div className="flex items-center gap-3 mb-4">
               <div className="w-12 h-12 rounded-full bg-red-500/20 flex items-center justify-center">
                 <AlertTriangle className="w-6 h-6 text-red-400" />

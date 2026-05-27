@@ -1,6 +1,7 @@
 import React, { useState } from 'react';
 import { X, Globe, Lock, Users, Copy, Check, RefreshCw, Trash2, UserMinus, Settings } from 'lucide-react';
 import { useVisitorWorkspaceStore } from '../../stores/visitorWorkspaceStore';
+import ConfirmDialog from '../Common/ConfirmDialog';
 import type { WorkspaceType } from '../../types';
 
 interface WorkspaceSettingsModalProps {
@@ -32,6 +33,8 @@ const WorkspaceSettingsModal: React.FC<WorkspaceSettingsModalProps> = ({ isOpen,
   const [isEditing, setIsEditing] = useState(false);
   const [copiedCode, setCopiedCode] = useState(false);
   const [confirmDelete, setConfirmDelete] = useState(false);
+  const [removeMemberConfirmOpen, setRemoveMemberConfirmOpen] = useState(false);
+  const [pendingRemoveMemberId, setPendingRemoveMemberId] = useState<string | null>(null);
 
   if (!isOpen || !currentWorkspace) return null;
 
@@ -72,8 +75,27 @@ const WorkspaceSettingsModal: React.FC<WorkspaceSettingsModalProps> = ({ isOpen,
   };
 
   const handleRemoveMember = async (targetVisitorId: string) => {
-    if (!confirm('确定要移除该成员吗？')) return;
-    await removeMember(currentWorkspace.id, targetVisitorId);
+    setPendingRemoveMemberId(targetVisitorId);
+    setRemoveMemberConfirmOpen(true);
+  };
+
+  /**
+   * 确认移除成员回调
+   */
+  const handleConfirmRemoveMember = async () => {
+    if (pendingRemoveMemberId && currentWorkspace) {
+      await removeMember(currentWorkspace.id, pendingRemoveMemberId);
+    }
+    setRemoveMemberConfirmOpen(false);
+    setPendingRemoveMemberId(null);
+  };
+
+  /**
+   * 取消移除成员回调
+   */
+  const handleCancelRemoveMember = () => {
+    setRemoveMemberConfirmOpen(false);
+    setPendingRemoveMemberId(null);
   };
 
   const handleDeleteWorkspace = async () => {
@@ -326,6 +348,16 @@ const WorkspaceSettingsModal: React.FC<WorkspaceSettingsModalProps> = ({ isOpen,
           )}
         </div>
       </div>
+
+      <ConfirmDialog
+        isOpen={removeMemberConfirmOpen}
+        title="移除成员"
+        message="确定要移除该成员吗？此操作不可撤销。"
+        confirmText="移除"
+        cancelText="取消"
+        onConfirm={handleConfirmRemoveMember}
+        onCancel={handleCancelRemoveMember}
+      />
     </div>
   );
 };

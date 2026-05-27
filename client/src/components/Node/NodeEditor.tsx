@@ -1,6 +1,7 @@
 import React, { useState, useEffect } from 'react';
 import { X, Save, Plus, Trash2, GitBranch } from 'lucide-react';
 import { useAppStore, type NodeData } from '../../stores/appStore';
+import ConfirmDialog from '../Common/ConfirmDialog';
 import useIsMobile from '../../hooks/useIsMobile';
 
 interface NodeEditorProps {
@@ -21,6 +22,7 @@ const NodeEditor: React.FC<NodeEditorProps> = ({ nodeId, isOpen, onClose, allNod
   const [tags, setTags] = useState<string[]>([]);
   const [newTag, setNewTag] = useState('');
   const [parentIds, setParentIds] = useState<string[]>([]);
+  const [deleteConfirmOpen, setDeleteConfirmOpen] = useState(false);
   const isMobile = useIsMobile();
 
   useEffect(() => {
@@ -48,10 +50,27 @@ const NodeEditor: React.FC<NodeEditorProps> = ({ nodeId, isOpen, onClose, allNod
   };
 
   const handleDelete = () => {
-    if (nodeId && confirm('确定要删除此节点及其所有子节点吗？')) {
+    if (nodeId) {
+      setDeleteConfirmOpen(true);
+    }
+  };
+
+  /**
+   * 确认删除节点回调
+   */
+  const handleConfirmDelete = () => {
+    if (nodeId) {
       deleteNode(nodeId);
       onClose();
     }
+    setDeleteConfirmOpen(false);
+  };
+
+  /**
+   * 取消删除节点回调
+   */
+  const handleCancelDelete = () => {
+    setDeleteConfirmOpen(false);
   };
 
   const handleAddTag = () => {
@@ -268,6 +287,16 @@ const NodeEditor: React.FC<NodeEditorProps> = ({ nodeId, isOpen, onClose, allNod
       <div className="relative w-full max-w-lg mx-4 bg-dark-800 rounded-2xl shadow-2xl overflow-hidden border border-dark-700">
         {editorContent}
       </div>
+
+      <ConfirmDialog
+        isOpen={deleteConfirmOpen}
+        title="删除节点"
+        message="确定要删除此节点及其所有子节点吗？此操作不可撤销。"
+        confirmText="删除"
+        cancelText="取消"
+        onConfirm={handleConfirmDelete}
+        onCancel={handleCancelDelete}
+      />
     </div>
   );
 };

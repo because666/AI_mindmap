@@ -134,7 +134,7 @@ const WelcomePage: React.FC = () => {
           </form>
 
           {error && (
-            <div className="mt-4 p-3 bg-red-900/30 border border-red-700/50 rounded-xl text-red-400 text-sm flex items-center justify-between animate-in">
+            <div className="mt-4 p-3 bg-red-900/30 border border-red-700/50 rounded-2xl text-red-400 text-sm flex items-center justify-between animate-in">
               <span>{error}</span>
               <button onClick={clearError} className="text-red-400 hover:text-red-300 ml-2">×</button>
             </div>
@@ -186,7 +186,7 @@ const WelcomePage: React.FC = () => {
                     {ws.inviteCode && (
                       <button
                         onClick={(e) => { e.stopPropagation(); copyInviteCode(ws.inviteCode!, ws.id); }}
-                        className="p-1.5 text-dark-500 hover:text-primary-400 rounded-lg hover:bg-dark-600 transition-all"
+                        className="p-1.5 text-dark-500 hover:text-primary-400 rounded-xl hover:bg-dark-600 transition-all"
                         title="复制邀请码"
                       >
                         {copiedId === ws.id ? <Check className="w-3.5 h-3.5 text-green-400" /> : <Copy className="w-3.5 h-3.5" />}
@@ -223,7 +223,7 @@ const WelcomePage: React.FC = () => {
           </div>
 
           {showCreate && (
-            <form onSubmit={handleCreateWorkspace} className="mt-4 p-4 glass-light rounded-xl animate-in">
+            <form onSubmit={handleCreateWorkspace} className="mt-4 p-4 glass-light rounded-2xl animate-in">
               <h3 className="text-white font-medium mb-3 text-sm">创建新工作区</h3>
               <input
                 type="text"
@@ -245,7 +245,7 @@ const WelcomePage: React.FC = () => {
                 <button
                   type="button"
                   onClick={() => setWorkspaceType('public')}
-                  className={`flex-1 flex items-center justify-center gap-1.5 px-3 py-2 rounded-lg text-sm transition-all duration-200 ${
+                  className={`flex-1 flex items-center justify-center gap-1.5 px-3 py-2 rounded-xl text-sm transition-all duration-200 ${
                     workspaceType === 'public'
                       ? 'bg-primary-600/20 text-primary-400 border border-primary-500/40'
                       : 'bg-dark-700/50 text-dark-400 hover:text-white border border-transparent'
@@ -257,7 +257,7 @@ const WelcomePage: React.FC = () => {
                 <button
                   type="button"
                   onClick={() => setWorkspaceType('private')}
-                  className={`flex-1 flex items-center justify-center gap-1.5 px-3 py-2 rounded-lg text-sm transition-all duration-200 ${
+                  className={`flex-1 flex items-center justify-center gap-1.5 px-3 py-2 rounded-xl text-sm transition-all duration-200 ${
                     workspaceType === 'private'
                       ? 'bg-primary-600/20 text-primary-400 border border-primary-500/40'
                       : 'bg-dark-700/50 text-dark-400 hover:text-white border border-transparent'
@@ -283,7 +283,7 @@ const WelcomePage: React.FC = () => {
           )}
 
           {showJoin && (
-            <form onSubmit={handleJoinByCode} className="mt-4 p-4 glass-light rounded-xl animate-in">
+            <form onSubmit={handleJoinByCode} className="mt-4 p-4 glass-light rounded-2xl animate-in">
               <h3 className="text-white font-medium mb-3 text-sm">通过邀请码加入</h3>
               <input
                 type="text"
@@ -305,7 +305,7 @@ const WelcomePage: React.FC = () => {
           )}
 
           {showPublic && (
-            <div className="mt-4 p-4 glass-light rounded-xl animate-in">
+            <div className="mt-4 p-4 glass-light rounded-2xl animate-in">
               <div className="flex items-center justify-between mb-3">
                 <h3 className="text-white font-medium text-sm">发现公开工作区</h3>
                 <button
@@ -342,7 +342,7 @@ const WelcomePage: React.FC = () => {
                       <button
                         onClick={() => handleJoinPublic(ws.id)}
                         disabled={isLoading}
-                        className="px-3 py-1.5 bg-primary-600/20 text-primary-400 rounded-lg text-xs font-medium hover:bg-primary-600/30 border border-primary-500/30 transition-all disabled:opacity-50 flex-shrink-0"
+                        className="px-3 py-1.5 bg-primary-600/20 text-primary-400 rounded-xl text-xs font-medium hover:bg-primary-600/30 border border-primary-500/30 transition-all disabled:opacity-50 flex-shrink-0"
                       >
                         加入
                       </button>
@@ -357,7 +357,7 @@ const WelcomePage: React.FC = () => {
           )}
 
           {error && (
-            <div className="mt-4 p-3 bg-red-900/30 border border-red-700/50 rounded-xl text-red-400 text-sm flex items-center justify-between animate-in">
+            <div className="mt-4 p-3 bg-red-900/30 border border-red-700/50 rounded-2xl text-red-400 text-sm flex items-center justify-between animate-in">
               <span>{error}</span>
               <button onClick={clearError} className="text-red-400 hover:text-red-300 ml-2">×</button>
             </div>

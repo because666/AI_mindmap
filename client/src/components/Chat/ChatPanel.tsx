@@ -9,6 +9,7 @@ import useMobile from '../../hooks/useMobile';
 import type { StreamEvent } from '../../types';
 import MarkdownRenderer from './MarkdownRenderer';
 import MindMapThumbnail from './MindMapThumbnail';
+import ConfirmDialog from '../Common/ConfirmDialog';
 
 interface ChatPanelProps {
   nodeId?: string | null;
@@ -17,6 +18,7 @@ interface ChatPanelProps {
 /**
  * 消息内容组件
  * 用于渲染单条消息，支持 Markdown 格式
+ * 移动端支持长按触发复制操作
  */
 const MessageContent: React.FC<{
   content: string;
@@ -24,6 +26,9 @@ const MessageContent: React.FC<{
 }> = ({ content, role }) => {
   const [copied, setCopied] = useState(false);
 
+  /**
+   * 复制消息内容到剪贴板
+   */
   const handleCopy = async () => {
     try {
       await navigator.clipboard.writeText(content);
@@ -31,6 +36,45 @@ const MessageContent: React.FC<{
       setTimeout(() => setCopied(false), 2000);
     } catch (err) {
       console.error('复制失败:', err);
+    }
+  };
+
+  /**
+   * 长按复制处理
+   * 移动端长按500ms后触发复制操作
+   * @param text - 需要复制的文本内容
+   */
+  const handleLongPress = (text: string) => {
+    navigator.clipboard.writeText(text).then(() => {
+      setCopied(true);
+      setTimeout(() => setCopied(false), 2000);
+    }).catch((err: unknown) => {
+      console.error('长按复制失败:', err);
+    });
+  };
+
+  /**
+   * 触摸开始事件处理
+   * 设置500ms定时器，超时后触发长按复制
+   * @param e - 触摸事件对象
+   * @param text - 需要复制的文本内容
+   */
+  const handleTouchStart = (e: React.TouchEvent, text: string) => {
+    const timer = setTimeout(() => {
+      handleLongPress(text);
+    }, 500);
+    (e.target as HTMLElement).setAttribute('data-long-press-timer', String(timer));
+  };
+
+  /**
+   * 触摸结束事件处理
+   * 清除长按定时器，防止误触发
+   * @param e - 触摸事件对象
+   */
+  const handleTouchEnd = (e: React.TouchEvent) => {
+    const timer = (e.target as HTMLElement).getAttribute('data-long-press-timer');
+    if (timer) {
+      clearTimeout(Number(timer));
     }
   };
 
@@ -45,7 +89,9 @@ const MessageContent: React.FC<{
       <MarkdownRenderer content={content} />
       <button
         onClick={handleCopy}
-        className="absolute top-0 right-0 p-1 opacity-0 group-hover:opacity-100 transition-opacity bg-dark-600 rounded text-dark-400 hover:text-white"
+        onTouchStart={(e) => handleTouchStart(e, content)}
+        onTouchEnd={handleTouchEnd}
+        className="absolute top-0 right-0 p-1 opacity-70 md:opacity-0 md:group-hover:opacity-100 transition-opacity bg-dark-600 rounded-xl text-dark-400 hover:text-white"
         title="复制内容"
       >
         {copied ? <Check className="w-3.5 h-3.5 text-green-400" /> : <Copy className="w-3.5 h-3.5" />}
@@ -82,7 +128,7 @@ const ThinkingProcess: React.FC<{
   if (!content) return null;
 
   return (
-    <div className="mb-3 border border-dark-600 rounded-xl bg-dark-800/50 overflow-hidden">
+    <div className="mb-3 border border-dark-600 rounded-2xl bg-dark-800/50 overflow-hidden">
       <button
         onClick={() => setIsExpanded(!isExpanded)}
         className="w-full flex items-center gap-2 px-3 py-2 text-xs font-medium text-dark-300 hover:text-primary-400 hover:bg-dark-700/50 transition-colors"
@@ -145,8 +191,21 @@ const ChatPanel: React.FC<ChatPanelProps> = ({ nodeId }) => {
   const [selectedFileIds, setSelectedFileIds] = useState<string[]>([]);
   const [isUploading, setIsUploading] = useState(false);
   const [showFilePanel, setShowFilePanel] = useState(false);
+  const [confirmDialogOpen, setConfirmDialogOpen] = useState(false);
   const messagesEndRef = useRef<HTMLDivElement>(null);
   const fileInputRef = useRef<HTMLInputElement>(null);
+  const textareaRef = useRef<HTMLTextAreaElement>(null);
+
+  /**
+   * 快捷提问建议列表
+   * 与思维导图场景相关，引导用户快速开始对话
+   */
+  const quickSuggestions = [
+    '帮我分析这个主题的关键概念',
+    '生成子主题扩展思路',
+    '总结当前节点的核心要点',
+    '推荐相关联的知识方向',
+  ];
 
   const node = nodeId ? nodes.get(nodeId) : null;
   const conversation = node?.conversationId ? conversations.get(node.conversationId) : null;
@@ -217,7 +276,7 @@ const ChatPanel: React.FC<ChatPanelProps> = ({ nodeId }) => {
         setSelectedFileIds(prev => [...prev, ...newFileIds]);
         await loadWorkspaceFiles();
       }
-    } catch (err) {
+    } catch {
       setError('文件上传失败，请重试');
     } finally {
       setIsUploading(false);
@@ -315,6 +374,9 @@ const ChatPanel: React.FC<ChatPanelProps> = ({ nodeId }) => {
 
     const userMessage = input.trim();
     setInput('');
+    if (textareaRef.current) {
+      textareaRef.current.style.height = 'auto';
+    }
     setError(null);
     setStreamingContent('');
     setStreamingThinkingContent('');
@@ -379,6 +441,38 @@ const ChatPanel: React.FC<ChatPanelProps> = ({ nodeId }) => {
     }
   };
 
+  /**
+   * 格式化消息时间戳
+   * 当天显示 HH:MM，跨天显示 MM/DD HH:MM
+   * @param timestamp - 消息时间戳，支持 Date 对象、时间戳数字或日期字符串
+   * @returns 格式化后的时间字符串
+   */
+  const formatMessageTime = (timestamp: string | number | Date): string => {
+    const date = new Date(timestamp);
+    const now = new Date();
+    const isToday = date.toDateString() === now.toDateString();
+    const hours = date.getHours().toString().padStart(2, '0');
+    const minutes = date.getMinutes().toString().padStart(2, '0');
+    if (isToday) {
+      return `${hours}:${minutes}`;
+    }
+    const month = (date.getMonth() + 1).toString().padStart(2, '0');
+    const day = date.getDate().toString().padStart(2, '0');
+    return `${month}/${day} ${hours}:${minutes}`;
+  };
+
+  /**
+   * 处理输入框内容变化
+   * 基于 scrollHeight 自动调整输入框高度，最大 160px
+   * @param e - 输入事件对象
+   */
+  const handleInputChange = (e: React.ChangeEvent<HTMLTextAreaElement>) => {
+    const target = e.target;
+    target.style.height = 'auto';
+    target.style.height = Math.min(target.scrollHeight, 160) + 'px';
+    setInput(target.value);
+  };
+
   const handleKeyDown = (e: React.KeyboardEvent) => {
     if (e.key === 'Enter' && !e.shiftKey) {
       e.preventDefault();
@@ -387,9 +481,105 @@ const ChatPanel: React.FC<ChatPanelProps> = ({ nodeId }) => {
   };
 
   const handleClear = () => {
-    if (conversation?.id && confirm('确定要清空此对话吗？')) {
+    setConfirmDialogOpen(true);
+  };
+
+  /**
+   * 确认清空对话回调
+   */
+  const handleConfirmClear = () => {
+    if (conversation?.id) {
       clearConversation(conversation.id);
     }
+    setConfirmDialogOpen(false);
+  };
+
+  /**
+   * 取消清空对话回调
+   */
+  const handleCancelClear = () => {
+    setConfirmDialogOpen(false);
+  };
+
+  /**
+   * 使用指定文本发送消息
+   * 从快捷建议等场景调用，复用 handleSend 的核心逻辑
+   * @param text - 要发送的文本内容
+   */
+  const handleSendWithText = async (text: string) => {
+    if (!text.trim() || isLoading) return;
+    haptic('light');
+
+    if (!config.apiKey && !hasBuiltInKey) {
+      setError('请先在设置中配置API密钥');
+      return;
+    }
+
+    if (!nodeId) {
+      setError('请先选择一个节点');
+      return;
+    }
+
+    const userMessage = text.trim();
+    setInput('');
+    setError(null);
+    setStreamingContent('');
+    setStreamingThinkingContent('');
+
+    let convId = node?.conversationId;
+    if (!convId) {
+      convId = addConversation(nodeId);
+    }
+
+    setIsLoading(true);
+
+    const contextMessages = getConversationContext(nodeId);
+
+    addMessage(convId, { role: 'user', content: userMessage });
+
+    const allMessages = [
+      ...contextMessages,
+      { role: 'user' as const, content: userMessage }
+    ];
+
+    const handleStream = (event: StreamEvent) => {
+      if (event.type === 'content' && event.fullContent) {
+        setStreamingContent(event.fullContent);
+      } else if (event.type === 'thinking' && event.fullThinkingContent) {
+        setStreamingThinkingContent(event.fullThinkingContent);
+      } else if (event.type === 'error') {
+        setError(event.error || '发送消息失败');
+        setStreamingContent('');
+        setStreamingThinkingContent('');
+      }
+    };
+
+    const result = await chatService.sendMessageStream(allMessages, config, handleStream, selectedFileIds.length > 0 ? selectedFileIds : undefined);
+
+    setIsLoading(false);
+    setStreamingContent('');
+    setStreamingThinkingContent('');
+    setSelectedFileIds([]);
+
+    if (result.success && result.content) {
+      addMessage(convId, { role: 'assistant', content: result.content });
+    } else if (!result.success) {
+      if (result.sensitiveWords && result.sensitiveWords.length > 0) {
+        setError(`消息包含敏感内容（${result.sensitiveWords.join('、')}），请修改后重试`);
+      } else {
+        setError(result.error || '发送消息失败');
+      }
+    }
+  };
+
+  /**
+   * 快捷建议点击处理
+   * 设置输入框内容并直接发送
+   * @param text - 建议文本
+   */
+  const handleQuickSuggestion = (text: string) => {
+    setInput(text);
+    handleSendWithText(text);
   };
 
   /**
@@ -453,7 +643,7 @@ const ChatPanel: React.FC<ChatPanelProps> = ({ nodeId }) => {
           <button
             onClick={handleCreateBranch}
             disabled={branchCreating || !nodeId}
-            className="flex items-center gap-1.5 px-3 py-1.5 bg-primary-600/15 border border-primary-500/30 text-primary-400 rounded-lg text-xs font-medium hover:bg-primary-600/25 hover:border-primary-500/50 active:scale-95 transition-all disabled:opacity-40 disabled:cursor-not-allowed"
+            className="flex items-center gap-1.5 px-3 py-1.5 bg-primary-600/15 border border-primary-500/30 text-primary-400 rounded-xl text-xs font-medium hover:bg-primary-600/25 hover:border-primary-500/50 active:scale-95 transition-all disabled:opacity-40 disabled:cursor-not-allowed"
             title="从此节点创建分支"
           >
             {branchCreating ? (
@@ -466,7 +656,7 @@ const ChatPanel: React.FC<ChatPanelProps> = ({ nodeId }) => {
 
           <button
             onClick={handleClear}
-            className="p-1.5 text-dark-400 hover:text-red-400 hover:bg-dark-700 rounded-lg transition-colors"
+            className="p-1.5 text-dark-400 hover:text-red-400 hover:bg-dark-700 rounded-xl transition-colors"
             title="清空对话"
           >
             <Trash2 className="w-4 h-4" />
@@ -508,6 +698,18 @@ const ChatPanel: React.FC<ChatPanelProps> = ({ nodeId }) => {
                 已继承 {contextInfo.parentCount} 个父节点的对话历史
               </p>
             )}
+            <div className="mt-4 space-y-2">
+              {quickSuggestions.map((suggestion, index) => (
+                <button
+                  key={index}
+                  onClick={() => handleQuickSuggestion(suggestion)}
+                  className="w-full text-left px-3 py-2 rounded-2xl text-sm text-dark-300 hover:text-white hover:bg-dark-700/50 border border-dark-600/50 hover:border-primary-500/30 transition-all duration-200"
+                >
+                  <span className="text-primary-400 mr-2">✦</span>
+                  {suggestion}
+                </button>
+              ))}
+            </div>
             {/* 空状态时也提供创建分支引导 */}
             <button
               onClick={handleCreateBranch}
@@ -544,6 +746,9 @@ const ChatPanel: React.FC<ChatPanelProps> = ({ nodeId }) => {
                   }`}
                 >
                   <MessageContent content={message.content} role={message.role} />
+                  <div className="text-xs mt-1" style={{ color: '#64748b' }}>
+                    {formatMessageTime(message.timestamp)}
+                  </div>
                 </div>
               </div>
             ))}
@@ -581,7 +786,7 @@ const ChatPanel: React.FC<ChatPanelProps> = ({ nodeId }) => {
         )}
         
         {error && (
-          <div className="text-center text-red-400 text-sm py-2 px-4 bg-red-900/20 rounded-lg">
+          <div className="text-center text-red-400 text-sm py-2 px-4 bg-red-900/20 rounded-2xl">
             {error}
           </div>
         )}
@@ -633,13 +838,14 @@ const ChatPanel: React.FC<ChatPanelProps> = ({ nodeId }) => {
             {isUploading ? <Loader2 className="w-4 h-4 animate-spin" /> : <Paperclip className="w-4 h-4" />}
           </button>
           <textarea
+            ref={textareaRef}
             value={input}
-            onChange={(e) => setInput(e.target.value)}
+            onChange={handleInputChange}
             onKeyDown={handleKeyDown}
             placeholder={selectedFileIds.length > 0 ? `已引用${selectedFileIds.length}个文件，输入问题...` : "输入消息... (Enter发送，Shift+Enter换行)"}
             rows={1}
             disabled={isLoading}
-            className="flex-1 px-4 py-2.5 bg-dark-700 border border-dark-600 rounded-xl text-white placeholder-dark-400 focus:border-primary-500 focus:outline-none resize-none transition-colors text-sm disabled:opacity-50"
+            className="flex-1 px-4 py-2.5 bg-dark-700 border border-dark-600 rounded-xl text-white placeholder-dark-400 focus:border-primary-500 focus:outline-none resize-none overflow-y-auto transition-colors text-sm disabled:opacity-50"
           />
           <button
             onClick={() => setShowFilePanel(!showFilePanel)}
@@ -708,6 +914,17 @@ const ChatPanel: React.FC<ChatPanelProps> = ({ nodeId }) => {
           </div>
         </div>
       )}
+
+      {/* 清空对话确认弹窗 */}
+      <ConfirmDialog
+        isOpen={confirmDialogOpen}
+        title="清空对话"
+        message="确定要清空此对话吗？此操作不可撤销。"
+        confirmText="清空"
+        cancelText="取消"
+        onConfirm={handleConfirmClear}
+        onCancel={handleCancelClear}
+      />
     </div>
   );
 };

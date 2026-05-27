@@ -37,10 +37,10 @@ const HistoryPanel: React.FC<HistoryPanelProps> = ({ isOpen, onClose: _onClose }
     }
   };
 
-  if (!isOpen) return null;
-
   return (
-    <div className="fixed top-14 right-0 w-80 bg-dark-800 border-l border-dark-700 h-[calc(100vh-56px)] overflow-hidden flex flex-col z-40">
+    <div className={`bg-dark-800 border-l border-dark-700 h-full overflow-hidden flex flex-col transition-opacity duration-300 ease-out ${
+      isOpen ? 'opacity-100' : 'opacity-0 pointer-events-none'
+    }`}>
       {/* 头部 */}
       <div className="flex items-center justify-between px-4 py-3 border-b border-dark-700">
         <div className="flex items-center gap-2">

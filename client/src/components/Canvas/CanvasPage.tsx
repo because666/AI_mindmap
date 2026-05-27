@@ -19,6 +19,7 @@ import { useAppStore, RELATION_TYPE_LABELS } from '../../stores/appStore';
 import NodeEditor from '../Node/NodeEditor';
 import RelationEditor from '../Node/RelationEditor';
 import CompositeNodeCreator from '../Node/CompositeNodeCreator';
+import ConfirmDialog from '../Common/ConfirmDialog';
 import useIsMobile from '../../hooks/useIsMobile';
 import { useLongPress } from '../../hooks/useLongPress';
 
@@ -273,6 +274,7 @@ const CanvasPage: React.FC = () => {
   const [isSelectMode, setIsSelectMode] = useState(false);
   const [pendingConnection, setPendingConnection] = useState<{ source: string; target: string } | null>(null);
   const [isSyncing, setIsSyncing] = useState(false);
+  const [deleteConfirmOpen, setDeleteConfirmOpen] = useState(false);
   const isMobile = useIsMobile();
 
   /**
@@ -538,10 +540,27 @@ const CanvasPage: React.FC = () => {
    * 删除选中节点
    */
   const handleDeleteNode = useCallback(() => {
-    if (selectedNodeId && confirm('确定要删除此节点及其所有子节点吗？')) {
+    if (selectedNodeId) {
+      setDeleteConfirmOpen(true);
+    }
+  }, [selectedNodeId]);
+
+  /**
+   * 确认删除节点回调
+   */
+  const handleConfirmDeleteNode = useCallback(() => {
+    if (selectedNodeId) {
       deleteNode(selectedNodeId);
     }
+    setDeleteConfirmOpen(false);
   }, [selectedNodeId, deleteNode]);
+
+  /**
+   * 取消删除节点回调
+   */
+  const handleCancelDeleteNode = useCallback(() => {
+    setDeleteConfirmOpen(false);
+  }, []);
 
   /**
    * 同步数据 - 从服务端重新加载当前工作区数据
@@ -824,6 +843,16 @@ const CanvasPage: React.FC = () => {
         onClose={closeCompositeCreator}
         selectedNodeIds={selectedForComposite}
         allNodes={storeNodes}
+      />
+
+      <ConfirmDialog
+        isOpen={deleteConfirmOpen}
+        title="删除节点"
+        message="确定要删除此节点及其所有子节点吗？此操作不可撤销。"
+        confirmText="删除"
+        cancelText="取消"
+        onConfirm={handleConfirmDeleteNode}
+        onCancel={handleCancelDeleteNode}
       />
     </div>
   );

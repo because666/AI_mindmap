@@ -3,6 +3,7 @@ import { Settings, Server, Key, Globe, Plus, Trash2, Edit3, X, CheckCircle } fro
 import { useAPIConfigStore } from '../../stores/apiConfigStore';
 import { AI_PROVIDERS } from '../../utils/aiModels';
 import { chatService } from '../../services/chatService';
+import ConfirmDialog from '../Common/ConfirmDialog';
 import type { AIProvider, AIModel } from '../../types';
 
 interface APIConfigPanelProps {
@@ -122,6 +123,8 @@ const APIConfigPanel: React.FC<APIConfigPanelProps> = () => {
   const [editingModelId, setEditingModelId] = useState<string | null>(null);
   const [hasBuiltInKey, setHasBuiltInKey] = useState(false);
   const [defaultProvider, setDefaultProvider] = useState<string>('zhipu');
+  const [deleteModelConfirmOpen, setDeleteModelConfirmOpen] = useState(false);
+  const [pendingDeleteModelId, setPendingDeleteModelId] = useState<string | null>(null);
 
   useEffect(() => {
     const fetchStatus = async () => {
@@ -200,11 +203,30 @@ const APIConfigPanel: React.FC<APIConfigPanelProps> = () => {
   };
 
   /**
-   * 删除自定义模型（带确认）
+   * 删除自定义模型（带确认弹窗）
    */
   const handleDeleteModel = (modelId: string) => {
-    if (!confirm('确定要删除此模型吗？')) return;
-    removeCustomModel(modelId);
+    setPendingDeleteModelId(modelId);
+    setDeleteModelConfirmOpen(true);
+  };
+
+  /**
+   * 确认删除模型回调
+   */
+  const handleConfirmDeleteModel = () => {
+    if (pendingDeleteModelId) {
+      removeCustomModel(pendingDeleteModelId);
+    }
+    setDeleteModelConfirmOpen(false);
+    setPendingDeleteModelId(null);
+  };
+
+  /**
+   * 取消删除模型回调
+   */
+  const handleCancelDeleteModel = () => {
+    setDeleteModelConfirmOpen(false);
+    setPendingDeleteModelId(null);
   };
 
   /**
@@ -429,6 +451,16 @@ const APIConfigPanel: React.FC<APIConfigPanelProps> = () => {
           重置配置
         </button>
       </div>
+
+      <ConfirmDialog
+        isOpen={deleteModelConfirmOpen}
+        title="删除模型"
+        message="确定要删除此模型吗？此操作不可撤销。"
+        confirmText="删除"
+        cancelText="取消"
+        onConfirm={handleConfirmDeleteModel}
+        onCancel={handleCancelDeleteModel}
+      />
     </div>
   );
 };

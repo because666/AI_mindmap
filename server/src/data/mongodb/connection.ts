@@ -52,6 +52,9 @@ class MongoDBService {
       await this.db.collection('messages').createIndex({ conversationId: 1 });
       await this.db.collection('messages').createIndex({ createdAt: -1 });
       await this.db.collection('users').createIndex({ email: 1 }, { unique: true });
+      await this.db.collection('feedbacks').createIndex({ createdAt: -1 });
+      await this.db.collection('feedbacks').createIndex({ status: 1 });
+      await this.db.collection('feedbacks').createIndex({ type: 1 });
       console.log('✅ MongoDB indexes initialized');
     } catch (error) {
       console.warn('Index creation warning:', error);

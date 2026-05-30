@@ -118,3 +118,41 @@ export interface AdminFeatures {
   auditLog: boolean;
   dataExport: boolean;
 }
+
+/**
+ * 反馈状态类型
+ */
+export type FeedbackStatus = 'pending' | 'processing' | 'resolved' | 'closed';
+
+/**
+ * 反馈类型枚举
+ */
+export type FeedbackType = '功能异常' | '界面问题' | '建议' | '其他';
+
+/**
+ * 反馈列表项接口
+ */
+export interface FeedbackListItem {
+  _id: string;
+  title: string;
+  description: string;
+  type: FeedbackType;
+  contact: string;
+  visitorIp: string;
+  status: FeedbackStatus;
+  createdAt: string;
+}
+
+/**
+ * 反馈统计数据接口
+ */
+export interface FeedbackStats {
+  totalCount: number;
+  pendingCount: number;
+  processingCount: number;
+  resolvedCount: number;
+  closedCount: number;
+  todayCount: number;
+  typeDistribution: { type: string; count: number }[];
+  dailyTrend: { date: string; count: number }[];
+}

@@ -40,6 +40,10 @@ function typedDelete<T>(url: string, config?: Record<string, unknown>) {
   return api.delete<ApiResponse<T>>(url, config);
 }
 
+function typedPatch<T>(url: string, data?: unknown, config?: Record<string, unknown>) {
+  return api.patch<ApiResponse<T>>(url, data, config);
+}
+
 export const authApi = {
   checkIp: () => typedGet<{ allowed: boolean; isFirstVisit: boolean; hasPassword: boolean; enableHoneypot: boolean; nickname?: string }>('/auth/check-ip'),
   init: (password: string, confirmPassword: string) =>
@@ -177,6 +181,17 @@ export const settingsApi = {
   getFeatures: () => typedGet<unknown>('/admin/settings/features'),
   updateFeatures: (features: Record<string, boolean>) =>
     typedPut<void>('/admin/settings/features', features),
+};
+
+export const feedbacksApi = {
+  getList: (params: { page?: number; pageSize?: number; type?: string; status?: string; startDate?: string; endDate?: string; keyword?: string }) =>
+    typedGet<unknown>('/admin/feedbacks', { params }),
+  getStats: () =>
+    typedGet<unknown>('/admin/feedbacks/stats'),
+  updateStatus: (id: string, status: string) =>
+    typedPatch<void>(`/admin/feedbacks/${id}/status`, { status }),
+  export: (params: { type?: string; status?: string; startDate?: string; endDate?: string }) =>
+    api.post('/admin/feedbacks/export', params, { responseType: 'blob' }),
 };
 
 export const exportApi = {

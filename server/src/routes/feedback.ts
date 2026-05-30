@@ -1,5 +1,7 @@
 import { Router, type Request, type Response } from 'express';
 import { emailService } from '../services/emailService';
+import { mongoDBService } from '../data/mongodb/connection';
+import { ObjectId } from 'mongodb';
 
 const router = Router();
 
@@ -191,6 +193,20 @@ router.post('/', async (req: Request, res: Response) => {
         success: false,
         error: '反馈提交失败，邮件发送异常，请稍后再试',
       });
+    }
+
+    try {
+      await mongoDBService.insertOne('feedbacks', {
+        title: safeTitle,
+        description: safeDescription,
+        type,
+        contact: safeContact || '',
+        visitorIp: clientIp,
+        status: 'pending',
+        createdAt: new Date(),
+      });
+    } catch (dbError) {
+      console.error('[Feedback] 反馈数据存储失败:', dbError instanceof Error ? dbError.message : String(dbError));
     }
 
     res.json({

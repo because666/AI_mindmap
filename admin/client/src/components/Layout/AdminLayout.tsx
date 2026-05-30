@@ -5,6 +5,7 @@ import {
   Users,
   Briefcase,
   MessageSquare,
+  MessageCircle,
   Megaphone,
   Settings,
   Menu,
@@ -20,6 +21,7 @@ const navItems = [
   { path: '/workspaces', label: '工作区管理', icon: Briefcase },
   { path: '/chat-audit', label: '对话审计', icon: MessageSquare },
   { path: '/ip-bans', label: 'IP封禁', icon: ShieldBan },
+  { path: '/feedbacks', label: '反馈管理', icon: MessageCircle },
   { path: '/push', label: '消息推送', icon: Megaphone },
   { path: '/settings', label: '系统设置', icon: Settings },
 ];

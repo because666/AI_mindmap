@@ -18,6 +18,7 @@ import settingsRouter from './routes/settings';
 import exportRouter from './routes/export';
 import honeypotRouter from './routes/honeypot';
 import ipBansRouter from './routes/ipBans';
+import feedbacksRouter from './routes/feedbacks';
 
 const app = express();
 
@@ -56,6 +57,7 @@ app.use('/api/admin/push', pushRouter);
 app.use('/api/admin/settings', settingsRouter);
 app.use('/api/admin/export', exportRouter);
 app.use('/api/admin/ip-bans', ipBansRouter);
+app.use('/api/admin/feedbacks', feedbacksRouter);
 
 /**
  * 健康检查端点

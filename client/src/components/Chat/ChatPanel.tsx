@@ -613,7 +613,7 @@ const ChatPanel: React.FC<ChatPanelProps> = ({ nodeId }) => {
 
   if (!nodeId) {
     return (
-      <div className="h-full flex flex-col bg-dark-900/20">
+      <div className="h-full flex flex-col bg-dark-950/30 backdrop-blur-sm">
         <div className="flex-1 flex items-center justify-center">
           <div className="text-center text-dark-400 px-6">
             <div className="w-16 h-16 mx-auto mb-4 rounded-2xl bg-dark-700 flex items-center justify-center">
@@ -628,7 +628,7 @@ const ChatPanel: React.FC<ChatPanelProps> = ({ nodeId }) => {
   }
 
   return (
-    <div className="h-full flex flex-col bg-dark-900/20" data-testid="chat-panel-v2">
+    <div className="h-full flex flex-col bg-dark-950/30 backdrop-blur-sm" data-testid="chat-panel-v2">
       {/* 节点信息头部 */}
       <div className="px-4 py-3 border-b border-dark-700/30">
         <div className="flex items-center gap-2">
@@ -795,7 +795,7 @@ const ChatPanel: React.FC<ChatPanelProps> = ({ nodeId }) => {
       </div>
 
       {/* 输入区域 */}
-      <div className="p-4 border-t" style={{ background: '#334155', borderTopColor: 'rgba(100,116,139,0.5)' }}>
+      <div className="p-4 border-t border-dark-600/50 bg-dark-800/90 backdrop-blur-sm">
         {/* 已选文件标签 */}
         {selectedFileIds.length > 0 && (
           <div className="flex flex-wrap gap-1.5 mb-2">
@@ -805,8 +805,7 @@ const ChatPanel: React.FC<ChatPanelProps> = ({ nodeId }) => {
               return (
                 <div
                   key={fileId}
-                  className="flex items-center gap-1 px-2 py-1 rounded-lg text-xs"
-                  style={{ background: 'rgba(2,132,199,0.15)', border: '1px solid rgba(14,165,233,0.3)', color: '#38bdf8' }}
+                  className="flex items-center gap-1 px-2 py-1 rounded-lg text-xs bg-primary-600/15 border border-primary-500/30 text-primary-400"
                 >
                   {getFileIcon(file.mimeType)}
                   <span className="max-w-[120px] truncate">{file.originalName}</span>
@@ -833,8 +832,7 @@ const ChatPanel: React.FC<ChatPanelProps> = ({ nodeId }) => {
           <button
             onClick={() => fileInputRef.current?.click()}
             disabled={isLoading || isUploading}
-            className="px-3 py-2.5 rounded-xl disabled:opacity-50"
-            style={{ background: '#475569', border: '1px solid #64748b', color: '#e2e8f0' }}
+            className="btn-icon disabled:opacity-50"
             title="上传文件"
           >
             {isUploading ? <Loader2 className="w-4 h-4 animate-spin" /> : <Paperclip className="w-4 h-4" />}
@@ -847,13 +845,11 @@ const ChatPanel: React.FC<ChatPanelProps> = ({ nodeId }) => {
             placeholder={selectedFileIds.length > 0 ? `已引用${selectedFileIds.length}个文件，输入问题...` : "输入消息... (Enter发送，Shift+Enter换行)"}
             rows={1}
             disabled={isLoading}
-            className="flex-1 px-4 py-2.5 rounded-xl resize-none overflow-y-auto text-sm disabled:opacity-50"
-            style={{ background: '#475569', border: '1px solid #64748b', color: '#ffffff' }}
+            className="input-field flex-1 resize-none overflow-y-auto disabled:opacity-50"
           />
           <button
             onClick={() => setShowFilePanel(!showFilePanel)}
-            className="px-3 py-2.5 rounded-xl"
-            style={showFilePanel ? { background: 'rgba(2,132,199,0.2)', border: '1px solid rgba(14,165,233,0.5)', color: '#38bdf8' } : { background: '#475569', border: '1px solid #64748b', color: '#e2e8f0' }}
+            className={showFilePanel ? 'btn-icon bg-primary-600/20 border-primary-500/50 text-primary-400' : 'btn-icon'}
             title="工作区文件"
           >
             <FileText className="w-4 h-4" />
@@ -861,20 +857,19 @@ const ChatPanel: React.FC<ChatPanelProps> = ({ nodeId }) => {
           <button
             onClick={handleSend}
             disabled={isLoading || !input.trim()}
-            className="px-4 py-2.5 rounded-xl disabled:opacity-50 disabled:cursor-not-allowed"
-            style={{ background: '#0284c7', color: '#ffffff' }}
+            className="btn-primary disabled:opacity-50 disabled:cursor-not-allowed"
           >
             <Send className="w-4 h-4" />
           </button>
         </div>
-        <p className="text-xs mt-2 text-center" style={{ color: '#475569' }}>
+        <p className="text-xs mt-2 text-center text-dark-500">
           对话上下文将自动包含父节点历史 · 支持文件上传与AI分析
         </p>
       </div>
 
       {/* 文件面板 */}
       {showFilePanel && (
-        <div className="border-t max-h-60 overflow-y-auto" style={{ background: '#334155', borderTopColor: 'rgba(100,116,139,0.5)' }}>
+        <div className="border-t border-dark-600/50 max-h-60 overflow-y-auto bg-dark-800/90 backdrop-blur-sm">
           <div className="p-3">
             <div className="flex items-center justify-between mb-2">
               <h4 className="text-xs font-medium text-dark-300">工作区文件</h4>

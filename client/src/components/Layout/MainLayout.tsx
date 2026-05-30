@@ -718,8 +718,8 @@ const MainLayout: React.FC<{ children: React.ReactNode }> = ({ children }) => {
 
           {!isMobile && (
             <div
-              className={`border-l border-dark-700/30 flex flex-col bg-dark-900/20 transition-[width,opacity] duration-300 ease-out overflow-hidden ${
-                isChatOpen ? 'opacity-100' : 'opacity-0 pointer-events-none'
+              className={`border-l border-dark-700/30 flex flex-col bg-dark-950/30 backdrop-blur-sm transition-[width] duration-300 ease-out overflow-hidden ${
+                isChatOpen ? '' : 'pointer-events-none'
               }`}
               style={{ width: isChatOpen ? chatPanelWidth : 0 }}
             >
@@ -730,7 +730,7 @@ const MainLayout: React.FC<{ children: React.ReactNode }> = ({ children }) => {
                 </div>
                 <button
                   onClick={closeChat}
-                  className="p-1.5 text-dark-300 bg-dark-700/80 hover:text-white hover:bg-dark-600 rounded-xl transition-colors border border-dark-600/50"
+                  className="p-1.5 text-dark-300 bg-dark-700/90 hover:text-white hover:bg-dark-600 rounded-xl transition-colors border border-dark-600/50"
                 >
                   <X className="w-4 h-4" />
                 </button>
@@ -755,8 +755,8 @@ const MainLayout: React.FC<{ children: React.ReactNode }> = ({ children }) => {
 
           {!isMobile && (
             <div
-              className={`border-l border-dark-700/30 flex flex-col bg-dark-900/20 transition-[width,opacity] duration-300 ease-out overflow-hidden ${
-                isMessageCenterOpen ? 'opacity-100' : 'opacity-0 pointer-events-none'
+              className={`border-l border-dark-700/30 flex flex-col bg-dark-950/30 backdrop-blur-sm transition-[width] duration-300 ease-out overflow-hidden ${
+                isMessageCenterOpen ? '' : 'pointer-events-none'
               }`}
               style={{ width: isMessageCenterOpen ? '384px' : 0 }}
             >

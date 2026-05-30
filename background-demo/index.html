@@ -1,0 +1,451 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>DeepMindMap 粒子网络背景 Demo</title>
+<style>
+  * {
+    margin: 0;
+    padding: 0;
+    box-sizing: border-box;
+  }
+
+  html, body {
+    width: 100%;
+    height: 100%;
+    overflow: hidden;
+    background-color: #020617;
+  }
+
+  canvas {
+    display: block;
+    position: fixed;
+    top: 0;
+    left: 0;
+    z-index: 0;
+  }
+
+  .overlay {
+    position: fixed;
+    top: 0;
+    left: 0;
+    width: 100%;
+    height: 100%;
+    z-index: 1;
+    pointer-events: none;
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    justify-content: flex-start;
+  }
+
+  .title {
+    margin-top: 18vh;
+    color: rgba(255, 255, 255, 0.7);
+    font-family: "Microsoft YaHei", "PingFang SC", sans-serif;
+    font-size: 28px;
+    font-weight: 600;
+    letter-spacing: 2px;
+    text-align: center;
+    user-select: none;
+  }
+
+  .subtitle {
+    margin-top: 12px;
+    color: rgba(255, 255, 255, 0.4);
+    font-family: "Microsoft YaHei", "PingFang SC", sans-serif;
+    font-size: 14px;
+    letter-spacing: 1px;
+    text-align: center;
+    user-select: none;
+  }
+
+  .fps-counter {
+    position: fixed;
+    top: 12px;
+    right: 16px;
+    z-index: 2;
+    color: rgba(255, 255, 255, 0.4);
+    font-family: "Consolas", "Courier New", monospace;
+    font-size: 12px;
+    user-select: none;
+    pointer-events: none;
+  }
+
+  .params-info {
+    position: fixed;
+    bottom: 16px;
+    left: 50%;
+    transform: translateX(-50%);
+    z-index: 2;
+    color: rgba(255, 255, 255, 0.3);
+    font-family: "Microsoft YaHei", "PingFang SC", sans-serif;
+    font-size: 12px;
+    white-space: nowrap;
+    user-select: none;
+    pointer-events: none;
+  }
+</style>
+</head>
+<body>
+
+<canvas id="particleCanvas"></canvas>
+
+<div class="overlay">
+  <div class="title">DeepMindMap 粒子网络背景 Demo</div>
+  <div class="subtitle">流光渐变 · 移动鼠标体验交互</div>
+</div>
+
+<div class="fps-counter" id="fpsCounter">FPS: --</div>
+<div class="params-info" id="paramsInfo">粒子数: 80 | 连线距离: 150px | 交互半径: 120px</div>
+
+<script>
+(function () {
+  'use strict';
+
+  /** @type {HTMLCanvasElement} */
+  var canvas = document.getElementById('particleCanvas');
+  /** @type {CanvasRenderingContext2D} */
+  var ctx = canvas.getContext('2d');
+
+  /** 配置参数 */
+  var CONFIG = {
+    PARTICLE_COUNT: 80,
+    CONNECTION_DIST: 150,
+    CONNECTION_DIST_SQ: 150 * 150,
+    MOUSE_RADIUS: 120,
+    MOUSE_RADIUS_SQ: 120 * 120,
+    MOUSE_REPEL_FORCE: 0.8,
+    MIN_SPEED: 0.2,
+    MAX_SPEED: 0.5,
+    MIN_SIZE: 1,
+    MAX_SIZE: 3,
+    MIN_ALPHA: 0.3,
+    MAX_ALPHA: 0.8,
+    LINE_ALPHA_FACTOR: 0.5,
+    TRAIL_ALPHA: 0.15,
+    FPS_LOW_THRESHOLD: 30,
+    FPS_CHECK_DURATION: 3000,
+    COLOR_R: 14,
+    COLOR_G: 165,
+    COLOR_B: 233,
+    FLOW_COUNT: 3,
+    FLOW_SPEED_MIN: 0.1,
+    FLOW_SPEED_MAX: 0.3,
+    FLOW_RADIUS_MIN: 0.3,
+    FLOW_RADIUS_MAX: 0.5,
+    FLOW_ALPHA_MIN: 0.03,
+    FLOW_ALPHA_MAX: 0.06
+  };
+
+  /** 流光颜色数组（项目品牌色系） */
+  var FLOW_COLORS = [
+    { r: 14, g: 165, b: 233 },
+    { r: 99, g: 102, b: 241 },
+    { r: 56, g: 189, b: 248 }
+  ];
+
+  /** 当前粒子数量（可能因降级而减少） */
+  var currentParticleCount = CONFIG.PARTICLE_COUNT;
+  /** 是否已执行降级 */
+  var hasDegraded = false;
+
+  /** 鼠标位置，初始在画布外 */
+  var mouse = { x: -9999, y: -9999 };
+
+  /** 粒子数组 */
+  var particles = [];
+
+  /** 流光数组 */
+  var flows = [];
+
+  /** FPS 统计相关 */
+  var fpsFrameCount = 0;
+  var fpsLastTime = performance.now();
+  var fpsLowStartTime = 0;
+  var fpsIsLow = false;
+  var currentFps = 0;
+
+  /**
+   * 设置 Canvas 尺寸为窗口尺寸
+   */
+  function resizeCanvas() {
+    canvas.width = window.innerWidth;
+    canvas.height = window.innerHeight;
+  }
+
+  /**
+   * 创建单个粒子对象
+   * @returns {Object} 粒子对象，包含位置、速度、大小、透明度属性
+   */
+  function createParticle() {
+    var speed = CONFIG.MIN_SPEED + Math.random() * (CONFIG.MAX_SPEED - CONFIG.MIN_SPEED);
+    var angle = Math.random() * Math.PI * 2;
+    return {
+      x: Math.random() * canvas.width,
+      y: Math.random() * canvas.height,
+      vx: Math.cos(angle) * speed,
+      vy: Math.sin(angle) * speed,
+      size: CONFIG.MIN_SIZE + Math.random() * (CONFIG.MAX_SIZE - CONFIG.MIN_SIZE),
+      alpha: CONFIG.MIN_ALPHA + Math.random() * (CONFIG.MAX_ALPHA - CONFIG.MIN_ALPHA)
+    };
+  }
+
+  /**
+   * 初始化所有粒子
+   */
+  function initParticles() {
+    particles = [];
+    for (var i = 0; i < currentParticleCount; i++) {
+      particles.push(createParticle());
+    }
+  }
+
+  /**
+   * 初始化流光对象数组
+   */
+  function initFlows() {
+    flows = [];
+    for (var i = 0; i < CONFIG.FLOW_COUNT; i++) {
+      var speed = CONFIG.FLOW_SPEED_MIN + Math.random() * (CONFIG.FLOW_SPEED_MAX - CONFIG.FLOW_SPEED_MIN);
+      var angle = Math.random() * Math.PI * 2;
+      flows.push({
+        x: Math.random(),
+        y: Math.random(),
+        radius: CONFIG.FLOW_RADIUS_MIN + Math.random() * (CONFIG.FLOW_RADIUS_MAX - CONFIG.FLOW_RADIUS_MIN),
+        color: FLOW_COLORS[i % FLOW_COLORS.length],
+        alpha: CONFIG.FLOW_ALPHA_MIN + Math.random() * (CONFIG.FLOW_ALPHA_MAX - CONFIG.FLOW_ALPHA_MIN),
+        vx: Math.cos(angle) * speed * 0.001,
+        vy: Math.sin(angle) * speed * 0.001
+      });
+    }
+  }
+
+  /**
+   * 更新流光位置，到达边界时反弹
+   */
+  function updateFlows() {
+    for (var i = 0; i < flows.length; i++) {
+      var f = flows[i];
+      f.x += f.vx;
+      f.y += f.vy;
+      if (f.x < -0.1 || f.x > 1.1) f.vx *= -1;
+      if (f.y < -0.1 || f.y > 1.1) f.vy *= -1;
+    }
+  }
+
+  /**
+   * 绘制流光渐变效果，使用径向渐变叠加半透明色块
+   */
+  function drawFlowingGradients() {
+    for (var i = 0; i < flows.length; i++) {
+      var f = flows[i];
+      var cx = f.x * canvas.width;
+      var cy = f.y * canvas.height;
+      var r = f.radius * Math.max(canvas.width, canvas.height);
+      var gradient = ctx.createRadialGradient(cx, cy, 0, cx, cy, r);
+      var a = f.alpha;
+      gradient.addColorStop(0, 'rgba(' + f.color.r + ',' + f.color.g + ',' + f.color.b + ',' + a + ')');
+      gradient.addColorStop(0.08, 'rgba(' + f.color.r + ',' + f.color.g + ',' + f.color.b + ',' + (a * 0.92) + ')');
+      gradient.addColorStop(0.17, 'rgba(' + f.color.r + ',' + f.color.g + ',' + f.color.b + ',' + (a * 0.78) + ')');
+      gradient.addColorStop(0.28, 'rgba(' + f.color.r + ',' + f.color.g + ',' + f.color.b + ',' + (a * 0.58) + ')');
+      gradient.addColorStop(0.40, 'rgba(' + f.color.r + ',' + f.color.g + ',' + f.color.b + ',' + (a * 0.36) + ')');
+      gradient.addColorStop(0.54, 'rgba(' + f.color.r + ',' + f.color.g + ',' + f.color.b + ',' + (a * 0.18) + ')');
+      gradient.addColorStop(0.70, 'rgba(' + f.color.r + ',' + f.color.g + ',' + f.color.b + ',' + (a * 0.06) + ')');
+      gradient.addColorStop(0.86, 'rgba(' + f.color.r + ',' + f.color.g + ',' + f.color.b + ',' + (a * 0.015) + ')');
+      gradient.addColorStop(1, 'rgba(' + f.color.r + ',' + f.color.g + ',' + f.color.b + ',0)');
+      ctx.fillStyle = gradient;
+      ctx.fillRect(cx - r, cy - r, r * 2, r * 2);
+    }
+  }
+
+  /**
+   * 更新单个粒子位置，处理边界环绕
+   * @param {Object} p - 粒子对象
+   */
+  function updateParticle(p) {
+    p.x += p.vx;
+    p.y += p.vy;
+
+    if (p.x < 0) {
+      p.x += canvas.width;
+    } else if (p.x > canvas.width) {
+      p.x -= canvas.width;
+    }
+
+    if (p.y < 0) {
+      p.y += canvas.height;
+    } else if (p.y > canvas.height) {
+      p.y -= canvas.height;
+    }
+  }
+
+  /**
+   * 应用鼠标排斥力，使鼠标附近粒子受到轻微推力
+   * @param {Object} p - 粒子对象
+   */
+  function applyMouseRepel(p) {
+    var dx = p.x - mouse.x;
+    var dy = p.y - mouse.y;
+    var distSq = dx * dx + dy * dy;
+
+    if (distSq < CONFIG.MOUSE_RADIUS_SQ && distSq > 0.01) {
+      var dist = Math.sqrt(distSq);
+      var force = (1 - dist / CONFIG.MOUSE_RADIUS) * CONFIG.MOUSE_REPEL_FORCE;
+      p.vx += (dx / dist) * force * 0.1;
+      p.vy += (dy / dist) * force * 0.1;
+
+      var speed = Math.sqrt(p.vx * p.vx + p.vy * p.vy);
+      var maxSpeed = CONFIG.MAX_SPEED * 1.5;
+      if (speed > maxSpeed) {
+        p.vx = (p.vx / speed) * maxSpeed;
+        p.vy = (p.vy / speed) * maxSpeed;
+      }
+    }
+  }
+
+  /**
+   * 绘制单个粒子
+   * @param {Object} p - 粒子对象
+   */
+  function drawParticle(p) {
+    ctx.beginPath();
+    ctx.arc(p.x, p.y, p.size, 0, Math.PI * 2);
+    ctx.fillStyle = 'rgba(' + CONFIG.COLOR_R + ',' + CONFIG.COLOR_G + ',' + CONFIG.COLOR_B + ',' + p.alpha + ')';
+    ctx.fill();
+  }
+
+  /**
+   * 绘制粒子之间的连线
+   */
+  function drawConnections() {
+    var len = particles.length;
+    for (var i = 0; i < len; i++) {
+      for (var j = i + 1; j < len; j++) {
+        var dx = particles[i].x - particles[j].x;
+        var dy = particles[i].y - particles[j].y;
+        var distSq = dx * dx + dy * dy;
+
+        if (distSq < CONFIG.CONNECTION_DIST_SQ) {
+          var alpha = (1 - Math.sqrt(distSq) / CONFIG.CONNECTION_DIST) * CONFIG.LINE_ALPHA_FACTOR;
+          ctx.beginPath();
+          ctx.moveTo(particles[i].x, particles[i].y);
+          ctx.lineTo(particles[j].x, particles[j].y);
+          ctx.strokeStyle = 'rgba(' + CONFIG.COLOR_R + ',' + CONFIG.COLOR_G + ',' + CONFIG.COLOR_B + ',' + alpha + ')';
+          ctx.lineWidth = 0.6;
+          ctx.stroke();
+        }
+      }
+    }
+  }
+
+  /**
+   * 绘制鼠标与附近粒子之间的连线
+   */
+  function drawMouseConnections() {
+    if (mouse.x < 0 || mouse.y < 0) return;
+
+    var len = particles.length;
+    for (var i = 0; i < len; i++) {
+      var dx = particles[i].x - mouse.x;
+      var dy = particles[i].y - mouse.y;
+      var distSq = dx * dx + dy * dy;
+
+      if (distSq < CONFIG.CONNECTION_DIST_SQ) {
+        var alpha = (1 - Math.sqrt(distSq) / CONFIG.CONNECTION_DIST) * CONFIG.LINE_ALPHA_FACTOR;
+        ctx.beginPath();
+        ctx.moveTo(mouse.x, mouse.y);
+        ctx.lineTo(particles[i].x, particles[i].y);
+        ctx.strokeStyle = 'rgba(' + CONFIG.COLOR_R + ',' + CONFIG.COLOR_G + ',' + CONFIG.COLOR_B + ',' + alpha + ')';
+        ctx.lineWidth = 0.6;
+        ctx.stroke();
+      }
+    }
+  }
+
+  /**
+   * 更新 FPS 计数器，检测低帧率并执行自动降级
+   */
+  function updateFps() {
+    fpsFrameCount++;
+    var now = performance.now();
+    var elapsed = now - fpsLastTime;
+
+    if (elapsed >= 1000) {
+      currentFps = Math.round(fpsFrameCount * 1000 / elapsed);
+      fpsFrameCount = 0;
+      fpsLastTime = now;
+
+      document.getElementById('fpsCounter').textContent = 'FPS: ' + currentFps;
+
+      if (currentFps < CONFIG.FPS_LOW_THRESHOLD) {
+        if (!fpsIsLow) {
+          fpsIsLow = true;
+          fpsLowStartTime = now;
+        } else if (now - fpsLowStartTime >= CONFIG.FPS_CHECK_DURATION && !hasDegraded) {
+          hasDegraded = true;
+          currentParticleCount = Math.floor(CONFIG.PARTICLE_COUNT / 2);
+          initParticles();
+          document.getElementById('paramsInfo').textContent =
+            '粒子数: ' + currentParticleCount + ' | 连线距离: 150px | 交互半径: 120px (已降级)';
+        }
+      } else {
+        fpsIsLow = false;
+      }
+    }
+  }
+
+  /**
+   * 主动画循环：清屏、绘制流光、更新粒子、绘制连线与粒子、更新 FPS
+   */
+  function animate() {
+    ctx.fillStyle = 'rgba(2, 6, 23,' + CONFIG.TRAIL_ALPHA + ')';
+    ctx.fillRect(0, 0, canvas.width, canvas.height);
+
+    updateFlows();
+    drawFlowingGradients();
+
+    for (var i = 0; i < particles.length; i++) {
+      applyMouseRepel(particles[i]);
+      updateParticle(particles[i]);
+    }
+
+    drawConnections();
+    drawMouseConnections();
+
+    for (var i = 0; i < particles.length; i++) {
+      drawParticle(particles[i]);
+    }
+
+    updateFps();
+
+    requestAnimationFrame(animate);
+  }
+
+  /** 监听鼠标移动 */
+  window.addEventListener('mousemove', function (e) {
+    mouse.x = e.clientX;
+    mouse.y = e.clientY;
+  });
+
+  /** 鼠标离开窗口时重置位置 */
+  window.addEventListener('mouseout', function () {
+    mouse.x = -9999;
+    mouse.y = -9999;
+  });
+
+  /** 监听窗口尺寸变化，Canvas 始终等于窗口尺寸 */
+  window.addEventListener('resize', function () {
+    resizeCanvas();
+  });
+
+  /** 初始化并启动动画 */
+  resizeCanvas();
+  initParticles();
+  initFlows();
+  animate();
+})();
+</script>
+</body>
+</html>

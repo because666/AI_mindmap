@@ -10,6 +10,7 @@ import {
   MessageStats,
   BroadcastOptions,
   WorkspaceNotificationOptions,
+  FeedbackNotificationOptions,
 } from '../types/push';
 
 const JPUSH_API_URL = 'https://api.jpush.cn/v3/push';
@@ -354,6 +355,90 @@ class PushService {
 
     await this.sendPushNotification(result.insertedId.toString(), title, content, targetUserIds);
 
+    return message;
+  }
+
+  /**
+   * 发送反馈处理结果推送通知
+   * 当管理员更新反馈状态时，向反馈提交者发送推送通知
+   * @param visitorId 反馈提交者的访客ID
+   * @param feedbackTitle 反馈标题
+   * @param newStatus 新的反馈状态
+   * @returns 创建的消息记录，如果visitorId为anonymous则返回null
+   */
+  async sendFeedbackNotification(
+    visitorId: string,
+    feedbackTitle: string,
+    newStatus: string
+  ): Promise<PushMessage | null> {
+    if (!visitorId || visitorId === 'anonymous') {
+      console.log('[Push] 反馈推送跳过：visitorId为anonymous，无法推送');
+      return null;
+    }
+
+    const statusLabelMap: Record<string, string> = {
+      processing: '正在处理中',
+      resolved: '已解决',
+      closed: '已关闭',
+    };
+
+    const statusLabel = statusLabelMap[newStatus] || newStatus;
+    const title = '反馈处理通知';
+    const content = `您提交的反馈"${feedbackTitle}"${statusLabel}，感谢您的反馈！`;
+
+    const registrationIds = await this.getUserDevices(visitorId);
+    if (registrationIds.length === 0) {
+      console.log(`[Push] 反馈推送跳过：visitorId=${visitorId} 无已注册设备`);
+      return null;
+    }
+
+    const now = new Date();
+    const expireAt = new Date(now.getTime() + 30 * 24 * 60 * 60 * 1000);
+
+    const messageRecipients: MessageRecipient[] = [{
+      userId: visitorId,
+      delivered: false,
+      read: false,
+      forcedRead: false,
+    }];
+
+    const messageData: Omit<PushMessage, '_id'> = {
+      type: 'feedback_notification',
+      title,
+      content,
+      summary: content,
+      senderType: 'system',
+      targetType: 'specific_users',
+      targetUserIds: [visitorId],
+      createdAt: now,
+      sentAt: null,
+      expireAt,
+      recipients: messageRecipients,
+      stats: {
+        totalCount: 1,
+        deliveredCount: 0,
+        readCount: 0,
+        readRate: 0,
+      },
+      forceRead: false,
+    };
+
+    const collection = mongoDBService.getCollection<PushMessage>('push_messages');
+    if (!collection) {
+      throw new Error('数据库连接不可用');
+    }
+
+    const result = await collection.insertOne(messageData as never);
+    const message = { ...messageData, _id: result.insertedId } as PushMessage;
+
+    await this.sendPushNotification(result.insertedId.toString(), title, content, [visitorId]);
+    await collection.updateOne(
+      { _id: result.insertedId },
+      { $set: { sentAt: now } }
+    );
+    message.sentAt = now;
+
+    console.log(`[Push] 反馈推送已发送：visitorId=${visitorId}, status=${newStatus}`);
     return message;
   }
 

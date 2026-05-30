@@ -516,6 +516,10 @@ const FeedbackPage: React.FC = () => {
                   <p className="text-sm text-gray-800 mt-0.5 font-mono">{detailModal.item.visitorIp || '-'}</p>
                 </div>
                 <div>
+                  <span className="text-xs font-medium text-gray-500">提交者标识</span>
+                  <p className="text-sm text-gray-800 mt-0.5 font-mono">{detailModal.item.visitorId || '-'}</p>
+                </div>
+                <div>
                   <span className="text-xs font-medium text-gray-500">提交时间</span>
                   <p className="text-sm text-gray-800 mt-0.5">{format(new Date(detailModal.item.createdAt), 'yyyy-MM-dd HH:mm:ss')}</p>
                 </div>

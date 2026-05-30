@@ -139,6 +139,7 @@ export interface FeedbackListItem {
   type: FeedbackType;
   contact: string;
   visitorIp: string;
+  visitorId: string;
   status: FeedbackStatus;
   createdAt: string;
 }

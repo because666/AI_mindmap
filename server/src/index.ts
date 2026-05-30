@@ -123,6 +123,33 @@ app.post('/api/internal/clear-cache', async (req, res) => {
   }
 });
 
+/**
+ * 内部API：发送反馈处理结果推送通知
+ * Admin后台更新反馈状态后调用
+ * 需要提供 x-internal-token 请求头
+ */
+app.post('/api/internal/push/feedback-notification', async (req, res) => {
+  const internalToken = req.headers['x-internal-token'];
+  if (internalToken !== process.env.INTERNAL_API_TOKEN) {
+    return res.status(403).json({ success: false, error: '无权访问' });
+  }
+
+  const { visitorId, feedbackTitle, newStatus } = req.body;
+
+  if (!visitorId || !feedbackTitle || !newStatus) {
+    return res.status(400).json({ success: false, error: '缺少必要参数' });
+  }
+
+  try {
+    const result = await pushService.sendFeedbackNotification(visitorId, feedbackTitle, newStatus);
+    res.json({ success: true, data: result ? { messageId: result._id?.toString() } : null });
+  } catch (error) {
+    const message = error instanceof Error ? error.message : String(error);
+    console.error('[内部推送] 反馈推送失败:', message);
+    res.status(500).json({ success: false, error: message });
+  }
+});
+
 app.use(errorHandler);
 
 const clientDistPath = process.env.CLIENT_DIST_PATH || path.join(__dirname, '../../client/dist');

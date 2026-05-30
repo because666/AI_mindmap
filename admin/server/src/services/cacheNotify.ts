@@ -71,3 +71,29 @@ export async function notifyAllCacheClear(): Promise<void> {
     console.error('[缓存通知] 通知主服务端清除所有缓存失败:', error instanceof Error ? error.message : String(error));
   }
 }
+
+/**
+ * 通知主服务端发送反馈处理结果推送
+ * 管理员更新反馈状态后调用
+ * @param visitorId - 反馈提交者的访客ID
+ * @param feedbackTitle - 反馈标题
+ * @param newStatus - 新的反馈状态
+ */
+export async function notifyFeedbackPush(
+  visitorId: string,
+  feedbackTitle: string,
+  newStatus: string
+): Promise<void> {
+  try {
+    await axios.post(`${MAIN_SERVER_URL}/api/internal/push/feedback-notification`, {
+      visitorId,
+      feedbackTitle,
+      newStatus,
+    }, {
+      headers: { 'x-internal-token': INTERNAL_TOKEN },
+      timeout: 5000,
+    });
+  } catch (error) {
+    console.error('[反馈推送] 通知主服务端发送反馈推送失败:', error instanceof Error ? error.message : String(error));
+  }
+}

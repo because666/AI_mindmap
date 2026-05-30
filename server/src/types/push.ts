@@ -19,7 +19,7 @@ export interface UserDevice {
 /**
  * 推送消息类型
  */
-export type PushMessageType = 'broadcast' | 'workspace_auto' | 'workspace_manual';
+export type PushMessageType = 'broadcast' | 'workspace_auto' | 'workspace_manual' | 'feedback_notification';
 
 /**
  * 发送者类型
@@ -166,4 +166,13 @@ export interface WorkspaceNotificationOptions {
   title: string;
   content: string;
   importance?: 'normal' | 'high';
+}
+
+/**
+ * 反馈推送通知选项
+ */
+export interface FeedbackNotificationOptions {
+  visitorId: string;
+  feedbackTitle: string;
+  newStatus: string;
 }

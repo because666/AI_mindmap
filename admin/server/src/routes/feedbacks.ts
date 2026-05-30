@@ -7,6 +7,7 @@ import { requireAuth } from '../middleware/auth';
 import { auditLog } from '../middleware/auditLog';
 import { feedbackService } from '../services/feedbackService';
 import { escapeRegex } from '../utils/validators';
+import { notifyFeedbackPush } from '../services/cacheNotify';
 
 const router = Router();
 
@@ -89,6 +90,7 @@ router.get('/', requireAuth, async (req: Request, res: Response) => {
       type: item.type as FeedbackType,
       contact: item.contact as string,
       visitorIp: item.visitorIp as string,
+      visitorId: (item.visitorId as string) || 'anonymous',
       status: item.status as FeedbackStatus,
       createdAt: new Date(item.createdAt as Date).toISOString(),
     }));
@@ -150,18 +152,33 @@ router.patch(
         return;
       }
 
-      const success = await adminDB.updateOne(
+      const feedback = await adminDB.findOne('feedbacks', { _id: new ObjectId(id) } as never);
+      if (!feedback) {
+        res.status(404).json({ success: false, error: '反馈不存在' });
+        return;
+      }
+
+      await adminDB.updateOne(
         'feedbacks',
         { _id: new ObjectId(id) } as never,
         { $set: { status } }
       );
 
-      if (!success) {
-        res.status(404).json({ success: false, error: '反馈不存在' });
-        return;
-      }
+      res.json({
+        success: true,
+        message: '反馈状态已更新',
+        data: {
+          visitorId: (feedback as Record<string, unknown>).visitorId as string || 'anonymous',
+          title: (feedback as Record<string, unknown>).title as string || '',
+          status,
+        },
+      });
 
-      res.json({ success: true, message: '反馈状态已更新' });
+      if (status !== 'pending' && (feedback as Record<string, unknown>).visitorId && (feedback as Record<string, unknown>).visitorId !== 'anonymous') {
+        notifyFeedbackPush((feedback as Record<string, unknown>).visitorId as string, ((feedback as Record<string, unknown>).title as string) || '', status).catch((err: unknown) => {
+          console.error('[反馈推送] 异步推送失败:', err instanceof Error ? err.message : String(err));
+        });
+      }
     } catch (error) {
       console.error('更新反馈状态失败:', error);
       res.status(500).json({ success: false, error: '更新反馈状态失败' });

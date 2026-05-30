@@ -180,6 +180,7 @@ router.post('/', async (req: Request, res: Response) => {
     const safeTitle = escapeHtml(title.trim());
     const safeDescription = escapeHtml(description.trim());
     const safeContact = contact ? escapeHtml(contact.trim()) : undefined;
+    const visitorId = (req.headers['x-visitor-id'] as string) || 'anonymous';
 
     const sent = await emailService.sendFeedbackEmail({
       title: safeTitle,
@@ -196,15 +197,19 @@ router.post('/', async (req: Request, res: Response) => {
     }
 
     try {
-      await mongoDBService.insertOne('feedbacks', {
+      const insertedId = await mongoDBService.insertOne('feedbacks', {
         title: safeTitle,
         description: safeDescription,
         type,
         contact: safeContact || '',
         visitorIp: clientIp,
+        visitorId,
         status: 'pending',
         createdAt: new Date(),
       });
+      if (!insertedId) {
+        console.error('[Feedback] 反馈数据存储失败：数据库连接不可用');
+      }
     } catch (dbError) {
       console.error('[Feedback] 反馈数据存储失败:', dbError instanceof Error ? dbError.message : String(dbError));
     }

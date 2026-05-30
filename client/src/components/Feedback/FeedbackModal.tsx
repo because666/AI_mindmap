@@ -128,15 +128,15 @@ const FeedbackModal: React.FC<FeedbackModalProps> = ({ isOpen, onClose }) => {
         contact: contact.trim(),
       };
 
-      const response = await api.post<FeedbackResponse>('/feedback', requestBody);
+      const response = await api.post<FeedbackResponse>('/feedback', requestBody) as unknown as FeedbackResponse;
 
-      if (response.data.success) {
+      if (response.success) {
         setSubmitSuccess(true);
         autoCloseTimerRef.current = setTimeout(() => {
           onClose();
         }, AUTO_CLOSE_DELAY_MS);
       } else {
-        setSubmitError(response.data.error || '提交失败，请稍后重试');
+        setSubmitError(response.error || '提交失败，请稍后重试');
       }
     } catch (error: unknown) {
       const errorMessage =

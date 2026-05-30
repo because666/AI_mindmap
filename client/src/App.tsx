@@ -206,7 +206,7 @@ function App() {
         {exitHintBanner}
         <DreamyUniverseBackground />
         {statusBarGradient}
-        <div className="h-screen flex items-center justify-center relative z-10">
+        <div className="h-screen flex items-center justify-center">
           <div className="text-dark-400 text-lg">加载中...</div>
         </div>
         <OnboardingGuide
@@ -225,9 +225,7 @@ function App() {
         {exitHintBanner}
         <DreamyUniverseBackground />
         {statusBarGradient}
-        <div className="relative z-10">
-          <WelcomePage />
-        </div>
+        <WelcomePage />
         <OnboardingGuide
           isOpen={showOnboarding}
           onClose={() => setShowOnboarding(false)}
@@ -243,20 +241,18 @@ function App() {
       {exitHintBanner}
       <DreamyUniverseBackground />
       {statusBarGradient}
-      <div className="relative z-10">
-        <MainLayout>
-          {showLoading ? (
-            <div className="h-full w-full flex items-center justify-center bg-dark-950/80">
-              <div className="flex flex-col items-center gap-3">
-                <div className="w-8 h-8 border-2 border-primary-500 border-t-transparent rounded-full animate-spin" />
-                <span className="text-dark-400 text-sm">正在加载工作区...</span>
-              </div>
+      <MainLayout>
+        {showLoading ? (
+          <div className="h-full w-full flex items-center justify-center">
+            <div className="flex flex-col items-center gap-3">
+              <div className="w-8 h-8 border-2 border-primary-500 border-t-transparent rounded-full animate-spin" />
+              <span className="text-dark-400 text-sm">正在加载工作区...</span>
             </div>
-          ) : (
-            <CanvasPage />
-          )}
-        </MainLayout>
-      </div>
+          </div>
+        ) : (
+          <CanvasPage />
+        )}
+      </MainLayout>
 
       {/* 新手引导 */}
       <OnboardingGuide

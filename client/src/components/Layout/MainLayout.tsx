@@ -336,15 +336,15 @@ const MainLayout: React.FC<{ children: React.ReactNode }> = ({ children }) => {
    */
   const renderWorkspacePanel = () => (
     showWorkspaceInfo && (
-      <div className={`${isMobile ? 'fixed inset-0 z-50' : 'w-64'} bg-dark-900 border-r border-dark-700 flex flex-col`}>
+      <div className={`${isMobile ? 'fixed inset-0 z-50' : 'absolute left-16 top-3 bottom-3 w-64 z-40'} flex flex-col`}>
         {isMobile && (
           <div
             className="absolute inset-0 bg-black/60 backdrop-blur-sm"
             onClick={() => setShowWorkspaceInfo(false)}
           />
         )}
-        <div className={`relative ${isMobile ? 'w-72 h-full' : ''} bg-dark-900 flex flex-col`}>
-          <div className="flex items-center justify-between p-4 border-b border-dark-700">
+        <div className={`relative ${isMobile ? 'w-72 h-full' : 'h-full'} bg-dark-900/80 backdrop-blur-md rounded-2xl border border-dark-600/30 shadow-2xl flex flex-col overflow-hidden`}>
+          <div className="flex items-center justify-between p-4 border-b border-dark-600/30">
             <h3 className="text-white font-medium text-sm">工作区</h3>
             <button
               onClick={() => setShowWorkspaceInfo(false)}
@@ -356,7 +356,7 @@ const MainLayout: React.FC<{ children: React.ReactNode }> = ({ children }) => {
 
           {currentWorkspace && (
             <div className="p-4">
-              <div className="p-3 bg-dark-800 rounded-2xl border border-primary-500/30">
+              <div className="p-3 bg-dark-800/80 rounded-2xl border border-primary-500/20">
                 <div className="flex items-center gap-2 mb-1">
                   {currentWorkspace.type === 'public' ? (
                     <Globe className="w-3.5 h-3.5 text-primary-400" />
@@ -391,14 +391,14 @@ const MainLayout: React.FC<{ children: React.ReactNode }> = ({ children }) => {
             </div>
           )}
 
-          <div className="px-4 py-2 text-xs text-dark-500">切换工作区</div>
+          <div className="px-4 py-2 text-xs text-dark-400">切换工作区</div>
           <div className="flex-1 overflow-y-auto px-2">
             {workspaces.length > 1 ? (
               workspaces.filter(ws => ws.id !== currentWorkspace?.id).map(ws => (
                 <button
                   key={ws.id}
                   onClick={() => { switchWorkspace(ws.id); setShowWorkspaceInfo(false); }}
-                  className="w-full flex items-center gap-2 p-2 rounded-xl text-left text-dark-400 hover:text-white hover:bg-dark-800 transition-colors"
+                  className="w-full flex items-center gap-2 p-2 rounded-xl text-left text-dark-400 hover:text-white hover:bg-dark-700/60 transition-colors"
                 >
                   {ws.type === 'public' ? (
                     <Globe className="w-3.5 h-3.5" />
@@ -415,7 +415,7 @@ const MainLayout: React.FC<{ children: React.ReactNode }> = ({ children }) => {
             )}
           </div>
 
-          <div className="p-2 border-t border-dark-700">
+          <div className="p-2 border-t border-dark-600/30">
             <button
               onClick={() => { setShowWorkspaceInfo(false); clearCurrentWorkspace(); }}
               className="w-full flex items-center gap-2 px-3 py-2 text-primary-400 hover:text-primary-300 rounded-xl hover:bg-dark-800 transition-colors text-sm"
@@ -425,7 +425,7 @@ const MainLayout: React.FC<{ children: React.ReactNode }> = ({ children }) => {
             </button>
           </div>
 
-          <div className="p-2 border-t border-dark-700">
+          <div className="p-2 border-t border-dark-600/30">
             <button
               onClick={handleLeaveWorkspace}
               className="w-full flex items-center gap-2 px-3 py-2 text-dark-400 hover:text-red-400 rounded-xl hover:bg-dark-800 transition-colors text-sm"

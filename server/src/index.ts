@@ -19,6 +19,7 @@ import nodesRouter from './routes/nodes';
 import conversationsRouter from './routes/conversations';
 import searchRouter from './routes/search';
 import aiRouter from './routes/ai';
+import feedbackRouter from './routes/feedback';
 import workspacesRouter from './routes/workspaces';
 import pushRouter from './routes/push';
 import filesRouter from './routes/files';
@@ -86,6 +87,7 @@ app.use('/api/nodes', nodesRouter);
 app.use('/api/conversations', conversationsRouter);
 app.use('/api/search', searchRouter);
 app.use('/api/ai', aiRouter);
+app.use('/api/feedback', feedbackRouter);
 
 /**
  * 内部API：清除服务端缓存

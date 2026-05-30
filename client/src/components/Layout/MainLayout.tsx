@@ -1,5 +1,5 @@
 import React, { useState, useEffect, useCallback } from 'react';
-import { Settings, FolderOpen, Search, MessageSquare, Network, X, Clock, Undo2, Redo2, Globe, Lock, LogOut, Users, Plus, Menu, RefreshCw, Bell, AlertTriangle } from 'lucide-react';
+import { Settings, FolderOpen, Search, MessageSquare, Network, X, Clock, Undo2, Redo2, Globe, Lock, LogOut, Users, Plus, Menu, RefreshCw, Bell, AlertTriangle, MessageCircle } from 'lucide-react';
 import SettingsModal from '../Settings/SettingsModal';
 import ChatPanel from '../Chat/ChatPanel';
 import SearchPanel from '../Search/SearchPanel';
@@ -7,6 +7,7 @@ import HistoryPanel from '../History/HistoryPanel';
 import WorkspaceSettingsModal from '../Workspace/WorkspaceSettingsModal';
 import FilePanel from '../File/FilePanel';
 import { UnreadBadge, MessageCenter } from '../MessageCenter';
+import FeedbackModal from '../Feedback/FeedbackModal';
 import { useAppStore } from '../../stores/appStore';
 import { useUISettingsStore } from '../../stores/uiSettingsStore';
 import { useVisitorWorkspaceStore } from '../../stores/visitorWorkspaceStore';
@@ -31,6 +32,7 @@ const MainLayout: React.FC<{ children: React.ReactNode }> = ({ children }) => {
   const [isHistoryOpen, setIsHistoryOpen] = useState(false);
   const [isWorkspaceSettingsOpen, setIsWorkspaceSettingsOpen] = useState(false);
   const [isFilePanelOpen, setIsFilePanelOpen] = useState(false);
+  const [isFeedbackOpen, setIsFeedbackOpen] = useState(false);
   const [activeTab, setActiveTab] = useState<'canvas' | 'chat'>('canvas');
   const [showWorkspaceInfo, setShowWorkspaceInfo] = useState(false);
   const [isDrawerOpen, setIsDrawerOpen] = useState(false);
@@ -302,6 +304,14 @@ const MainLayout: React.FC<{ children: React.ReactNode }> = ({ children }) => {
         <div className="px-3 mt-4 mb-2">
           <span className="text-xs text-dark-500 uppercase tracking-wider">设置</span>
         </div>
+
+        <button
+          onClick={() => { setIsFeedbackOpen(true); handleMobileDrawerClose(); }}
+          className="w-full flex items-center gap-3 px-4 py-3 text-left text-dark-300 hover:text-white hover:bg-dark-800 transition-colors"
+        >
+          <MessageCircle className="w-5 h-5" />
+          <span>反馈</span>
+        </button>
 
         <button
           onClick={() => { setIsSettingsOpen(true); setIsDrawerOpen(false); }}
@@ -688,6 +698,19 @@ const MainLayout: React.FC<{ children: React.ReactNode }> = ({ children }) => {
 
         <div className="relative group">
           <button
+            onClick={() => setIsFeedbackOpen(true)}
+            className="w-10 h-10 rounded-xl flex items-center justify-center text-dark-400 hover:text-white hover:bg-dark-700 transition-colors"
+            title="反馈"
+          >
+            <MessageCircle className="w-5 h-5" />
+          </button>
+          <span className="absolute left-full ml-2 px-2 py-1 bg-dark-800 text-dark-200 text-xs rounded-lg whitespace-nowrap pointer-events-none opacity-0 group-hover:opacity-100 transition-opacity duration-200">
+            反馈
+          </span>
+        </div>
+
+        <div className="relative group">
+          <button
             onClick={() => setIsSettingsOpen(true)}
             className="w-10 h-10 rounded-xl flex items-center justify-center text-dark-400 hover:text-white hover:bg-dark-700 transition-colors"
             title="设置"
@@ -843,6 +866,11 @@ const MainLayout: React.FC<{ children: React.ReactNode }> = ({ children }) => {
       <SettingsModal
         isOpen={isSettingsOpen}
         onClose={() => setIsSettingsOpen(false)}
+      />
+
+      <FeedbackModal
+        isOpen={isFeedbackOpen}
+        onClose={() => setIsFeedbackOpen(false)}
       />
 
       <SearchPanel

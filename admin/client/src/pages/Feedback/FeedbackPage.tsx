@@ -226,8 +226,19 @@ const FeedbackPage: React.FC = () => {
       await feedbacksApi.updateStatus(detailModal.item._id, detailModal.newStatus);
       showToast('success', '状态更新成功');
       closeDetail();
+      // 直接更新本地列表中对应项的状态，实现即时刷新
+      setData((prev) => {
+        if (!prev) return prev;
+        return {
+          ...prev,
+          items: prev.items.map((item) =>
+            item._id === detailModal.item!._id
+              ? { ...item, status: detailModal.newStatus }
+              : item
+          ),
+        };
+      });
       loadStats();
-      loadList();
     } catch (error) {
       console.error('更新状态失败:', error);
       showToast('error', '状态更新失败，请重试');

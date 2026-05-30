@@ -617,7 +617,7 @@ const CanvasPage: React.FC = () => {
   return (
     <div className="h-full relative">
 
-      <div className={`absolute z-10 flex gap-1.5 flex-wrap glass rounded-2xl p-2 ${
+      <div className={`absolute z-10 flex gap-1.5 flex-wrap p-2 ${
         isMobile
           ? 'top-2 left-2 right-2 max-h-28 overflow-y-auto'
           : 'top-4 left-4'

@@ -190,22 +190,12 @@ function App() {
     </div>
   ) : null;
 
-  const statusBarGradient = (
-    <div
-      className="fixed top-0 left-0 right-0 h-20 z-[1] pointer-events-none"
-      style={{
-        background: 'linear-gradient(to bottom, #0a0a12 0%, #0a0a12 40%, #0f0f1a 100%)',
-      }}
-    />
-  );
-
   if (!isInitialized) {
     return (
       <>
         {offlineBanner}
         {exitHintBanner}
         <DreamyUniverseBackground />
-        {statusBarGradient}
         <div className="h-screen flex items-center justify-center">
           <div className="text-dark-400 text-lg">加载中...</div>
         </div>
@@ -224,7 +214,6 @@ function App() {
         {offlineBanner}
         {exitHintBanner}
         <DreamyUniverseBackground />
-        {statusBarGradient}
         <WelcomePage />
         <OnboardingGuide
           isOpen={showOnboarding}
@@ -240,7 +229,6 @@ function App() {
       {offlineBanner}
       {exitHintBanner}
       <DreamyUniverseBackground />
-      {statusBarGradient}
       <MainLayout>
         {showLoading ? (
           <div className="h-full w-full flex items-center justify-center">

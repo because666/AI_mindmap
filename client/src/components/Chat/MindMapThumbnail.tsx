@@ -245,7 +245,7 @@ const MindMapThumbnail: React.FC<MindMapThumbnailProps> = ({
   return (
     <div
       ref={containerRef}
-      className={`fixed border border-dark-600 rounded-lg bg-dark-800/95 backdrop-blur-sm shadow-2xl select-none ${
+      className={`fixed border border-dark-600 rounded-lg bg-dark-800 shadow-2xl select-none ${
         isDragging ? 'cursor-grabbing' : 'cursor-grab'
       }`}
       style={{

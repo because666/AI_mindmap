@@ -443,7 +443,7 @@ const MainLayout: React.FC<{ children: React.ReactNode }> = ({ children }) => {
    * 移动端顶部栏
    */
   const renderMobileHeader = () => (
-    <header className="h-14 bg-dark-900 border-b border-dark-700 flex items-center justify-between px-4 md:hidden">
+    <header className="h-14 bg-dark-900/60 backdrop-blur-sm border-b border-dark-700/50 flex items-center justify-between px-4 md:hidden">
       <button
         onClick={() => setIsDrawerOpen(true)}
         className="p-2 text-dark-400 hover:text-white rounded-xl transition-colors"
@@ -718,19 +718,19 @@ const MainLayout: React.FC<{ children: React.ReactNode }> = ({ children }) => {
 
           {!isMobile && (
             <div
-              className={`border-l border-dark-700 flex flex-col bg-dark-900 transition-all duration-300 ease-out overflow-hidden ${
+              className={`border-l border-dark-700/30 flex flex-col bg-dark-900/20 transition-[width,opacity] duration-300 ease-out overflow-hidden ${
                 isChatOpen ? 'opacity-100' : 'opacity-0 pointer-events-none'
               }`}
               style={{ width: isChatOpen ? chatPanelWidth : 0 }}
             >
-              <div className="flex items-center justify-between px-4 py-2 border-b border-dark-700 bg-dark-800">
+              <div className="flex items-center justify-between px-4 py-2 border-b border-dark-700/30">
                 <div className="flex items-center gap-2">
                   <MessageSquare className="w-4 h-4 text-primary-400" />
                   <span className="text-white font-medium">AI 对话</span>
                 </div>
                 <button
                   onClick={closeChat}
-                  className="p-1 text-dark-400 hover:text-white hover:bg-dark-700 rounded-xl transition-colors"
+                  className="p-1.5 text-dark-300 bg-dark-700/80 hover:text-white hover:bg-dark-600 rounded-xl transition-colors border border-dark-600/50"
                 >
                   <X className="w-4 h-4" />
                 </button>
@@ -755,19 +755,19 @@ const MainLayout: React.FC<{ children: React.ReactNode }> = ({ children }) => {
 
           {!isMobile && (
             <div
-              className={`border-l border-dark-700 flex flex-col bg-dark-900 transition-all duration-300 ease-out overflow-hidden ${
+              className={`border-l border-dark-700/30 flex flex-col bg-dark-900/20 transition-[width,opacity] duration-300 ease-out overflow-hidden ${
                 isMessageCenterOpen ? 'opacity-100' : 'opacity-0 pointer-events-none'
               }`}
               style={{ width: isMessageCenterOpen ? '384px' : 0 }}
             >
-              <div className="flex items-center justify-between px-4 py-3 border-b border-dark-700 bg-dark-800">
+              <div className="flex items-center justify-between px-4 py-3 border-b border-dark-700/30">
                 <div className="flex items-center gap-2">
                   <Bell className="w-4 h-4 text-primary-400" />
                   <span className="text-white font-medium">消息中心</span>
                 </div>
                 <button
                   onClick={() => setIsMessageCenterOpen(false)}
-                  className="p-1.5 text-dark-400 hover:text-white bg-dark-700 rounded-xl hover:bg-dark-600 transition-colors"
+                  className="p-1.5 text-dark-300 bg-dark-700/80 hover:text-white hover:bg-dark-600 rounded-xl transition-colors border border-dark-600/50"
                 >
                   <X className="w-4 h-4" />
                 </button>
@@ -862,7 +862,7 @@ const MainLayout: React.FC<{ children: React.ReactNode }> = ({ children }) => {
       />
 
       {/* ICP备案号、公安备案号 - 右下角紧凑标签 */}
-      <footer className="fixed bottom-2 right-2 z-40">
+      <footer className="fixed bottom-2 left-1/2 -translate-x-1/2 z-40">
         <div className="flex items-center gap-2 px-2.5 py-1 rounded-lg bg-dark-900/60 backdrop-blur-sm border border-dark-700/40">
           <a
             href="https://beian.miit.gov.cn"

@@ -22,8 +22,38 @@ interface Flow {
   vy: number;
 }
 
+/** 配置参数接口 */
+interface ConfigType {
+  PARTICLE_COUNT: number;
+  CONNECTION_DIST: number;
+  CONNECTION_DIST_SQ: number;
+  MOUSE_RADIUS: number;
+  MOUSE_RADIUS_SQ: number;
+  MOUSE_REPEL_FORCE: number;
+  MIN_SPEED: number;
+  MAX_SPEED: number;
+  MIN_SIZE: number;
+  MAX_SIZE: number;
+  MIN_ALPHA: number;
+  MAX_ALPHA: number;
+  LINE_ALPHA_FACTOR: number;
+  TRAIL_ALPHA: number;
+  FPS_LOW_THRESHOLD: number;
+  FPS_CHECK_DURATION: number;
+  COLOR_R: number;
+  COLOR_G: number;
+  COLOR_B: number;
+  FLOW_COUNT: number;
+  FLOW_SPEED_MIN: number;
+  FLOW_SPEED_MAX: number;
+  FLOW_RADIUS_MIN: number;
+  FLOW_RADIUS_MAX: number;
+  FLOW_ALPHA_MIN: number;
+  FLOW_ALPHA_MAX: number;
+}
+
 /** 配置参数常量 */
-const CONFIG = {
+const CONFIG: ConfigType = {
   PARTICLE_COUNT: 80,
   CONNECTION_DIST: 150,
   CONNECTION_DIST_SQ: 150 * 150,
@@ -428,7 +458,7 @@ const ParticleNetworkBackground: FC = () => {
         left: 0,
         width: '100%',
         height: '100%',
-        zIndex: -1,
+        zIndex: 0,
         pointerEvents: 'none',
       }}
     />

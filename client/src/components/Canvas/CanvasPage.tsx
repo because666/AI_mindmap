@@ -750,6 +750,7 @@ const CanvasPage: React.FC = () => {
         zoomOnPinch={true}
         panOnScroll={false}
         preventScrolling={!isMobile}
+        style={{ background: 'transparent' }}
       >
         <Controls className="bg-dark-800 border-dark-700 rounded-xl overflow-hidden [&>button]:bg-dark-700 [&>button]:border-dark-600 [&>button]:text-white [&>button:hover]:bg-dark-600" />
         {!isMobile && (

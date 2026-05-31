@@ -190,7 +190,7 @@ export function truncateContextByNode(
 
   if (totalTokens <= threshold || groups.length <= 2) {
     return {
-      messages,
+      messages: [...messages],
       contextInfo: {
         contextTokensUsed: totalTokens,
         contextTokenLimit: contextLimit,

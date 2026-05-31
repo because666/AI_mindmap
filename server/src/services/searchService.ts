@@ -70,7 +70,9 @@ class SearchService {
       nodeId: node.id,
       score: node.score,
       matches: ['semantic'],
-      highlights: node.metadata?.content ? { content: [node.metadata.content] } : undefined,
+      highlights: node.metadata?.content
+        ? { content: (Array.isArray(node.metadata.content) ? node.metadata.content : [String(node.metadata.content)]) as string[] }
+        : undefined,
     }));
   }
 

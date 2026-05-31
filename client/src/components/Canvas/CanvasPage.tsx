@@ -1,6 +1,7 @@
 import React, { useState, useCallback, useMemo, useEffect, useRef } from 'react';
 import { 
   ReactFlow, 
+  ReactFlowProvider,
   Controls, 
   MiniMap, 
   MarkerType, 
@@ -267,7 +268,7 @@ const CustomNodeComponent: React.FC<NodeProps<CustomNodeType>> = ({ id, data, se
 /**
  * 思维画布组件
  */
-const CanvasPage: React.FC = () => {
+const CanvasPageInner: React.FC = () => {
   const { 
     nodes: storeNodes, 
     relations, 
@@ -1145,4 +1146,12 @@ const CanvasPage: React.FC = () => {
   );
 };
 
-export default CanvasPage;
+const CanvasPageWithProvider: React.FC = () => {
+  return (
+    <ReactFlowProvider>
+      <CanvasPageInner />
+    </ReactFlowProvider>
+  );
+};
+
+export default CanvasPageWithProvider;

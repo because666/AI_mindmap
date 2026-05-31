@@ -19,6 +19,7 @@ import exportRouter from './routes/export';
 import honeypotRouter from './routes/honeypot';
 import ipBansRouter from './routes/ipBans';
 import feedbacksRouter from './routes/feedbacks';
+import aiUsageRouter from './routes/aiUsage';
 
 const app = express();
 
@@ -58,6 +59,7 @@ app.use('/api/admin/settings', settingsRouter);
 app.use('/api/admin/export', exportRouter);
 app.use('/api/admin/ip-bans', ipBansRouter);
 app.use('/api/admin/feedbacks', feedbacksRouter);
+app.use('/api/admin/ai-usage', aiUsageRouter);
 
 /**
  * 健康检查端点

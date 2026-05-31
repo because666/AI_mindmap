@@ -12,11 +12,13 @@ import {
   X,
   LogOut,
   ShieldBan,
+  Activity,
 } from 'lucide-react';
 import { useAuthStore } from '../../stores/authStore';
 
 const navItems = [
   { path: '/', label: '数据大盘', icon: LayoutDashboard },
+  { path: '/ai-usage', label: 'AI 用量', icon: Activity },
   { path: '/users', label: '用户管理', icon: Users },
   { path: '/workspaces', label: '工作区管理', icon: Briefcase },
   { path: '/chat-audit', label: '对话审计', icon: MessageSquare },

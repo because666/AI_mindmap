@@ -194,6 +194,38 @@ export const feedbacksApi = {
     api.post('/admin/feedbacks/export', params, { responseType: 'blob' }),
 };
 
+export const aiUsageApi = {
+  getStats: (params?: { startDate?: string; endDate?: string; model?: string }) => {
+    const query = new URLSearchParams();
+    if (params?.startDate) query.set('startDate', params.startDate);
+    if (params?.endDate) query.set('endDate', params.endDate);
+    if (params?.model) query.set('model', params.model);
+    return typedGet<unknown>(`/admin/ai-usage/stats?${query.toString()}`);
+  },
+  getTrends: (params: { startDate: string; endDate: string; granularity: string; model?: string }) => {
+    const query = new URLSearchParams();
+    query.set('startDate', params.startDate);
+    query.set('endDate', params.endDate);
+    query.set('granularity', params.granularity);
+    if (params.model) query.set('model', params.model);
+    return typedGet<unknown>(`/admin/ai-usage/trends?${query.toString()}`);
+  },
+  getModelDistribution: (params?: { startDate?: string; endDate?: string }) => {
+    const query = new URLSearchParams();
+    if (params?.startDate) query.set('startDate', params.startDate);
+    if (params?.endDate) query.set('endDate', params.endDate);
+    return typedGet<unknown>(`/admin/ai-usage/model-distribution?${query.toString()}`);
+  },
+  getQueueStatus: () => typedGet<unknown>('/admin/ai-usage/queue-status'),
+  exportCSV: (params?: { startDate?: string; endDate?: string; model?: string }) => {
+    const query = new URLSearchParams();
+    if (params?.startDate) query.set('startDate', params.startDate);
+    if (params?.endDate) query.set('endDate', params.endDate);
+    if (params?.model) query.set('model', params.model);
+    return api.get(`/admin/ai-usage/export?${query.toString()}`, { responseType: 'blob' });
+  },
+};
+
 export const exportApi = {
   create: (type: string, format: string, filter?: Record<string, unknown>) =>
     typedPost<{ exportId: string; status: string }>('/admin/export', { type, format, filter }),

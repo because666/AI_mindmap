@@ -13,6 +13,7 @@ import PushPage from './pages/Push/PushPage';
 import SettingsPage from './pages/Settings/SettingsPage';
 import IpBansPage from './pages/IpBans/IpBansPage';
 import FeedbackPage from './pages/Feedback/FeedbackPage';
+import AIUsagePage from './pages/AIUsage/AIUsagePage';
 
 /**
  * 受保护的路由组件
@@ -115,6 +116,13 @@ const App: React.FC = () => {
           <ProtectedRoute>
             <AdminLayout>
               <FeedbackPage />
+            </AdminLayout>
+          </ProtectedRoute>
+        } />
+        <Route path="/ai-usage" element={
+          <ProtectedRoute>
+            <AdminLayout>
+              <AIUsagePage />
             </AdminLayout>
           </ProtectedRoute>
         } />

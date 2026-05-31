@@ -3,10 +3,12 @@ import { aiService } from '../services/aiService';
 import type { AIUsageRecord } from '../services/aiService';
 import { fileService } from '../services/fileService';
 import { optionalVisitorAuth, visitorAuth } from '../middleware';
+import { createAIRateLimit } from '../middleware/aiRateLimit';
 import { sensitiveWordService } from '../services/sensitiveWordService';
 import { config as appConfig } from '../config/index.js';
 import { DEFAULT_SYSTEM_PROMPT } from '../config/prompts.js';
 import { truncateContextByNode } from '../utils/contextUtils.js';
+import { aiQueue, AIPriority } from '../services/aiQueue';
 
 const router = Router();
 
@@ -22,66 +24,23 @@ function extractUserText(messages: Array<{ role: string; content: string }>): st
     .join(' ');
 }
 
-/**
- * 普通聊天接口（非流式）
- * 使用 visitorAuth 确保封禁用户无法调用
- */
-router.post('/chat', visitorAuth, async (req: Request, res: Response) => {
-  try {
-    const { messages, config, model, temperature, maxTokens } = req.body;
-
-    if (!messages || !Array.isArray(messages)) {
-      return res.status(400).json({
-        success: false,
-        error: '消息数组不能为空',
-      });
-    }
-
-    const userText = extractUserText(messages);
-    if (userText) {
-      const checkResult = await sensitiveWordService.check(userText);
-      if (checkResult.hasSensitiveWord) {
-        return res.status(400).json({
-          success: false,
-          error: '消息包含敏感内容，请修改后重试',
-          sensitiveWords: checkResult.matchedWords,
-          riskLevel: checkResult.riskLevel,
-        });
-      }
-    }
-
-    const chatModel = config?.model || model;
-    const chatProvider = config?.provider;
-    const apiKey = config?.apiKey;
-    const baseUrl = config?.baseUrl;
-
-    const result = await aiService.chat({
-      messages,
-      model: chatModel,
-      temperature,
-      maxTokens,
-      provider: chatProvider,
-      apiKey,
-      baseUrl,
-    });
-
-    res.json(result);
-  } catch (error: unknown) {
-    const message = error instanceof Error ? error.message : String(error);
-    res.status(500).json({ success: false, error: message });
-  }
-});
+const aiChatRateLimit = createAIRateLimit({ windowMs: 60 * 1000, maxRequests: 20 });
 
 /**
  * 流式聊天接口（SSE）
  * 使用 visitorAuth 确保封禁用户无法调用
  * 支持Provider降级通知、超时通知和用量记录
+ * 限流：每用户每分钟20次
+ * 通过优先级队列调度，对话请求使用P0最高优先级
+ * 队列等待期间SSE连接已建立，客户端显示"正在思考..."
  */
-router.post('/chat/stream', visitorAuth, async (req: Request, res: Response) => {
+router.post('/chat/stream', visitorAuth, aiChatRateLimit, async (req: Request, res: Response) => {
   const startTime = Date.now();
   let currentProvider = '';
   let currentModel = '';
   let usageInfo = { promptTokens: 0, completionTokens: 0, totalTokens: 0 };
+  let fullContent = '';
+  let fullThinkingContent = '';
 
   try {
     const { messages, config, model, temperature, maxTokens, fileIds, workspaceId } = req.body;
@@ -143,60 +102,60 @@ router.post('/chat/stream', visitorAuth, async (req: Request, res: Response) => 
     currentProvider = chatProvider || appConfig.ai.defaultProvider;
     currentModel = chatModel || appConfig.ai.defaultModel;
 
-    const stream = aiService.chatStream({
-      messages,
-      model: chatModel,
-      temperature,
-      maxTokens,
-      provider: chatProvider,
-      apiKey,
-      baseUrl,
-    });
+    await aiQueue.enqueue(AIPriority.P0_DIALOG, async () => {
+      const stream = aiService.chatStream({
+        messages,
+        model: chatModel,
+        temperature,
+        maxTokens,
+        provider: chatProvider,
+        apiKey,
+        baseUrl,
+      });
 
-    let fullContent = '';
-    let fullThinkingContent = '';
+      for await (const chunk of stream) {
+        switch (chunk.type) {
+          case 'thinking':
+            fullThinkingContent += chunk.content;
+            res.write(`data: ${JSON.stringify({
+              type: 'thinking',
+              thinkingContent: chunk.content,
+              fullThinkingContent
+            })}\n\n`);
+            break;
 
-    for await (const chunk of stream) {
-      switch (chunk.type) {
-        case 'thinking':
-          fullThinkingContent += chunk.content;
-          res.write(`data: ${JSON.stringify({
-            type: 'thinking',
-            thinkingContent: chunk.content,
-            fullThinkingContent
-          })}\n\n`);
-          break;
+          case 'content':
+            fullContent += chunk.content;
+            res.write(`data: ${JSON.stringify({
+              type: 'content',
+              content: chunk.content,
+              fullContent
+            })}\n\n`);
+            break;
 
-        case 'content':
-          fullContent += chunk.content;
-          res.write(`data: ${JSON.stringify({
-            type: 'content',
-            content: chunk.content,
-            fullContent
-          })}\n\n`);
-          break;
+          case 'degraded':
+            currentProvider = chunk.provider;
+            currentModel = chunk.model;
+            res.write(`event: degraded\ndata: ${JSON.stringify({ provider: chunk.provider, model: chunk.model })}\n\n`);
+            break;
 
-        case 'degraded':
-          currentProvider = chunk.provider;
-          currentModel = chunk.model;
-          res.write(`event: degraded\ndata: ${JSON.stringify({ provider: chunk.provider, model: chunk.model })}\n\n`);
-          break;
+          case 'usage':
+            usageInfo = {
+              promptTokens: chunk.usage.promptTokens,
+              completionTokens: chunk.usage.completionTokens,
+              totalTokens: chunk.usage.totalTokens,
+            };
+            break;
 
-        case 'usage':
-          usageInfo = {
-            promptTokens: chunk.usage.promptTokens,
-            completionTokens: chunk.usage.completionTokens,
-            totalTokens: chunk.usage.totalTokens,
-          };
-          break;
-
-        case 'timeout':
-          res.write(`event: timeout\ndata: ${JSON.stringify({ message: 'AI响应超时，请稍后重试' })}\n\n`);
-          break;
+          case 'timeout':
+            res.write(`event: timeout\ndata: ${JSON.stringify({ message: 'AI响应超时，请稍后重试' })}\n\n`);
+            break;
+        }
       }
-    }
 
-    res.write(`data: ${JSON.stringify({ type: 'done', fullContent, fullThinkingContent })}\n\n`);
+      res.write(`data: ${JSON.stringify({ type: 'done', fullContent, fullThinkingContent })}\n\n`);
+    }, '对话请求');
+
     res.end();
 
     const record: AIUsageRecord = {
@@ -368,6 +327,18 @@ router.get('/usage/stats', visitorAuth, async (req: Request, res: Response) => {
     const message = error instanceof Error ? error.message : String(error);
     res.status(500).json({ success: false, error: message });
   }
+});
+
+/**
+ * 获取AI请求队列统计信息
+ * 需要visitorAuth中间件验证访客身份
+ * 返回当前队列的活跃请求数、最大并发数、各优先级队列长度
+ */
+router.get('/queue/stats', visitorAuth, (_req: Request, res: Response) => {
+  res.json({
+    success: true,
+    data: aiQueue.getStats(),
+  });
 });
 
 export default router;

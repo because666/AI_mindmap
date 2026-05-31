@@ -27,6 +27,7 @@ interface GlobalAlert {
  */
 const MainLayout: React.FC<{ children: React.ReactNode }> = ({ children }) => {
   const [isSettingsOpen, setIsSettingsOpen] = useState(false);
+  const [settingsInitialTab, setSettingsInitialTab] = useState<'api' | 'ui' | 'guide' | undefined>(undefined);
   const [isChatOpen, setIsChatOpen] = useState(false);
   const [isSearchOpen, setIsSearchOpen] = useState(false);
   const [isHistoryOpen, setIsHistoryOpen] = useState(false);
@@ -103,6 +104,17 @@ const MainLayout: React.FC<{ children: React.ReactNode }> = ({ children }) => {
       window.removeEventListener('auth:ip-banned', handleIpBanned);
     };
   }, [handleBanned, handleWorkspaceClosed, handleIpBanned]);
+
+  useEffect(() => {
+    const handleOpenAPIConfig = () => {
+      setSettingsInitialTab('api');
+      setIsSettingsOpen(true);
+    };
+    window.addEventListener('settings:open-api', handleOpenAPIConfig);
+    return () => {
+      window.removeEventListener('settings:open-api', handleOpenAPIConfig);
+    };
+  }, []);
 
   useEffect(() => {
     if (autoOpenChatOnLoad) {
@@ -863,7 +875,11 @@ const MainLayout: React.FC<{ children: React.ReactNode }> = ({ children }) => {
 
       <SettingsModal
         isOpen={isSettingsOpen}
-        onClose={() => setIsSettingsOpen(false)}
+        onClose={() => {
+          setIsSettingsOpen(false);
+          setSettingsInitialTab(undefined);
+        }}
+        initialTab={settingsInitialTab}
       />
 
       <FeedbackModal

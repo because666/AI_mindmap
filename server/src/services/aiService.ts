@@ -3,6 +3,7 @@ import { config } from '../config';
 import { AIResponse, EmbeddingRequest, EmbeddingResponse } from '../types';
 import { vectorDBService } from '../data/vector/connection';
 import { mongoDBService } from '../data/mongodb/connection';
+import { aiQueue, AIPriority } from './aiQueue';
 
 /**
  * AI用量记录接口
@@ -153,8 +154,11 @@ const MAX_FALLBACK_ATTEMPTS = 3;
 class AIService {
   private openai: OpenAI | null = null;
   private static instance: AIService;
+  private keyPools: Map<string, string[]> = new Map();
+  private keyIndices: Map<string, number> = new Map();
 
   private constructor() {
+    this.initializeKeyPools();
     if (config.ai.openaiApiKey) {
       this.openai = new OpenAI({ apiKey: config.ai.openaiApiKey });
     }
@@ -172,28 +176,79 @@ class AIService {
   }
 
   /**
+   * 初始化各 Provider 的 Key 池
+   * 将同一 Provider 的多个 API Key 收集到池中，支持 Round-Robin 轮询
+   * 当前已实现 zhipu 的 Key 池，可按相同模式扩展 openai、deepseek 等 Provider
+   */
+  private initializeKeyPools(): void {
+    const zhipuKeys = [config.ai.zhipuApiKey, config.ai.zhipuApiKey2].filter((k) => k.length > 0);
+    if (zhipuKeys.length > 0) {
+      this.keyPools.set('zhipu', zhipuKeys);
+      this.keyIndices.set('zhipu', 0);
+    }
+
+    const deepseekKeys = [config.ai.deepseekApiKey].filter((k) => k.length > 0);
+    if (deepseekKeys.length > 0) {
+      this.keyPools.set('deepseek', deepseekKeys);
+      this.keyIndices.set('deepseek', 0);
+    }
+
+    const openaiKeys = [config.ai.openaiApiKey].filter((k) => k.length > 0);
+    if (openaiKeys.length > 0) {
+      this.keyPools.set('openai', openaiKeys);
+      this.keyIndices.set('openai', 0);
+    }
+  }
+
+  /**
+   * 从指定 Provider 的 Key 池中按 Round-Robin 方式获取 Key
+   * 每次调用后索引自动递增并取模循环，确保 Key 均匀分配
+   * @param provider - 服务提供商名称
+   * @returns Key 字符串，Key 池为空时返回 undefined
+   */
+  private getKeyFromPool(provider: string): string | undefined {
+    const pool = this.keyPools.get(provider);
+    if (!pool || pool.length === 0) {
+      return undefined;
+    }
+    const index = this.keyIndices.get(provider) ?? 0;
+    const key = pool[index];
+    this.keyIndices.set(provider, (index + 1) % pool.length);
+    return key;
+  }
+
+  /**
+   * 根据 API Key 反查所属的 Provider
+   * 遍历所有 Key 池，查找包含指定 Key 的 Provider
+   * @param apiKey - 待查找的 API Key
+   * @returns Provider 名称，未找到时返回 undefined
+   */
+  private getProviderForKey(apiKey: string): string | undefined {
+    for (const [provider, pool] of this.keyPools.entries()) {
+      if (pool.includes(apiKey)) {
+        return provider;
+      }
+    }
+    return undefined;
+  }
+
+  /**
    * 获取内置API密钥
+   * 从 Key 池中按 Round-Robin 方式获取指定 Provider 的 Key
+   * 未指定 Provider 时按 zhipu → deepseek → openai 优先级依次尝试
    * @param provider - 服务提供商名称
    * @returns 内置API密钥或undefined
    */
   private getBuiltInApiKey(provider?: string): string | undefined {
     if (!provider) {
-      if (config.ai.zhipuApiKey) return config.ai.zhipuApiKey;
-      if (config.ai.deepseekApiKey) return config.ai.deepseekApiKey;
-      if (config.ai.openaiApiKey) return config.ai.openaiApiKey;
+      for (const p of ['zhipu', 'deepseek', 'openai']) {
+        const key = this.getKeyFromPool(p);
+        if (key) return key;
+      }
       return undefined;
     }
 
-    switch (provider) {
-      case 'zhipu':
-        return config.ai.zhipuApiKey;
-      case 'deepseek':
-        return config.ai.deepseekApiKey;
-      case 'openai':
-        return config.ai.openaiApiKey;
-      default:
-        return undefined;
-    }
+    return this.getKeyFromPool(provider);
   }
 
   /**
@@ -209,12 +264,8 @@ class AIService {
 
     if (!effectiveApiKey) {
       effectiveApiKey = this.getBuiltInApiKey(provider);
-      if (!effectiveProvider) {
-        if (effectiveApiKey === config.ai.zhipuApiKey) {
-          effectiveProvider = 'zhipu';
-        } else if (effectiveApiKey === config.ai.deepseekApiKey) {
-          effectiveProvider = 'deepseek';
-        }
+      if (!effectiveProvider && effectiveApiKey) {
+        effectiveProvider = this.getProviderForKey(effectiveApiKey);
       }
     }
 
@@ -783,6 +834,36 @@ class AIService {
     } catch (error) {
       console.error('Failed to search similar nodes:', error);
       return [];
+    }
+  }
+
+  /**
+   * 通过优先级队列发送聊天请求
+   * 请求进入队列等待调度，不改变chat方法的外部接口
+   * @param priority - 请求优先级，对话使用P0_DIALOG，后台任务使用P1_BACKGROUND
+   * @param request - 聊天请求选项
+   * @param description - 请求描述，用于队列日志和调试
+   * @returns AI响应
+   */
+  async chatWithQueue(priority: AIPriority, request: ChatOptions, description: string): Promise<AIResponse> {
+    return aiQueue.enqueue<AIResponse>(priority, () => this.chat(request), description);
+  }
+
+  /**
+   * 通过优先级队列进行流式聊天
+   * 先获取队列槽位，再执行流式请求，流式完成后释放槽位
+   * 适用于需要保持AsyncGenerator接口的场景（如标题生成、结论提炼）
+   * @param priority - 请求优先级，对话使用P0_DIALOG，后台任务使用P1_BACKGROUND
+   * @param request - 聊天请求选项
+   * @param description - 请求描述，用于队列日志和调试
+   * @yields 响应内容片段
+   */
+  async *chatStreamWithQueue(priority: AIPriority, request: ChatOptions, description: string): AsyncGenerator<StreamChunk> {
+    const release = await aiQueue.acquireSlot(priority, description);
+    try {
+      yield* this.chatStream(request);
+    } finally {
+      release();
     }
   }
 

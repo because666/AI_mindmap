@@ -29,6 +29,7 @@ export const config = {
   ai: {
     openaiApiKey: process.env.OPENAI_API_KEY || '',
     zhipuApiKey: process.env.ZHIPU_API_KEY || '',
+    zhipuApiKey2: process.env.ZHIPU_API_KEY_2 || '',
     deepseekApiKey: process.env.DEEPSEEK_API_KEY || '',
     defaultProvider: process.env.DEFAULT_PROVIDER || 'zhipu',
     defaultModel: process.env.DEFAULT_MODEL || 'glm-4-flash',

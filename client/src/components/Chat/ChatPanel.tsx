@@ -1,10 +1,10 @@
 import React, { useState, useRef, useEffect, useMemo, useCallback } from 'react';
-import { Send, Loader2, Trash2, User, Bot, Sparkles, GitBranch, MessageSquare, Copy, Check, Plus, Brain, ChevronDown, ChevronUp, Paperclip, X, FileText, File, Image, RefreshCw, Lightbulb } from 'lucide-react';
+import { Send, Loader2, Trash2, User, Bot, Sparkles, GitBranch, MessageSquare, Copy, Check, Plus, Brain, ChevronDown, ChevronUp, Paperclip, X, FileText, File, Image, RefreshCw, Lightbulb, AlertTriangle, Settings } from 'lucide-react';
 import { useAppStore } from '../../stores/appStore';
 import { useAPIConfigStore } from '../../stores/apiConfigStore';
 import { useToastStore } from '../../stores/toastStore';
 import { chatService } from '../../services/chatService';
-import { fileApi, conversationApi } from '../../services/api';
+import { fileApi } from '../../services/api';
 import type { FileInfo } from '../../services/api';
 import useMobile from '../../hooks/useMobile';
 import useIsMobile from '../../hooks/useIsMobile';
@@ -232,6 +232,55 @@ const ContextUsageIndicator: React.FC<{
 };
 
 /**
+ * 限流引导提示组件
+ * 当内置Key被限流时，引导用户配置自己的API Key
+ * 自动5秒后关闭，也可手动关闭
+ */
+const RateLimitGuide: React.FC<{
+  onClose: () => void;
+  onGoToConfig: () => void;
+}> = ({ onClose, onGoToConfig }) => {
+  const [visible, setVisible] = useState(true);
+
+  useEffect(() => {
+    const timer = setTimeout(() => {
+      setVisible(false);
+      setTimeout(onClose, 300);
+    }, 5000);
+    return () => clearTimeout(timer);
+  }, [onClose]);
+
+  return (
+    <div
+      className={`flex items-center gap-3 px-4 py-3 bg-amber-900/30 border border-amber-500/30 rounded-2xl transition-all duration-300 ${
+        visible ? 'opacity-100 translate-y-0' : 'opacity-0 -translate-y-2'
+      }`}
+    >
+      <AlertTriangle className="w-4 h-4 text-amber-400 flex-shrink-0" />
+      <span className="text-sm text-amber-200 flex-1">
+        当前使用人数较多，配置自己的 API Key 可享受无限对话
+      </span>
+      <button
+        onClick={onGoToConfig}
+        className="flex items-center gap-1 px-3 py-1 bg-amber-600/30 hover:bg-amber-600/50 border border-amber-500/40 text-amber-300 rounded-lg text-xs font-medium transition-colors flex-shrink-0"
+      >
+        <Settings className="w-3 h-3" />
+        去配置
+      </button>
+      <button
+        onClick={() => {
+          setVisible(false);
+          setTimeout(onClose, 300);
+        }}
+        className="p-1 text-amber-500 hover:text-amber-300 transition-colors flex-shrink-0"
+      >
+        <X className="w-3.5 h-3.5" />
+      </button>
+    </div>
+  );
+};
+
+/**
  * 聊天面板组件 - 支持分支隔离上下文和流式传输
  * 包含快捷创建分支按钮，优化移动端操作体验
  */
@@ -268,9 +317,12 @@ const ChatPanel: React.FC<ChatPanelProps> = ({ nodeId }) => {
   const [confirmDialogOpen, setConfirmDialogOpen] = useState(false);
   const [isGeneratingTitle, setIsGeneratingTitle] = useState(false);
   const [isExtractingConclusion, setIsExtractingConclusion] = useState(false);
+  const [showRateLimitGuide, setShowRateLimitGuide] = useState(false);
   const messagesEndRef = useRef<HTMLDivElement>(null);
   const fileInputRef = useRef<HTMLInputElement>(null);
   const textareaRef = useRef<HTMLTextAreaElement>(null);
+  const titleGenerationTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+  const conclusionTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
 
   /**
    * 快捷提问建议列表
@@ -307,6 +359,17 @@ const ChatPanel: React.FC<ChatPanelProps> = ({ nodeId }) => {
       allowSleep();
     }
   }, [isLoading, streamingContent, keepAwake, allowSleep]);
+
+  useEffect(() => {
+    return () => {
+      if (titleGenerationTimerRef.current) {
+        clearTimeout(titleGenerationTimerRef.current);
+      }
+      if (conclusionTimerRef.current) {
+        clearTimeout(conclusionTimerRef.current);
+      }
+    };
+  }, []);
 
   useEffect(() => {
     const fetchStatus = async () => {
@@ -485,6 +548,11 @@ const ChatPanel: React.FC<ChatPanelProps> = ({ nodeId }) => {
     setStreamingContent('');
     setStreamingThinkingContent('');
 
+    if (titleGenerationTimerRef.current) {
+      clearTimeout(titleGenerationTimerRef.current);
+      titleGenerationTimerRef.current = null;
+    }
+
     const DEFAULT_TITLES = ['新对话', '新分支'];
     if (nodeId && node && DEFAULT_TITLES.includes(node.title || '')) {
       const autoTitle = userMessage.length > 15
@@ -535,7 +603,11 @@ const ChatPanel: React.FC<ChatPanelProps> = ({ nodeId }) => {
       }
     };
 
-    const result = await chatService.sendMessageStream(allMessages, handleStream, selectedFileIds.length > 0 ? selectedFileIds : undefined);
+    const result = await chatService.sendMessageStream(allMessages, handleStream, selectedFileIds.length > 0 ? selectedFileIds : undefined, {
+      onRateLimited: () => {
+        setShowRateLimitGuide(true);
+      }
+    });
 
     setIsLoading(false);
     setStreamingContent('');
@@ -557,7 +629,9 @@ const ChatPanel: React.FC<ChatPanelProps> = ({ nodeId }) => {
           || currentNode.title === '新分支';
 
         if (isDefaultTitle && !isNodeManuallyTitled(nodeId)) {
-          handleGenerateTitle();
+          titleGenerationTimerRef.current = setTimeout(() => {
+            handleGenerateTitle();
+          }, 5000);
         }
       }
     } else if (!result.success) {
@@ -656,6 +730,11 @@ const ChatPanel: React.FC<ChatPanelProps> = ({ nodeId }) => {
     setStreamingContent('');
     setStreamingThinkingContent('');
 
+    if (titleGenerationTimerRef.current) {
+      clearTimeout(titleGenerationTimerRef.current);
+      titleGenerationTimerRef.current = null;
+    }
+
     let convId = node?.conversationId;
     if (!convId) {
       convId = addConversation(nodeId);
@@ -684,7 +763,11 @@ const ChatPanel: React.FC<ChatPanelProps> = ({ nodeId }) => {
       }
     };
 
-    const result = await chatService.sendMessageStream(allMessages, handleStream, selectedFileIds.length > 0 ? selectedFileIds : undefined);
+    const result = await chatService.sendMessageStream(allMessages, handleStream, selectedFileIds.length > 0 ? selectedFileIds : undefined, {
+      onRateLimited: () => {
+        setShowRateLimitGuide(true);
+      }
+    });
 
     setIsLoading(false);
     setStreamingContent('');
@@ -706,7 +789,9 @@ const ChatPanel: React.FC<ChatPanelProps> = ({ nodeId }) => {
           || currentNode.title === '新分支';
 
         if (isDefaultTitle && !isNodeManuallyTitled(nodeId)) {
-          handleGenerateTitle();
+          titleGenerationTimerRef.current = setTimeout(() => {
+            handleGenerateTitle();
+          }, 5000);
         }
       }
     } else if (!result.success) {
@@ -748,8 +833,8 @@ const ChatPanel: React.FC<ChatPanelProps> = ({ nodeId }) => {
   };
 
   /**
-   * 生成智能标题
-   * 根据当前对话消息调用AI生成精炼标题，更新节点标题
+   * 生成智能标题（流式）
+   * 根据当前对话消息调用AI流式生成精炼标题，更新节点标题
    * @param force - 是否强制生成（忽略手动修改标记）
    */
   const handleGenerateTitle = useCallback(async (force: boolean = false) => {
@@ -778,10 +863,14 @@ const ChatPanel: React.FC<ChatPanelProps> = ({ nodeId }) => {
         }
       }
 
-      const generatedTitle = await conversationApi.generateTitle(titleMessages, parentNodeTitle);
+      const titleResult = await chatService.generateTitleStream(titleMessages, parentNodeTitle);
 
-      if (generatedTitle && generatedTitle !== '新对话') {
-        updateNode(nodeId, { title: generatedTitle });
+      if (titleResult.rateLimited) {
+        useToastStore.getState().addToast('error', '标题生成失败，稍后重试');
+      }
+
+      if (titleResult.title && titleResult.title !== '新对话') {
+        updateNode(nodeId, { title: titleResult.title });
       }
     } catch (error: unknown) {
       console.error('[ChatPanel] 生成标题失败:', error);
@@ -791,28 +880,39 @@ const ChatPanel: React.FC<ChatPanelProps> = ({ nodeId }) => {
   }, [nodeId, node, isGeneratingTitle, isNodeManuallyTitled, conversations, nodes, updateNode]);
 
   /**
-   * 提炼结论处理
-   * 调用AI从当前对话中提炼核心结论，创建结论节点
+   * 提炼结论处理（流式）
+   * 调用AI流式从当前对话中提炼核心结论，创建结论节点
    */
   const handleExtractConclusion = useCallback(async () => {
     if (!nodeId || isExtractingConclusion) return;
 
     setIsExtractingConclusion(true);
-    try {
-      const result = await conversationApi.extractConclusion(nodeId);
 
-      if (result.success && result.conclusion) {
-        createConclusionNode(nodeId, result.conclusion);
-        useToastStore.getState().addToast('success', '结论提炼成功');
-      } else {
-        useToastStore.getState().addToast('error', '结论提炼失败，请确保对话有足够内容');
-      }
-    } catch (error: unknown) {
-      console.error('[ChatPanel] 提炼结论失败:', error);
-      useToastStore.getState().addToast('error', '结论提炼失败，请稍后重试');
-    } finally {
-      setIsExtractingConclusion(false);
+    if (conclusionTimerRef.current) {
+      clearTimeout(conclusionTimerRef.current);
+      conclusionTimerRef.current = null;
     }
+
+    conclusionTimerRef.current = setTimeout(async () => {
+      conclusionTimerRef.current = null;
+      try {
+        const result = await chatService.extractConclusionStream(nodeId);
+
+        if (result.rateLimited) {
+          useToastStore.getState().addToast('error', '结论提炼失败，稍后重试');
+        } else if (result.success && result.conclusion) {
+          createConclusionNode(nodeId, result.conclusion);
+          useToastStore.getState().addToast('success', '结论提炼成功');
+        } else {
+          useToastStore.getState().addToast('error', '结论提炼失败，请确保对话有足够内容');
+        }
+      } catch (error: unknown) {
+        console.error('[ChatPanel] 提炼结论失败:', error);
+        useToastStore.getState().addToast('error', '结论提炼失败，请稍后重试');
+      } finally {
+        setIsExtractingConclusion(false);
+      }
+    }, 2000);
   }, [nodeId, isExtractingConclusion, createConclusionNode]);
 
   /**
@@ -824,6 +924,15 @@ const ChatPanel: React.FC<ChatPanelProps> = ({ nodeId }) => {
     selectNode(targetNodeId);
     requestOpenChat(targetNodeId);
   }, [selectNode, requestOpenChat]);
+
+  /**
+   * 跳转到API配置面板
+   * 通过自定义事件通知MainLayout打开设置弹窗并定位到API配置标签页
+   */
+  const handleGoToAPIConfig = useCallback(() => {
+    setShowRateLimitGuide(false);
+    window.dispatchEvent(new CustomEvent('settings:open-api'));
+  }, []);
 
   if (!nodeId) {
     return (
@@ -908,6 +1017,12 @@ const ChatPanel: React.FC<ChatPanelProps> = ({ nodeId }) => {
 
       {/* 消息列表 */}
       <div className="flex-1 overflow-y-auto p-4 space-y-4 relative">
+        {showRateLimitGuide && (
+          <RateLimitGuide
+            onClose={() => setShowRateLimitGuide(false)}
+            onGoToConfig={handleGoToAPIConfig}
+          />
+        )}
         <MindMapThumbnail
           nodes={nodes}
           relations={relations}

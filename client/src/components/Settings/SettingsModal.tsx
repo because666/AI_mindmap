@@ -1,4 +1,4 @@
-import React, { useState } from 'react';
+import React, { useState, useEffect } from 'react';
 import { X, Settings as SettingsIcon, Sliders, Key, BookOpen } from 'lucide-react';
 import APIConfigPanel from './APIConfigPanel';
 import UISettingsPanel from './UISettingsPanel';
@@ -8,6 +8,7 @@ import useIsMobile from '../../hooks/useIsMobile';
 interface SettingsModalProps {
   isOpen: boolean;
   onClose: () => void;
+  initialTab?: SettingsTab;
 }
 
 type SettingsTab = 'api' | 'ui' | 'guide';
@@ -16,10 +17,16 @@ type SettingsTab = 'api' | 'ui' | 'guide';
  * 设置弹窗组件
  * 支持桌面端居中弹窗和移动端全屏显示
  */
-const SettingsModal: React.FC<SettingsModalProps> = ({ isOpen, onClose }) => {
-  const [activeTab, setActiveTab] = useState<SettingsTab>('ui');
+const SettingsModal: React.FC<SettingsModalProps> = ({ isOpen, onClose, initialTab }) => {
+  const [activeTab, setActiveTab] = useState<SettingsTab>(initialTab || 'ui');
   const [showGuide, setShowGuide] = useState(false);
   const isMobile = useIsMobile();
+
+  useEffect(() => {
+    if (isOpen && initialTab) {
+      setActiveTab(initialTab);
+    }
+  }, [isOpen, initialTab]);
 
   if (!isOpen) return null;
 

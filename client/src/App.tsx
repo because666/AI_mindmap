@@ -4,6 +4,7 @@ import CanvasPage from './components/Canvas/CanvasPage';
 import WelcomePage from './components/Workspace/WelcomePage';
 import DreamyUniverseBackground from './components/Background/DreamyUniverseBackground';
 import OnboardingGuide from './components/Onboarding/OnboardingGuide';
+import Toast from './components/Common/Toast';
 import { useVisitorWorkspaceStore } from './stores/visitorWorkspaceStore';
 import { useAppStore } from './stores/appStore';
 import { nodeApi, conversationApi } from './services/api';
@@ -204,6 +205,7 @@ function App() {
           onClose={() => setShowOnboarding(false)}
           isForced={true}
         />
+        <Toast />
       </>
     );
   }
@@ -220,6 +222,7 @@ function App() {
           onClose={() => setShowOnboarding(false)}
           isForced={true}
         />
+        <Toast />
       </>
     );
   }
@@ -248,6 +251,7 @@ function App() {
         onClose={() => setShowOnboarding(false)}
         isForced={true}
       />
+      <Toast />
     </>
   );
 }

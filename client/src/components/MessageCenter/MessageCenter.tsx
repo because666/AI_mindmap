@@ -2,7 +2,11 @@ import { useState, useCallback } from 'react';
 import { MessageList } from './MessageList';
 import { MessageDetail } from './MessageDetail';
 
-export function MessageCenter() {
+interface MessageCenterProps {
+  onUnreadCountChange?: (count: number) => void;
+}
+
+export function MessageCenter({ onUnreadCountChange }: MessageCenterProps) {
   const [selectedMessageId, setSelectedMessageId] = useState<string | null>(null);
 
   const handleMessageClick = useCallback((messageId: string) => {
@@ -18,7 +22,7 @@ export function MessageCenter() {
   }
 
   return (
-    <MessageList onMessageClick={handleMessageClick} />
+    <MessageList onMessageClick={handleMessageClick} onUnreadCountChange={onUnreadCountChange} />
   );
 }
 

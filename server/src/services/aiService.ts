@@ -1,7 +1,40 @@
 import OpenAI from 'openai';
 import { config } from '../config';
-import { AIRequest, AIResponse, EmbeddingRequest, EmbeddingResponse } from '../types';
+import { AIResponse, EmbeddingRequest, EmbeddingResponse } from '../types';
 import { vectorDBService } from '../data/vector/connection';
+import { mongoDBService } from '../data/mongodb/connection';
+
+/**
+ * AI用量记录接口
+ */
+interface AIUsageRecord {
+  visitorId: string;
+  workspaceId: string;
+  model: string;
+  provider: string;
+  promptTokens: number;
+  completionTokens: number;
+  totalTokens: number;
+  responseTimeMs: number;
+  isSuccess: boolean;
+  errorMessage?: string;
+  createdAt: Date;
+}
+
+/**
+ * 用量统计接口
+ */
+interface UsageStats {
+  totalTokens: number;
+  totalCalls: number;
+  avgResponseTime: number;
+  modelDistribution: Record<string, number>;
+  dailyUsage: Array<{
+    date: string;
+    totalTokens: number;
+    calls: number;
+  }>;
+}
 
 /**
  * 聊天选项接口
@@ -27,11 +60,61 @@ interface TestOptions {
 }
 
 /**
- * 流式聊天结果接口
+ * 流式聊天结果接口 - 内容片段
  */
-interface StreamChunk {
-  type: 'content' | 'thinking';
+interface ContentChunk {
+  type: 'content';
   content: string;
+}
+
+/**
+ * 流式聊天结果接口 - 思考过程片段
+ */
+interface ThinkingChunk {
+  type: 'thinking';
+  content: string;
+}
+
+/**
+ * 流式聊天结果接口 - 降级通知
+ */
+interface DegradedChunk {
+  type: 'degraded';
+  provider: string;
+  model: string;
+}
+
+/**
+ * 流式聊天结果接口 - 用量信息
+ */
+interface UsageChunk {
+  type: 'usage';
+  usage: {
+    promptTokens: number;
+    completionTokens: number;
+    totalTokens: number;
+  };
+}
+
+/**
+ * 流式聊天结果接口 - 超时通知
+ */
+interface TimeoutChunk {
+  type: 'timeout';
+}
+
+/**
+ * 流式聊天结果联合类型
+ */
+type StreamChunk = ContentChunk | ThinkingChunk | DegradedChunk | UsageChunk | TimeoutChunk;
+
+/**
+ * 流式Delta扩展接口（支持reasoning_content字段）
+ */
+interface StreamDeltaWithReasoning {
+  content?: string | null;
+  reasoning_content?: string | null;
+  role?: string;
 }
 
 /**
@@ -54,8 +137,18 @@ const API_BASE_URLS: Record<string, string> = {
 };
 
 /**
+ * 流式响应超时时间（毫秒）
+ */
+const STREAM_TIMEOUT_MS = 30000;
+
+/**
+ * 最大降级尝试次数
+ */
+const MAX_FALLBACK_ATTEMPTS = 3;
+
+/**
  * AI服务类
- * 提供与各种AI模型的交互功能
+ * 提供与各种AI模型的交互功能，支持Provider降级链和用量追踪
  */
 class AIService {
   private openai: OpenAI | null = null;
@@ -80,12 +173,13 @@ class AIService {
 
   /**
    * 获取内置API密钥
-   * @param provider - 服务提供商
+   * @param provider - 服务提供商名称
    * @returns 内置API密钥或undefined
    */
   private getBuiltInApiKey(provider?: string): string | undefined {
     if (!provider) {
       if (config.ai.zhipuApiKey) return config.ai.zhipuApiKey;
+      if (config.ai.deepseekApiKey) return config.ai.deepseekApiKey;
       if (config.ai.openaiApiKey) return config.ai.openaiApiKey;
       return undefined;
     }
@@ -93,6 +187,8 @@ class AIService {
     switch (provider) {
       case 'zhipu':
         return config.ai.zhipuApiKey;
+      case 'deepseek':
+        return config.ai.deepseekApiKey;
       case 'openai':
         return config.ai.openaiApiKey;
       default:
@@ -113,8 +209,12 @@ class AIService {
 
     if (!effectiveApiKey) {
       effectiveApiKey = this.getBuiltInApiKey(provider);
-      if (!effectiveProvider && effectiveApiKey === config.ai.zhipuApiKey) {
-        effectiveProvider = 'zhipu';
+      if (!effectiveProvider) {
+        if (effectiveApiKey === config.ai.zhipuApiKey) {
+          effectiveProvider = 'zhipu';
+        } else if (effectiveApiKey === config.ai.deepseekApiKey) {
+          effectiveProvider = 'deepseek';
+        }
       }
     }
 
@@ -136,7 +236,48 @@ class AIService {
   }
 
   /**
-   * 发送聊天请求
+   * 获取有效的降级链
+   * 根据请求的Provider确定降级顺序，将请求的Provider放在链首
+   * @param requestedProvider - 请求中指定的Provider
+   * @returns 降级链数组
+   */
+  private getEffectiveFallbackChain(requestedProvider?: string): string[] {
+    const chain = config.ai.fallbackChain;
+
+    if (!requestedProvider) {
+      return chain;
+    }
+
+    const index = chain.indexOf(requestedProvider);
+    if (index === -1) {
+      return [requestedProvider, ...chain];
+    }
+
+    return [...chain.slice(index), ...chain.slice(0, index)];
+  }
+
+  /**
+   * 获取指定Provider的默认模型
+   * @param provider - 服务提供商名称
+   * @returns 默认模型名称
+   */
+  private getModelForProvider(provider: string): string {
+    return DEFAULT_MODELS[provider] || config.ai.defaultModel;
+  }
+
+  /**
+   * 判断是否应使用降级链
+   * 当用户提供自己的API密钥时不使用降级，仅使用内置密钥时启用降级
+   * @param request - 聊天请求选项
+   * @returns 是否使用降级链
+   */
+  private shouldUseFallback(request: ChatOptions): boolean {
+    return !request.apiKey;
+  }
+
+  /**
+   * 发送聊天请求（支持Provider降级）
+   * 主Provider失败时自动尝试降级链中的下一个Provider，最多尝试3个
    * @param request - 聊天请求选项
    * @returns AI响应
    */
@@ -163,23 +304,55 @@ class AIService {
       }
     }
 
-    try {
-      const client = this.getOpenAIClient(request.apiKey, request.baseUrl, request.provider);
-      
-      let model = request.model;
-      if (!model) {
-        if (request.provider && DEFAULT_MODELS[request.provider]) {
-          model = DEFAULT_MODELS[request.provider];
-        } else {
-          model = config.ai.defaultModel;
-        }
+    if (!this.shouldUseFallback(request)) {
+      return this.chatWithProvider(request, request.provider, request.model);
+    }
+
+    const fallbackChain = this.getEffectiveFallbackChain(request.provider);
+    const maxAttempts = Math.min(MAX_FALLBACK_ATTEMPTS, fallbackChain.length);
+    let lastError: string = '';
+
+    for (let attempt = 0; attempt < maxAttempts; attempt++) {
+      const currentProvider = fallbackChain[attempt];
+      const currentModel = attempt === 0
+        ? (request.model || this.getModelForProvider(currentProvider))
+        : this.getModelForProvider(currentProvider);
+
+      if (attempt > 0) {
+        console.warn(`[AI降级] Provider ${fallbackChain[attempt - 1]} 失败，尝试 ${currentProvider} (${currentModel})`);
       }
 
+      const result = await this.chatWithProvider(request, currentProvider, currentModel);
+      if (result.success) {
+        return result;
+      }
+
+      lastError = result.error || '未知错误';
+    }
+
+    return {
+      success: false,
+      error: `所有AI服务提供商均不可用: ${lastError}`,
+    };
+  }
+
+  /**
+   * 使用指定Provider发送聊天请求
+   * @param request - 聊天请求选项
+   * @param provider - 服务提供商
+   * @param model - 模型名称
+   * @returns AI响应
+   */
+  private async chatWithProvider(request: ChatOptions, provider?: string, model?: string): Promise<AIResponse> {
+    try {
+      const client = this.getOpenAIClient(request.apiKey, request.baseUrl, provider);
+
+      const effectiveModel = model || this.getModelForProvider(provider || 'zhipu');
       const temperature = Math.max(0, Math.min(2, request.temperature ?? 0.7));
       const maxTokens = request.maxTokens ? Math.max(1, Math.min(32000, request.maxTokens)) : undefined;
 
       const response = await client.chat.completions.create({
-        model,
+        model: effectiveModel,
         messages: request.messages.map(m => ({
           role: m.role as 'system' | 'user' | 'assistant',
           content: m.content.trim(),
@@ -206,7 +379,7 @@ class AIService {
           totalTokens: response.usage?.total_tokens || 0,
         },
       };
-    } catch (error: any) {
+    } catch (error: unknown) {
       const errorMessage = this.formatError(error);
       return {
         success: false,
@@ -231,7 +404,7 @@ class AIService {
 
     try {
       const client = this.getOpenAIClient(options.apiKey, options.baseUrl, options.provider);
-      
+
       let model = options.model;
       if (!model) {
         if (options.provider && DEFAULT_MODELS[options.provider]) {
@@ -252,19 +425,21 @@ class AIService {
       }
 
       return { success: false, error: 'API返回了意外的响应' };
-    } catch (error: any) {
+    } catch (error: unknown) {
       const errorMessage = this.formatError(error);
-      return { 
-        success: false, 
+      return {
+        success: false,
         error: errorMessage,
       };
     }
   }
 
   /**
-   * 流式聊天
+   * 流式聊天（支持Provider降级和超时控制）
+   * 主Provider失败时自动尝试降级链中的下一个Provider，最多尝试3个
+   * 30秒无新数据时自动断开并发送超时通知
    * @param request - 聊天请求选项
-   * @yields 响应内容片段（包含内容和思考过程）
+   * @yields 响应内容片段（包含内容、思考过程、降级通知、用量信息、超时通知）
    */
   async *chatStream(request: ChatOptions): AsyncGenerator<StreamChunk> {
     if (!request.messages || request.messages.length === 0) {
@@ -280,23 +455,70 @@ class AIService {
       }
     }
 
-    const client = this.getOpenAIClient(request.apiKey, request.baseUrl, request.provider);
-    
-    let model = request.model;
-    if (!model) {
-      if (request.provider && DEFAULT_MODELS[request.provider]) {
-        model = DEFAULT_MODELS[request.provider];
-      } else {
-        model = config.ai.defaultModel;
-      }
+    if (!this.shouldUseFallback(request)) {
+      yield* this.chatStreamWithProvider(request, request.provider, request.model);
+      return;
     }
 
+    const fallbackChain = this.getEffectiveFallbackChain(request.provider);
+    const maxAttempts = Math.min(MAX_FALLBACK_ATTEMPTS, fallbackChain.length);
+    let lastError: string = '';
+
+    for (let attempt = 0; attempt < maxAttempts; attempt++) {
+      const currentProvider = fallbackChain[attempt];
+      const currentModel = attempt === 0
+        ? (request.model || this.getModelForProvider(currentProvider))
+        : this.getModelForProvider(currentProvider);
+
+      if (attempt > 0) {
+        console.warn(`[AI降级] Provider ${fallbackChain[attempt - 1]} 失败，尝试 ${currentProvider} (${currentModel})`);
+        yield { type: 'degraded', provider: currentProvider, model: currentModel };
+      }
+
+      try {
+        yield* this.chatStreamWithProvider(request, currentProvider, currentModel);
+        return;
+      } catch (error: unknown) {
+        lastError = this.formatError(error);
+        if (attempt >= maxAttempts - 1) {
+          throw new Error(`所有AI服务提供商均不可用: ${lastError}`);
+        }
+      }
+    }
+  }
+
+  /**
+   * 使用指定Provider进行流式聊天
+   * 包含30秒超时控制，无新数据时自动断开并发送超时通知
+   * @param request - 聊天请求选项
+   * @param provider - 服务提供商
+   * @param model - 模型名称
+   * @yields 响应内容片段
+   */
+  private async *chatStreamWithProvider(request: ChatOptions, provider?: string, model?: string): AsyncGenerator<StreamChunk> {
+    const client = this.getOpenAIClient(request.apiKey, request.baseUrl, provider);
+
+    const effectiveModel = model || this.getModelForProvider(provider || 'zhipu');
     const temperature = Math.max(0, Math.min(2, request.temperature ?? 0.7));
     const maxTokens = request.maxTokens ? Math.max(1, Math.min(32000, request.maxTokens)) : undefined;
 
+    const controller = new AbortController();
+    let timeoutId: ReturnType<typeof setTimeout> | null = null;
+
+    const resetTimeout = (): void => {
+      if (timeoutId !== null) {
+        clearTimeout(timeoutId);
+      }
+      timeoutId = setTimeout(() => {
+        controller.abort();
+      }, STREAM_TIMEOUT_MS);
+    };
+
+    resetTimeout();
+
     try {
       const stream = await client.chat.completions.create({
-        model,
+        model: effectiveModel,
         messages: request.messages.map(m => ({
           role: m.role as 'system' | 'user' | 'assistant',
           content: m.content.trim(),
@@ -304,30 +526,154 @@ class AIService {
         temperature,
         max_tokens: maxTokens,
         stream: true,
-      });
+        stream_options: { include_usage: true },
+      }, { signal: controller.signal });
 
       for await (const chunk of stream) {
-        const delta = chunk.choices[0]?.delta as any;
-        
+        resetTimeout();
+
+        const delta = chunk.choices[0]?.delta as StreamDeltaWithReasoning | undefined;
         const reasoningContent = delta?.reasoning_content || '';
         const content = delta?.content || '';
-        
+
         if (reasoningContent) {
-          yield {
-            type: 'thinking',
-            content: reasoningContent
-          };
+          yield { type: 'thinking', content: reasoningContent };
         }
-        
+
         if (content) {
+          yield { type: 'content', content };
+        }
+
+        if (chunk.usage) {
           yield {
-            type: 'content',
-            content: content
+            type: 'usage',
+            usage: {
+              promptTokens: chunk.usage.prompt_tokens || 0,
+              completionTokens: chunk.usage.completion_tokens || 0,
+              totalTokens: chunk.usage.total_tokens || 0,
+            },
           };
         }
       }
-    } catch (error: any) {
-      throw new Error(this.formatError(error));
+    } catch (error: unknown) {
+      if (controller.signal.aborted) {
+        yield { type: 'timeout' };
+        return;
+      }
+      throw error;
+    } finally {
+      if (timeoutId !== null) {
+        clearTimeout(timeoutId);
+      }
+    }
+  }
+
+  /**
+   * 记录AI用量
+   * 将用量数据插入MongoDB的ai_usage集合，错误时仅记录日志不影响主流程
+   * @param record - AI用量记录
+   */
+  async recordUsage(record: AIUsageRecord): Promise<void> {
+    try {
+      await mongoDBService.insertOne<AIUsageRecord>('ai_usage', record);
+    } catch (error: unknown) {
+      console.error('[AI用量] 记录用量失败:', error instanceof Error ? error.message : String(error));
+    }
+  }
+
+  /**
+   * 获取AI用量统计
+   * 根据时间范围聚合用量数据，返回总Token数、调用次数、平均响应时间、模型分布和每日用量
+   * @param startDate - 开始日期
+   * @param endDate - 结束日期
+   * @returns 用量统计数据
+   */
+  async getUsageStats(startDate: Date, endDate: Date): Promise<UsageStats> {
+    const emptyStats: UsageStats = {
+      totalTokens: 0,
+      totalCalls: 0,
+      avgResponseTime: 0,
+      modelDistribution: {},
+      dailyUsage: [],
+    };
+
+    const collection = mongoDBService.getCollection<AIUsageRecord>('ai_usage');
+    if (!collection) {
+      return emptyStats;
+    }
+
+    try {
+      const match = {
+        createdAt: { $gte: startDate, $lte: endDate },
+      };
+
+      const totalResultArray = await collection.aggregate<{
+        _id: null;
+        totalTokens: number;
+        totalCalls: number;
+        avgResponseTime: number;
+      }>([
+        { $match: match },
+        {
+          $group: {
+            _id: null,
+            totalTokens: { $sum: '$totalTokens' },
+            totalCalls: { $sum: 1 },
+            avgResponseTime: { $avg: '$responseTimeMs' },
+          },
+        },
+      ]).toArray();
+
+      const totalResult = totalResultArray[0];
+
+      const modelDistributionResult = await collection.aggregate<{
+        _id: string;
+        count: number;
+      }>([
+        { $match: match },
+        {
+          $group: {
+            _id: '$model',
+            count: { $sum: 1 },
+          },
+        },
+      ]).toArray();
+
+      const dailyUsageResult = await collection.aggregate<{
+        _id: string;
+        totalTokens: number;
+        calls: number;
+      }>([
+        { $match: match },
+        {
+          $group: {
+            _id: { $dateToString: { format: '%Y-%m-%d', date: '$createdAt' } },
+            totalTokens: { $sum: '$totalTokens' },
+            calls: { $sum: 1 },
+          },
+        },
+        { $sort: { _id: 1 } },
+      ]).toArray();
+
+      const modelDistribution: Record<string, number> = {};
+      for (const item of modelDistributionResult) {
+        modelDistribution[item._id] = item.count;
+      }
+
+      return {
+        totalTokens: totalResult?.totalTokens || 0,
+        totalCalls: totalResult?.totalCalls || 0,
+        avgResponseTime: Math.round(totalResult?.avgResponseTime || 0),
+        modelDistribution,
+        dailyUsage: dailyUsageResult.map(item => ({
+          date: item._id,
+          totalTokens: item.totalTokens,
+          calls: item.calls,
+        })),
+      };
+    } catch (error: unknown) {
+      console.error('[AI用量] 获取统计数据失败:', error instanceof Error ? error.message : String(error));
+      return emptyStats;
     }
   }
 
@@ -360,8 +706,8 @@ class AIService {
 
     try {
       const model = request.model || config.ai.embeddingModel;
-      const truncatedText = request.text.length > 8000 
-        ? request.text.substring(0, 8000) 
+      const truncatedText = request.text.length > 8000
+        ? request.text.substring(0, 8000)
         : request.text;
 
       const response = await this.openai.embeddings.create({
@@ -381,7 +727,7 @@ class AIService {
         success: true,
         embedding,
       };
-    } catch (error: any) {
+    } catch (error: unknown) {
       return {
         success: false,
         error: this.formatError(error),
@@ -395,13 +741,13 @@ class AIService {
    * @param content - 内容文本
    * @param metadata - 元数据
    */
-  async indexNodeContent(nodeId: string, content: string, metadata: Record<string, any> = {}): Promise<void> {
+  async indexNodeContent(nodeId: string, content: string, metadata: Record<string, unknown> = {}): Promise<void> {
     if (!nodeId || !content) {
       return;
     }
 
     const embeddingResponse = await this.getEmbedding({ text: content });
-    
+
     if (embeddingResponse.success && embeddingResponse.embedding) {
       try {
         await vectorDBService.insertVector(nodeId, embeddingResponse.embedding, {
@@ -421,13 +767,13 @@ class AIService {
    * @param topK - 返回数量
    * @returns 相似节点列表
    */
-  async searchSimilarNodes(query: string, topK: number = 10): Promise<Array<{ id: string; score: number; metadata: Record<string, any> }>> {
+  async searchSimilarNodes(query: string, topK: number = 10): Promise<Array<{ id: string; score: number; metadata: Record<string, unknown> }>> {
     if (!query || typeof query !== 'string') {
       return [];
     }
 
     const embeddingResponse = await this.getEmbedding({ text: query });
-    
+
     if (!embeddingResponse.success || !embeddingResponse.embedding) {
       return [];
     }
@@ -445,7 +791,7 @@ class AIService {
    * @returns 是否已配置
    */
   isConfigured(): boolean {
-    return !!(this.openai || config.ai.zhipuApiKey || config.ai.openaiApiKey);
+    return !!(this.openai || config.ai.zhipuApiKey || config.ai.deepseekApiKey || config.ai.openaiApiKey);
   }
 
   /**
@@ -453,7 +799,7 @@ class AIService {
    * @returns 是否有内置密钥
    */
   hasBuiltInApiKey(): boolean {
-    return !!(config.ai.zhipuApiKey || config.ai.openaiApiKey);
+    return !!(config.ai.zhipuApiKey || config.ai.deepseekApiKey || config.ai.openaiApiKey);
   }
 
   /**
@@ -469,18 +815,19 @@ class AIService {
    * @param error - 错误对象
    * @returns 格式化后的错误信息
    */
-  private formatError(error: any): string {
-    if (error?.error?.message) {
-      return error.error.message;
+  private formatError(error: unknown): string {
+    if (typeof error === 'object' && error !== null) {
+      const errObj = error as Record<string, unknown>;
+      if (typeof errObj.error === 'object' && errObj.error !== null) {
+        const inner = errObj.error as Record<string, unknown>;
+        if (typeof inner.message === 'string') return inner.message;
+      }
+      if (typeof errObj.message === 'string') return errObj.message;
     }
-    if (error?.message) {
-      return error.message;
-    }
-    if (typeof error === 'string') {
-      return error;
-    }
+    if (typeof error === 'string') return error;
     return 'An unexpected error occurred';
   }
 }
 
 export const aiService = AIService.getInstance();
+export type { AIUsageRecord, UsageStats, ChatOptions, StreamChunk };

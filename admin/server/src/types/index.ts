@@ -100,6 +100,18 @@ export interface DashboardStats {
   };
 }
 
+/**
+ * 趋势数据接口
+ * 包含多集合按日聚合的统计值
+ */
+export interface TrendData {
+  dates: string[];
+  visitors: number[];
+  workspaces: number[];
+  conversations: number[];
+  messages: number[];
+}
+
 export interface UserListItem {
   _id: string;
   id: string;

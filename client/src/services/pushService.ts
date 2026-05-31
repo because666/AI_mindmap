@@ -48,6 +48,7 @@ interface PushMessage {
   createdAt: string;
   read: boolean;
   forceRead: boolean;
+  forceReadDeadline?: string;
 }
 
 interface MessageDetail {

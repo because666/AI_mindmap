@@ -1,4 +1,5 @@
 import type { APIConfig, ChatMessage, StreamEvent, StreamCallback } from '../types';
+import { useAPIConfigStore } from '../stores/apiConfigStore';
 
 /**
  * 获取 API 基础 URL
@@ -64,12 +65,15 @@ const getLocalVisitorId = (): string | null => {
 export const chatService = {
   /**
    * 发送聊天消息（非流式）
+   * @param messages - 消息列表
+   * @returns 响应结果，包含成功/失败状态、内容、错误信息、敏感词
    */
   async sendMessage(
-    messages: ChatMessage[],
-    config: APIConfig
+    messages: ChatMessage[]
   ): Promise<{ success: boolean; content?: string; error?: string; sensitiveWords?: string[] }> {
     try {
+      const apiConfig = useAPIConfigStore.getState().getAPIConfigFromActive();
+
       const headers: Record<string, string> = {
         'Content-Type': 'application/json',
       };
@@ -78,18 +82,21 @@ export const chatService = {
         headers['X-Visitor-Id'] = visitorId;
       }
 
+      const requestBody: Record<string, unknown> = { messages };
+      if (apiConfig) {
+        requestBody.config = {
+          provider: apiConfig.provider,
+          model: apiConfig.modelId,
+          apiKey: apiConfig.apiKey,
+          baseUrl: apiConfig.baseUrl,
+          temperature: apiConfig.temperature
+        };
+      }
+
       const response = await fetch(`${API_BASE_URL}/api/ai/chat`, {
         method: 'POST',
         headers,
-        body: JSON.stringify({
-          messages,
-          config: {
-            provider: config.provider,
-            model: config.modelId,
-            apiKey: config.apiKey,
-            baseUrl: config.baseUrl
-          }
-        }),
+        body: JSON.stringify(requestBody),
       });
 
       const result = await parseJsonResponse(response);
@@ -111,18 +118,18 @@ export const chatService = {
   /**
    * 发送流式聊天消息
    * @param messages - 消息列表
-   * @param config - API 配置
    * @param onStream - 流式回调函数
    * @param fileIds - 引用的文件ID列表
-   * @returns 最终结果
+   * @returns 最终结果，包含成功/失败状态、内容、思考内容、错误信息、敏感词
    */
   async sendMessageStream(
     messages: ChatMessage[],
-    config: APIConfig,
     onStream: StreamCallback,
     fileIds?: string[]
   ): Promise<{ success: boolean; content?: string; thinkingContent?: string; error?: string; sensitiveWords?: string[] }> {
     try {
+      const apiConfig = useAPIConfigStore.getState().getAPIConfigFromActive();
+
       const headers: Record<string, string> = {
         'Content-Type': 'application/json',
         'Accept': 'text/event-stream',
@@ -132,19 +139,21 @@ export const chatService = {
         headers['X-Visitor-Id'] = visitorId;
       }
 
+      const requestBody: Record<string, unknown> = { messages, fileIds };
+      if (apiConfig) {
+        requestBody.config = {
+          provider: apiConfig.provider,
+          model: apiConfig.modelId,
+          apiKey: apiConfig.apiKey,
+          baseUrl: apiConfig.baseUrl,
+          temperature: apiConfig.temperature
+        };
+      }
+
       const response = await fetch(`${API_BASE_URL}/api/ai/chat/stream`, {
         method: 'POST',
         headers,
-        body: JSON.stringify({
-          messages,
-          config: {
-            provider: config.provider,
-            model: config.modelId,
-            apiKey: config.apiKey,
-            baseUrl: config.baseUrl
-          },
-          fileIds,
-        }),
+        body: JSON.stringify(requestBody),
       });
 
       if (!response.ok) {

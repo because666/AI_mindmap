@@ -49,6 +49,14 @@ router.post('/broadcast', requireAuth, auditLog('BROADCAST_PUSH', 'push'), async
 
     const messageId = await adminDB.insertOne('push_messages', pushMessage);
 
+    if (!messageId) {
+      console.error('[广播推送] 消息存储失败: 数据库连接不可用');
+      res.status(500).json({ success: false, error: '消息存储失败，数据库连接不可用' });
+      return;
+    }
+
+    console.log('[广播推送] 消息已存储:', messageId);
+
     let pushSent = false;
     try {
       const jpushPayload = {
@@ -82,7 +90,7 @@ router.post('/broadcast', requireAuth, auditLog('BROADCAST_PUSH', 'push'), async
       });
       pushSent = true;
     } catch (pushError) {
-      console.error('极光推送发送失败:', pushError);
+      console.error('[广播推送] 极光推送发送失败, messageId:', messageId, pushError);
     }
 
     if (!pushSent) {

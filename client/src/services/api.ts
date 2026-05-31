@@ -105,6 +105,7 @@ export interface NodeData {
   workspaceId: string;
   title: string;
   summary: string;
+  type: 'default' | 'conclusion';
   isRoot: boolean;
   isComposite: boolean;
   compositeChildren?: string[];
@@ -277,6 +278,29 @@ export const conversationApi = {
 
   list: () =>
     api.get<{ success: boolean; data: ConversationData[] }>('/conversations/list'),
+
+  /**
+   * 生成对话标题
+   * 根据对话消息内容调用AI生成精炼标题
+   * @param messages - 对话消息列表
+   * @param parentNodeTitle - 父节点标题，用于保持语义连贯
+   * @returns 生成的标题文本
+   */
+  generateTitle: async (messages: Array<{ role: string; content: string }>, parentNodeTitle?: string): Promise<string> => {
+    const response = await api.post<{ success: boolean; title: string }>('/conversations/generate-title', { messages, parentNodeTitle });
+    return (response as unknown as { success: boolean; title: string }).title;
+  },
+
+  /**
+   * 提炼对话结论
+   * 根据节点对话内容调用AI提炼核心结论
+   * @param nodeId - 节点ID
+   * @returns 提炼结果，包含成功标志和结论文本
+   */
+  extractConclusion: async (nodeId: string): Promise<{ success: boolean; conclusion: string }> => {
+    const response = await api.post<{ success: boolean; conclusion: string }>('/conversations/extract-conclusion', { nodeId });
+    return (response as unknown as { success: boolean; conclusion: string });
+  },
 };
 
 /**

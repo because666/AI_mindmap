@@ -1,6 +1,7 @@
 import React, { useState } from 'react';
 import { X, Layers, Check } from 'lucide-react';
 import { useAppStore, type NodeData } from '../../stores/appStore';
+import { useToastStore } from '../../stores/toastStore';
 import useIsMobile from '../../hooks/useIsMobile';
 
 interface CompositeNodeCreatorProps {
@@ -26,12 +27,12 @@ const CompositeNodeCreator: React.FC<CompositeNodeCreatorProps> = ({
 
   const handleCreate = () => {
     if (!title.trim()) {
-      alert('请输入复合节点标题');
+      useToastStore.getState().addToast('warning', '请输入复合节点标题');
       return;
     }
 
     if (selectedNodeIds.length < 2) {
-      alert('请至少选择2个节点进行聚合');
+      useToastStore.getState().addToast('warning', '请至少选择2个节点进行聚合');
       return;
     }
 

@@ -1,7 +1,14 @@
 import axios from 'axios';
 
 const MAIN_SERVER_URL = process.env.MAIN_SERVER_URL || 'http://localhost:3001';
-const INTERNAL_TOKEN = process.env.INTERNAL_API_TOKEN || 'deepmindmap-internal-2024';
+
+const INTERNAL_TOKEN = (() => {
+  const token = process.env.INTERNAL_API_TOKEN;
+  if (!token) {
+    throw new Error('INTERNAL_API_TOKEN 环境变量未设置，内部 API 通信不安全');
+  }
+  return token;
+})();
 
 /**
  * 通知主服务端清除指定访客的缓存
@@ -94,6 +101,19 @@ export async function notifyFeedbackPush(
       timeout: 5000,
     });
   } catch (error) {
-    console.error('[反馈推送] 通知主服务端发送反馈推送失败:', error instanceof Error ? error.message : String(error));
+    const err = error as { response?: { status: number; data: unknown }; message?: string };
+    if (err.response) {
+      const status = err.response.status;
+      const data = JSON.stringify(err.response.data);
+      if (status === 403) {
+        console.error('[反馈推送] 鉴权失败(403): 请检查 INTERNAL_API_TOKEN 配置一致性');
+      } else {
+        console.error('[反馈推送] HTTP调用失败, status:', status, ', response:', data);
+      }
+    } else if (err.message) {
+      console.error('[反馈推送] 网络请求失败, 无法连接主服务端:', err.message);
+    } else {
+      console.error('[反馈推送] 未知错误:', error instanceof Error ? error.message : String(error));
+    }
   }
 }

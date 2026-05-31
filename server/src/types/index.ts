@@ -61,11 +61,14 @@ export interface Visitor {
 /**
  * 节点数据接口
  */
+export type NodeType = 'default' | 'conclusion';
+
 export interface Node {
   id: string;
   workspaceId: string;
   title: string;
   summary: string;
+  type: NodeType;
   isRoot: boolean;
   isComposite: boolean;
   compositeChildren?: string[];

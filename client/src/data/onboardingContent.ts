@@ -30,7 +30,7 @@ export interface GuideConfig {
 export const onboardingGuideConfig: GuideConfig = {
   title: '欢迎使用 DeepMindMap',
   subtitle: 'AI驱动的思维导图与知识管理平台',
-  countdownSeconds: 10,
+  countdownSeconds: 3,
   pages: [
     {
       id: 'intro',

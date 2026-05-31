@@ -39,15 +39,14 @@ const MainLayout: React.FC<{ children: React.ReactNode }> = ({ children }) => {
   const [isMessageCenterOpen, setIsMessageCenterOpen] = useState(false);
   const [mobileDrawerClosing, setMobileDrawerClosing] = useState(false);
   const [globalAlert, setGlobalAlert] = useState<GlobalAlert | null>(null);
+  const [unreadCount, setUnreadCount] = useState(0);
 
   const isMobile = useIsMobile();
 
-  const { selectedNodeId, selectNode, undo, redo, history, historyIndex, reloadWorkspaceData, requestOpenChatForNode, clearChatRequest } = useAppStore();
+  const { selectedNodeId, selectNode, undo, redo, canUndo, canRedo, reloadWorkspaceData, requestOpenChatForNode, clearChatRequest } = useAppStore();
   const { autoOpenChatOnLoad, chatPanelWidth } = useUISettingsStore();
   const { visitor, currentWorkspace, workspaces, switchWorkspace, leaveWorkspace, clearCurrentWorkspace } = useVisitorWorkspaceStore();
 
-  const canUndo = historyIndex >= 0;
-  const canRedo = historyIndex < history.length - 1;
   const [isSyncing, setIsSyncing] = useState(false);
 
   /**
@@ -477,7 +476,7 @@ const MainLayout: React.FC<{ children: React.ReactNode }> = ({ children }) => {
         >
           <RefreshCw className={`w-5 h-5 ${isSyncing ? 'animate-spin' : ''}`} />
         </button>
-        <UnreadBadge onClick={() => setIsMessageCenterOpen(true)} />
+        <UnreadBadge onClick={() => setIsMessageCenterOpen(true)} externalUnreadCount={unreadCount} />
         <button
           onClick={openChat}
           className="p-2 text-dark-400 hover:text-white rounded-xl transition-colors"
@@ -597,17 +596,16 @@ const MainLayout: React.FC<{ children: React.ReactNode }> = ({ children }) => {
         </div>
 
         <div className="relative group">
-          <button
+          <UnreadBadge
             onClick={() => setIsMessageCenterOpen(!isMessageCenterOpen)}
+            externalUnreadCount={unreadCount}
+            size={20}
             className={`w-10 h-10 rounded-xl flex items-center justify-center transition-colors relative ${
               isMessageCenterOpen
                 ? 'bg-primary-600 text-white'
                 : 'text-dark-400 hover:text-white hover:bg-dark-700'
             }`}
-            title="消息"
-          >
-            <Bell className="w-5 h-5" />
-          </button>
+          />
           <span className="absolute left-full ml-2 px-2 py-1 bg-dark-800 text-dark-200 text-xs rounded-lg whitespace-nowrap pointer-events-none opacity-0 group-hover:opacity-100 transition-opacity duration-200">
             消息
           </span>
@@ -796,7 +794,7 @@ const MainLayout: React.FC<{ children: React.ReactNode }> = ({ children }) => {
                 </button>
               </div>
               <div className="flex-1 overflow-hidden">
-                <MessageCenter />
+                <MessageCenter onUnreadCountChange={setUnreadCount} />
               </div>
             </div>
           )}
@@ -858,7 +856,7 @@ const MainLayout: React.FC<{ children: React.ReactNode }> = ({ children }) => {
             </button>
           </div>
           <div className="flex-1 overflow-hidden">
-            <MessageCenter />
+            <MessageCenter onUnreadCountChange={setUnreadCount} />
           </div>
         </div>
       )}

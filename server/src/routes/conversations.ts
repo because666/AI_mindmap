@@ -5,6 +5,10 @@ import { aiService } from '../services/aiService';
 import { sensitiveWordService } from '../services/sensitiveWordService';
 import { fileService } from '../services/fileService';
 import { workspaceMemberAuth } from '../middleware';
+import { DEFAULT_SYSTEM_PROMPT, TITLE_GENERATION_PROMPT, CONCLUSION_EXTRACTION_PROMPT } from '../config/prompts.js';
+import { config } from '../config/index.js';
+import { estimateTokens, truncateContextByNode } from '../utils/contextUtils.js';
+import type { ContextUsageInfo } from '../utils/contextUtils.js';
 
 const router = Router();
 
@@ -74,7 +78,7 @@ router.post('/:nodeId/message', workspaceMemberAuth, async (req: Request, res: R
     await conversationService.addMessage(conversation.id, { role, content });
 
     if (role === 'user') {
-      const contextMessages = await buildContextMessages(req.params.nodeId);
+      const { messages: contextMessages, contextInfo } = await buildContextMessages(req.params.nodeId, req.body.model);
 
       let fileContext = '';
       if (fileIds && Array.isArray(fileIds) && fileIds.length > 0) {
@@ -87,6 +91,8 @@ router.post('/:nodeId/message', workspaceMemberAuth, async (req: Request, res: R
 
       const userContent = content + fileContext;
       contextMessages.push({ role: 'user', content: userContent });
+
+      const updatedTokens = contextInfo.contextTokensUsed + estimateTokens(userContent);
 
       const aiResponse = await aiService.chat({
         messages: contextMessages,
@@ -107,6 +113,9 @@ router.post('/:nodeId/message', workspaceMemberAuth, async (req: Request, res: R
           userMessage: content,
           assistantMessage: aiResponse.content,
           error: aiResponse.error,
+          contextTokensUsed: updatedTokens,
+          contextTokenLimit: contextInfo.contextTokenLimit,
+          contextTruncated: contextInfo.contextTruncated,
         }
       });
     }
@@ -206,23 +215,149 @@ router.post('/internal/refresh-cache', async (req: Request, res: Response) => {
 });
 
 /**
- * 构建上下文消息
- * @param nodeId - 节点ID
- * @returns 上下文消息列表
+ * 结论提炼请求体接口
  */
-async function buildContextMessages(nodeId: string): Promise<Array<{ role: string; content: string }>> {
+interface ExtractConclusionRequest {
+  nodeId: string;
+  workspaceId: string;
+}
+
+/**
+ * 结论提炼接口
+ * 根据节点对话内容调用AI提炼核心结论，失败时返回空结论
+ */
+router.post('/extract-conclusion', workspaceMemberAuth, async (req: Request, res: Response) => {
+  try {
+    const { nodeId } = req.body as ExtractConclusionRequest;
+
+    if (!nodeId) {
+      return res.status(400).json({ success: false, conclusion: '' });
+    }
+
+    const conversation = await conversationService.getConversationByNodeId(nodeId);
+
+    if (!conversation || !conversation.messages || conversation.messages.length === 0) {
+      return res.json({ success: false, conclusion: '' });
+    }
+
+    const chatMessages = conversation.messages
+      .filter((msg: { role: string; content: string }) => msg.role === 'user' || msg.role === 'assistant')
+      .map((msg: { role: string; content: string }) => ({ role: msg.role, content: msg.content }));
+
+    if (chatMessages.length === 0) {
+      return res.json({ success: false, conclusion: '' });
+    }
+
+    const systemMessage: { role: string; content: string } = {
+      role: 'system',
+      content: CONCLUSION_EXTRACTION_PROMPT,
+    };
+
+    const aiMessages: Array<{ role: string; content: string }> = [
+      systemMessage,
+      ...chatMessages,
+    ];
+
+    const aiResponse = await aiService.chat({
+      messages: aiMessages,
+      temperature: 0.3,
+    });
+
+    if (aiResponse.success && aiResponse.content) {
+      const conclusion = aiResponse.content.trim();
+      return res.json({ success: true, conclusion });
+    }
+
+    return res.json({ success: false, conclusion: '' });
+  } catch (error: unknown) {
+    const message = error instanceof Error ? error.message : String(error);
+    console.error('[结论提炼] 提炼结论失败:', message);
+    return res.json({ success: false, conclusion: '' });
+  }
+});
+
+/**
+ * 标题生成请求体接口
+ */
+interface GenerateTitleRequest {
+  messages: Array<{ role: string; content: string }>;
+  parentNodeTitle?: string;
+}
+
+/**
+ * 生成对话标题
+ * 根据对话内容调用AI生成精炼标题，失败时返回默认标题
+ */
+router.post('/generate-title', workspaceMemberAuth, async (req: Request, res: Response) => {
+  try {
+    const { messages, parentNodeTitle } = req.body as GenerateTitleRequest;
+
+    if (!messages || !Array.isArray(messages) || messages.length === 0) {
+      return res.status(400).json({ success: false, error: 'messages不能为空' });
+    }
+
+    const systemMessage: { role: string; content: string } = {
+      role: 'system',
+      content: parentNodeTitle
+        ? `${TITLE_GENERATION_PROMPT}\n父节点标题：${parentNodeTitle}，请保持语义连贯`
+        : TITLE_GENERATION_PROMPT,
+    };
+
+    const chatMessages: Array<{ role: string; content: string }> = [
+      systemMessage,
+      ...messages,
+    ];
+
+    const aiResponse = await aiService.chat({
+      messages: chatMessages,
+      temperature: 0.3,
+    });
+
+    if (aiResponse.success && aiResponse.content) {
+      const title = aiResponse.content.trim().substring(0, 10);
+      return res.json({ success: true, title });
+    }
+
+    return res.json({ success: true, title: '新对话' });
+  } catch (error: unknown) {
+    const message = error instanceof Error ? error.message : String(error);
+    console.error('[标题生成] 生成标题失败:', message);
+    return res.json({ success: true, title: '新对话' });
+  }
+});
+
+/**
+ * 构建上下文消息（含按节点粒度动态截断）
+ * 收集当前节点及其祖先节点的对话，按节点粒度截断以适应模型上下文窗口
+ * 优先保留直接父节点链，被省略的节点用摘要替代
+ * @param nodeId - 节点ID
+ * @param model - 目标模型名称，用于确定上下文窗口大小
+ * @returns 截断后的上下文消息列表和使用信息
+ */
+async function buildContextMessages(
+  nodeId: string,
+  model?: string
+): Promise<{ messages: Array<{ role: string; content: string }>; contextInfo: ContextUsageInfo }> {
   const messages: Array<{ role: string; content: string }> = [];
+  const parentChainTitles: string[] = [];
   const visited = new Set<string>();
 
-  const collectContext = async (id: string, depth: number = 0) => {
-    if (visited.has(id) || depth > 10) return;
+  const systemPrompt = config.ai.systemPrompt || DEFAULT_SYSTEM_PROMPT;
+  messages.push({ role: 'system', content: systemPrompt });
+
+  const collectContext = async (id: string, depth: number = 0, isParentChain: boolean = true) => {
+    if (visited.has(id) || depth > 15) return;
     visited.add(id);
 
     const node = await nodeService.getNode(id);
     if (!node) return;
 
+    if (isParentChain && depth > 0) {
+      parentChainTitles.push(node.title);
+    }
+
     for (const parentId of node.parentIds) {
-      await collectContext(parentId, depth + 1);
+      await collectContext(parentId, depth + 1, isParentChain);
     }
 
     if (node.conversationId) {
@@ -244,7 +379,17 @@ async function buildContextMessages(nodeId: string): Promise<Array<{ role: strin
   };
 
   await collectContext(nodeId);
-  return messages;
+
+  const { messages: truncatedMessages, contextInfo } = truncateContextByNode(
+    messages,
+    model,
+    parentChainTitles
+  );
+
+  return {
+    messages: truncatedMessages,
+    contextInfo,
+  };
 }
 
 export default router;

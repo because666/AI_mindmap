@@ -1,5 +1,5 @@
 import React from 'react';
-import { MessageSquare, RotateCcw, PanelRight } from 'lucide-react';
+import { MessageSquare, RotateCcw, PanelRight, Zap } from 'lucide-react';
 import { useUISettingsStore } from '../../stores/uiSettingsStore';
 
 /**
@@ -11,9 +11,11 @@ const UISettingsPanel: React.FC = () => {
     autoOpenChatOnLoad, 
     chatPanelWidth, 
     showWelcomeMessage,
+    performanceMode,
     setAutoOpenChatOnLoad, 
     setChatPanelWidth, 
     setShowWelcomeMessage,
+    setPerformanceMode,
     resetSettings 
   } = useUISettingsStore();
 
@@ -108,6 +110,40 @@ const UISettingsPanel: React.FC = () => {
               <span>紧凑 (280px)</span>
               <span>宽敞 (600px)</span>
             </div>
+          </div>
+        </div>
+      </div>
+
+      {/* 性能设置 */}
+      <div className="space-y-4">
+        <h3 className="text-sm font-medium text-dark-300 uppercase tracking-wider flex items-center gap-2">
+          <Zap className="w-4 h-4 text-primary-400" />
+          性能优化
+        </h3>
+
+        <div className="bg-dark-800 rounded-lg p-4 space-y-4">
+          {/* 性能模式开关 */}
+          <div className="flex items-center justify-between">
+            <div className="flex-1">
+              <label className="text-white font-medium text-sm">
+                性能模式
+              </label>
+              <p className="text-dark-400 text-xs mt-1">
+                降低视觉效果以提升性能（低帧率时自动启用）
+              </p>
+            </div>
+            <button
+              onClick={() => setPerformanceMode(!performanceMode)}
+              className={`relative w-12 h-6 rounded-full transition-colors duration-200 ${
+                performanceMode ? 'bg-primary-600' : 'bg-dark-600'
+              }`}
+            >
+              <span
+                className={`absolute top-1 w-4 h-4 rounded-full bg-white transition-transform duration-200 ${
+                  performanceMode ? 'translate-x-7' : 'translate-x-1'
+                }`}
+              />
+            </button>
           </div>
         </div>
       </div>

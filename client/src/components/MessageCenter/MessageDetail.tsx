@@ -78,14 +78,14 @@ export function MessageDetailComponent({ messageId, onBack }: MessageDetailProps
 
   if (loading) {
     return (
-      <div className="flex flex-col h-full bg-white dark:bg-gray-900">
-        <div className="flex items-center gap-3 px-4 py-3 border-b border-gray-200 dark:border-gray-700">
-          <button onClick={onBack} className="p-1 -ml-1 hover:bg-gray-100 dark:hover:bg-gray-800 rounded-lg transition-colors">
-            <ArrowLeft size={20} className="text-gray-700 dark:text-gray-300" />
+      <div className="flex flex-col h-full bg-dark-950">
+        <div className="flex items-center gap-3 px-4 py-3 border-b border-dark-700">
+          <button onClick={onBack} className="p-1 -ml-1 hover:bg-dark-800 rounded-lg transition-colors">
+            <ArrowLeft size={20} className="text-dark-300" />
           </button>
-          <span className="text-sm text-gray-400">加载中...</span>
+          <span className="text-sm text-dark-400">加载中...</span>
         </div>
-        <div className="flex-1 flex items-center justify-center text-gray-500 dark:text-gray-400">
+        <div className="flex-1 flex items-center justify-center text-dark-400">
           加载中...
         </div>
       </div>
@@ -94,13 +94,13 @@ export function MessageDetailComponent({ messageId, onBack }: MessageDetailProps
 
   if (!message) {
     return (
-      <div className="flex flex-col h-full bg-white dark:bg-gray-900">
-        <div className="flex items-center gap-3 px-4 py-3 border-b border-gray-200 dark:border-gray-700">
-          <button onClick={onBack} className="p-1 -ml-1 hover:bg-gray-100 dark:hover:bg-gray-800 rounded-lg transition-colors">
-            <ArrowLeft size={20} className="text-gray-700 dark:text-gray-300" />
+      <div className="flex flex-col h-full bg-dark-950">
+        <div className="flex items-center gap-3 px-4 py-3 border-b border-dark-700">
+          <button onClick={onBack} className="p-1 -ml-1 hover:bg-dark-800 rounded-lg transition-colors">
+            <ArrowLeft size={20} className="text-dark-300" />
           </button>
         </div>
-        <div className="flex-1 flex items-center justify-center text-gray-500 dark:text-gray-400">
+        <div className="flex-1 flex items-center justify-center text-dark-400">
           消息不存在
         </div>
       </div>
@@ -108,22 +108,22 @@ export function MessageDetailComponent({ messageId, onBack }: MessageDetailProps
   }
 
   const remainingTime = getRemainingTime(
-    (message as any).forceReadDeadline
+    message.forceReadDeadline
   );
   const isForceReadPending =
     message.forceRead && !message.read && remainingTime && remainingTime !== '已过期';
 
   return (
-    <div className="flex flex-col h-full bg-white dark:bg-gray-900">
-      <div className="sticky top-0 z-10 bg-white dark:bg-gray-900 border-b border-gray-200 dark:border-gray-700 px-4 py-3">
+    <div className="flex flex-col h-full bg-dark-950">
+      <div className="sticky top-0 z-10 bg-dark-950 border-b border-dark-700 px-4 py-3">
         <div className="flex items-center gap-3">
           <button
             onClick={onBack}
-            className="p-1 -ml-1 hover:bg-gray-100 dark:hover:bg-gray-800 rounded-lg transition-colors"
+            className="p-1 -ml-1 hover:bg-dark-800 rounded-lg transition-colors"
           >
-            <ArrowLeft size={20} className="text-gray-700 dark:text-gray-300" />
+            <ArrowLeft size={20} className="text-dark-300" />
           </button>
-          <h2 className="text-base font-semibold text-gray-900 dark:text-white truncate flex-1">
+          <h2 className="text-base font-semibold text-white truncate flex-1">
             {message.title}
           </h2>
           {message.read ? (
@@ -136,19 +136,19 @@ export function MessageDetailComponent({ messageId, onBack }: MessageDetailProps
 
       <div className="flex-1 overflow-y-auto">
         <div className="px-4 py-4">
-          <div className="prose prose-sm dark:prose-invert max-w-none prose-headings:text-gray-900 dark:prose-headings:text-white prose-p:text-gray-700 dark:prose-p:text-gray-300 prose-a:text-blue-600 dark:prose-a:text-blue-400 prose-strong:text-gray-900 dark:prose-strong:text-white">
+          <div className="prose prose-sm prose-invert max-w-none prose-headings:text-white prose-p:text-dark-300 prose-a:text-primary-400 prose-strong:text-white">
             <ReactMarkdown remarkPlugins={[remarkGfm]}>
               {message.content}
             </ReactMarkdown>
           </div>
         </div>
 
-        <div className="px-4 py-3 mt-4 border-t border-gray-100 dark:border-gray-800 space-y-2">
-          <div className="flex items-center gap-2 text-xs text-gray-500 dark:text-gray-400">
+        <div className="px-4 py-3 mt-4 border-t border-dark-800 space-y-2">
+          <div className="flex items-center gap-2 text-xs text-dark-400">
             <User size={14} />
             <span>发送者：{message.senderName}</span>
           </div>
-          <div className="flex items-center gap-2 text-xs text-gray-500 dark:text-gray-400">
+          <div className="flex items-center gap-2 text-xs text-dark-400">
             <Clock size={14} />
             <span>发送时间：{formatTime(message.createdAt)}</span>
           </div>
@@ -159,7 +159,7 @@ export function MessageDetailComponent({ messageId, onBack }: MessageDetailProps
             </div>
           )}
           {message.workspaceInfo && (
-            <div className="text-xs text-blue-600 dark:text-blue-400">
+            <div className="text-xs text-primary-400">
               工作区：{message.workspaceInfo.name}
             </div>
           )}

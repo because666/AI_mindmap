@@ -1,0 +1,25 @@
+# 简化API配置面板 - 验收清单
+
+- [ ] AIProvider类型包含deepseek
+- [ ] AIModel类型包含isMultimodal和isPreset字段
+- [ ] APIConfig类型包含apiFormat/temperature/isCustom字段
+- [ ] 内置预设模型列表覆盖智谱/OpenAI/Anthropic/DeepSeek主流模型（共15+个）
+- [ ] 预设模型包含多模态标识
+- [ ] 服务端支持deepseek provider的默认模型和基础URL
+- [ ] 服务端/models接口返回按服务商分组的模型列表
+- [ ] APIConfigStore支持temperature持久化
+- [ ] APIConfigStore支持预设模型选择
+- [ ] 旧版自定义模型数据自动迁移到新结构
+- [ ] 添加模型弹窗有"模型服务商"和"自定义配置"两个标签页
+- [ ] 模型服务商模式：服务商选择 + 预设模型选择 + API密钥
+- [ ] 自定义配置模式：API格式选择 + 中转URL + 模型ID + API密钥
+- [ ] API配置面板显示内置服务状态提示
+- [ ] API配置面板显示当前配置摘要
+- [ ] API配置面板有创意度滑块（0-2范围）
+- [ ] API配置面板有"管理模型"入口打开弹窗
+- [ ] 聊天服务传递temperature参数到后端
+- [ ] 客户端构建无错误
+- [ ] 服务端构建无错误
+- [ ] 线上环境设置面板显示正常
+- [ ] 线上环境添加模型弹窗工作正常
+- [ ] 线上环境AI对话正常工作

@@ -75,6 +75,8 @@ router.get('/', requireAuth, async (req: Request, res: Response) => {
 
     const filter = buildFilter(req.query as Record<string, unknown>);
 
+    console.log('[Admin反馈] 查询列表, isConnected:', adminDB.isConnected(), ', page:', page, ', pageSize:', pageSize, ', filterKeys:', Object.keys(filter));
+
     const feedbacks = await adminDB.find('feedbacks', filter as never, {
       sort: { createdAt: -1 },
       skip,
@@ -82,6 +84,12 @@ router.get('/', requireAuth, async (req: Request, res: Response) => {
     });
 
     const total = await adminDB.countDocuments('feedbacks', filter as never);
+
+    console.log('[Admin反馈] 查询结果:', feedbacks.length, '条, 总数:', total);
+
+    if (feedbacks.length === 0 && total === 0) {
+      console.log('[Admin反馈] 未查询到任何反馈记录，请确认主服务端反馈数据是否已写入MongoDB');
+    }
 
     const items: FeedbackListItem[] = feedbacks.map((item: Record<string, unknown>) => ({
       _id: (item._id as { toString(): string }).toString(),

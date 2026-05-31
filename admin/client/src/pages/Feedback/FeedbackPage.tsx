@@ -154,7 +154,6 @@ const FeedbackPage: React.FC = () => {
   const handleSearch = (e: React.FormEvent) => {
     e.preventDefault();
     setPage(1);
-    loadList();
   };
 
   /**
@@ -453,25 +452,34 @@ const FeedbackPage: React.FC = () => {
               ))}
             </div>
 
-            {data.totalPages > 1 && (
-              <div className="p-4 border-t border-gray-100 flex justify-center gap-2">
-                <button
-                  onClick={() => setPage(Math.max(1, page - 1))}
-                  disabled={page === 1}
-                  className="px-3 py-1 text-sm border rounded-lg disabled:opacity-50"
-                >
-                  上一页
-                </button>
-                <span className="px-3 py-1 text-sm text-gray-500">
-                  {page}/{data.totalPages}
+            {data.totalPages > 1 ? (
+              <div className="p-4 border-t border-gray-100 flex items-center justify-between">
+                <span className="text-sm text-gray-500">
+                  共 {data.total} 条记录，第 {(page - 1) * pageSize + 1}-{Math.min(page * pageSize, data.total)} 条
                 </span>
-                <button
-                  onClick={() => setPage(Math.min(data.totalPages, page + 1))}
-                  disabled={page === data.totalPages}
-                  className="px-3 py-1 text-sm border rounded-lg disabled:opacity-50"
-                >
-                  下一页
-                </button>
+                <div className="flex items-center gap-2">
+                  <button
+                    onClick={() => setPage(Math.max(1, page - 1))}
+                    disabled={page === 1}
+                    className="px-3 py-1 text-sm border rounded-lg disabled:opacity-50 hover:bg-gray-50"
+                  >
+                    上一页
+                  </button>
+                  <span className="px-2 py-1 text-sm text-gray-600">
+                    {page}/{data.totalPages}
+                  </span>
+                  <button
+                    onClick={() => setPage(Math.min(data.totalPages, page + 1))}
+                    disabled={page === data.totalPages}
+                    className="px-3 py-1 text-sm border rounded-lg disabled:opacity-50 hover:bg-gray-50"
+                  >
+                    下一页
+                  </button>
+                </div>
+              </div>
+            ) : (
+              <div className="p-4 border-t border-gray-100 text-center">
+                <span className="text-sm text-gray-500">共 {data.total} 条记录</span>
               </div>
             )}
           </>

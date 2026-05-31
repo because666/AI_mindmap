@@ -28,10 +28,13 @@ export const config = {
   
   ai: {
     openaiApiKey: process.env.OPENAI_API_KEY || '',
-    zhipuApiKey: process.env.ZHIPU_API_KEY || '86caae47a88e4ca48af7fab4e5991e30.BK5mPaWKGKgALsla',
+    zhipuApiKey: process.env.ZHIPU_API_KEY || '',
+    deepseekApiKey: process.env.DEEPSEEK_API_KEY || '',
     defaultProvider: process.env.DEFAULT_PROVIDER || 'zhipu',
     defaultModel: process.env.DEFAULT_MODEL || 'glm-4-flash',
     embeddingModel: process.env.EMBEDDING_MODEL || 'text-embedding-3-small',
+    systemPrompt: process.env.SYSTEM_PROMPT || '',
+    fallbackChain: (process.env.AI_FALLBACK_CHAIN || 'zhipu,deepseek,openai').split(',').map(s => s.trim()).filter(s => s.length > 0),
   },
   
   redis: {
@@ -50,6 +53,10 @@ export const config = {
     maxRequests: parseInt(process.env.RATE_LIMIT_MAX || '100', 10),
   },
 
+  cors: {
+    origins: process.env.CORS_ORIGINS || '',
+  },
+
   jpush: {
     appKey: process.env.JPUSH_APPKEY || '',
     masterSecret: process.env.JPUSH_MASTER_SECRET || '',
@@ -60,3 +67,49 @@ export const config = {
 };
 
 export type Config = typeof config;
+
+/**
+ * 校验服务端配置的安全性与完整性
+ * 生产环境下关键配置未设置时拒绝启动，非关键配置未设置时输出警告
+ * @throws {Error} 生产环境下关键配置缺失时抛出错误
+ */
+export function validateConfig(): void {
+  const isProduction = process.env.NODE_ENV === 'production';
+  const errors: string[] = [];
+  const warnings: string[] = [];
+
+  const jwtSecret = process.env.JWT_SECRET;
+  if (!jwtSecret || jwtSecret === 'your-secret-key') {
+    if (isProduction) {
+      errors.push('JWT_SECRET 未设置或为默认值，生产环境必须设置安全的密钥');
+    } else {
+      warnings.push('JWT_SECRET 未设置或为默认值，建议设置安全的密钥');
+    }
+  }
+
+  const internalApiToken = process.env.INTERNAL_API_TOKEN;
+  if (!internalApiToken) {
+    if (isProduction) {
+      errors.push('INTERNAL_API_TOKEN 未设置，生产环境必须配置内部 API 通信令牌');
+    } else {
+      warnings.push('INTERNAL_API_TOKEN 未设置，内部 API 路由已禁用');
+    }
+  }
+
+  const neo4jPassword = process.env.NEO4J_PASSWORD;
+  if (!neo4jPassword || neo4jPassword === 'password') {
+    warnings.push('NEO4J_PASSWORD 为默认值，建议设置安全的数据库密码');
+  }
+
+  const hasAiApiKey = process.env.OPENAI_API_KEY || process.env.ZHIPU_API_KEY || process.env.DEEPSEEK_API_KEY;
+  if (!hasAiApiKey) {
+    warnings.push('所有 AI API Key 均未设置，AI 相关功能将不可用');
+  }
+
+  warnings.forEach((warning) => console.warn(`⚠️ ${warning}`));
+
+  if (errors.length > 0) {
+    errors.forEach((error) => console.error(`❌ ${error}`));
+    throw new Error(`生产环境配置校验失败:\n${errors.join('\n')}`);
+  }
+}

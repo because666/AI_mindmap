@@ -1,4 +1,4 @@
-import React, { useState, useCallback, useMemo, useEffect } from 'react';
+import React, { useState, useCallback, useMemo, useEffect, useRef } from 'react';
 import { 
   ReactFlow, 
   Controls, 
@@ -6,6 +6,7 @@ import {
   MarkerType, 
   useNodesState, 
   useEdgesState,
+  useReactFlow,
   BaseEdge,
   getSmoothStepPath,
   Handle,
@@ -14,14 +15,17 @@ import {
 } from '@xyflow/react';
 import type { Connection, Node, Edge, NodeProps, EdgeProps } from '@xyflow/react';
 import '@xyflow/react/dist/style.css';
-import { Plus, MessageSquare, Edit3, Link2, Layers, Trash2, Undo2, Redo2, GitBranch, LayoutGrid, Maximize2, Minimize2, RefreshCw } from 'lucide-react';
+import { Plus, MessageSquare, MessageSquarePlus, Edit3, Link, Layers, Trash2, Undo2, Redo2, GitBranch, LayoutGrid, Maximize2, Minimize2, RefreshCw, MousePointer2, Combine, MoreHorizontal } from 'lucide-react';
 import { useAppStore, RELATION_TYPE_LABELS } from '../../stores/appStore';
+import { useToastStore } from '../../stores/toastStore';
 import NodeEditor from '../Node/NodeEditor';
 import RelationEditor from '../Node/RelationEditor';
 import CompositeNodeCreator from '../Node/CompositeNodeCreator';
 import ConfirmDialog from '../Common/ConfirmDialog';
+import { NodeContextMenu } from './NodeContextMenu';
 import useIsMobile from '../../hooks/useIsMobile';
 import { useLongPress } from '../../hooks/useLongPress';
+import useKeyboardShortcuts from '../../hooks/useKeyboardShortcuts';
 
 /**
  * 关系类型颜色映射
@@ -40,6 +44,7 @@ const RELATION_COLORS: Record<string, string> = {
 interface CustomNodeData extends Record<string, unknown> {
   label: string; 
   summary?: string;
+  nodeType?: 'default' | 'conclusion';
   isRoot?: boolean;
   isComposite?: boolean;
   isExpanded?: boolean;
@@ -47,7 +52,7 @@ interface CustomNodeData extends Record<string, unknown> {
   conversationId?: string | null;
   messageCount?: number;
   onExpand?: () => void;
-  onLongPress?: (nodeId: string) => void;
+  onLongPress?: (nodeId: string, clientX?: number, clientY?: number) => void;
 }
 
 type CustomNodeType = Node<CustomNodeData>;
@@ -121,77 +126,91 @@ const RelationEdge: React.FC<EdgeProps> = ({
 };
 
 /**
- * 连接点样式配置
- */
-const handleStyle = {
-  width: 12,
-  height: 12,
-  background: '#1e293b',
-  border: '2px solid #22c55e',
-  borderRadius: '50%',
-  transition: 'all 0.2s ease',
-};
-
-/**
  * 自定义节点组件 - 包含连接点
  */
 const CustomNodeComponent: React.FC<NodeProps<CustomNodeType>> = ({ id, data, selected }) => {
   const nodeData = data as CustomNodeData;
-  
+  const isMobile = useIsMobile();
+  const selectedNodeId = useAppStore(state => state.selectedNodeId);
+  const isSelected = selectedNodeId === id;
+  const isConclusion = nodeData.nodeType === 'conclusion';
+
+  const handleOpacity: number = isMobile ? (isSelected ? 1 : 0.4) : (isSelected ? 1 : 0);
+  const handleSize: number = isMobile ? 12 : 8;
+  const handlePadding: number = isMobile ? 16 : 0;
+
+  const baseHandleStyle: React.CSSProperties = {
+    width: handleSize,
+    height: handleSize,
+    background: '#1e293b',
+    border: isConclusion ? '2px solid #f59e0b' : '2px solid #22c55e',
+    borderRadius: '50%',
+    opacity: handleOpacity,
+    transition: 'opacity 0.2s ease',
+    padding: handlePadding,
+    boxSizing: 'content-box',
+  };
+
   const longPressHandlers = useLongPress({
     threshold: 500,
-    onLongPress: () => {
-      nodeData.onLongPress?.(id);
+    onLongPress: (_e, clientX, clientY) => {
+      nodeData.onLongPress?.(id, clientX, clientY);
     },
   });
-  
+
   return (
     <div
       className={`px-4 py-3 rounded-xl shadow-lg border-2 min-w-[160px] max-w-[280px] cursor-pointer transition-all ${
-        selected
-          ? 'bg-primary-600 border-primary-400 shadow-primary-500/20'
-          : nodeData.isComposite && nodeData.isExpanded
-            ? 'bg-primary-700/80 border-primary-400 shadow-primary-500/30'
-            : nodeData.isRoot 
-              ? 'bg-dark-700 border-primary-500/50 hover:border-primary-400'
-              : 'bg-dark-700 border-dark-600 hover:border-primary-500'
+        isConclusion
+          ? selected
+            ? 'bg-amber-900/40 border-amber-400 shadow-amber-500/20'
+            : 'bg-dark-700 border-amber-400 hover:border-amber-300'
+          : selected
+            ? 'bg-primary-600 border-primary-400 shadow-primary-500/20'
+            : nodeData.isComposite && nodeData.isExpanded
+              ? 'bg-primary-700/80 border-primary-400 shadow-primary-500/30'
+              : nodeData.isRoot
+                ? 'bg-dark-700 border-primary-500/50 hover:border-primary-400'
+                : 'bg-dark-700 border-dark-600 hover:border-primary-500'
       }`}
       {...longPressHandlers}
     >
-      {/* 顶部连接点 - 用于接收父节点连接 */}
       <Handle
         type="target"
         position={Position.Top}
         id="top"
-        style={handleStyle}
+        className={isSelected ? 'selected' : ''}
+        style={baseHandleStyle}
       />
-      
-      {/* 左侧连接点 - 用于接收其他关系连接 */}
+
       <Handle
         type="target"
         position={Position.Left}
         id="left"
-        style={{ ...handleStyle, borderColor: '#3b82f6' }}
+        className={isSelected ? 'selected' : ''}
+        style={{ ...baseHandleStyle, borderColor: '#3b82f6' }}
       />
-      
-      {/* 右侧连接点 - 用于发出其他关系连接 */}
+
       <Handle
         type="source"
         position={Position.Right}
         id="right"
-        style={{ ...handleStyle, borderColor: '#3b82f6' }}
+        className={isSelected ? 'selected' : ''}
+        style={{ ...baseHandleStyle, borderColor: '#3b82f6' }}
       />
-      
-      {/* 底部连接点 - 用于发出子节点连接 */}
+
       <Handle
         type="source"
         position={Position.Bottom}
         id="bottom"
-        style={handleStyle}
+        className={isSelected ? 'selected' : ''}
+        style={baseHandleStyle}
       />
       
       <div className="flex items-center gap-2 mb-1">
-        {nodeData.isComposite ? (
+        {isConclusion ? (
+          <Lightbulb className="w-4 h-4 text-amber-400" />
+        ) : nodeData.isComposite ? (
           <Layers className={`w-4 h-4 ${nodeData.isExpanded ? 'text-primary-300' : 'text-primary-400'}`} />
         ) : nodeData.isRoot ? (
           <GitBranch className="w-4 h-4 text-primary-400" />
@@ -199,6 +218,11 @@ const CustomNodeComponent: React.FC<NodeProps<CustomNodeType>> = ({ id, data, se
           <MessageSquare className="w-4 h-4 text-primary-400" />
         )}
         <span className="text-white font-medium truncate flex-1">{nodeData.label}</span>
+        {isConclusion && (
+          <span className="text-xs bg-amber-500/20 text-amber-400 px-1.5 py-0.5 rounded-full border border-amber-500/30">
+            结论
+          </span>
+        )}
         {nodeData.messageCount !== undefined && nodeData.messageCount > 0 && (
           <span className="text-xs bg-primary-600 text-white px-1.5 py-0.5 rounded-full">
             {nodeData.messageCount}
@@ -255,14 +279,20 @@ const CanvasPage: React.FC = () => {
     selectedNodeId,
     undo,
     redo,
-    history,
-    historyIndex,
+    canUndo,
+    canRedo,
     expandCompositeNode,
     autoLayout,
     conversations,
     reloadWorkspaceData,
-    requestOpenChat
+    requestOpenChat,
+    pendingSyncCount,
+    processSyncQueue,
+    activePanel,
+    setActivePanel
   } = useAppStore();
+
+  const { fitView } = useReactFlow();
   
   const nodesArray = useMemo(() => Array.from(storeNodes.values()), [storeNodes]);
   
@@ -275,7 +305,24 @@ const CanvasPage: React.FC = () => {
   const [pendingConnection, setPendingConnection] = useState<{ source: string; target: string } | null>(null);
   const [isSyncing, setIsSyncing] = useState(false);
   const [deleteConfirmOpen, setDeleteConfirmOpen] = useState(false);
+  const [contextMenu, setContextMenu] = useState<{ x: number; y: number; nodeId: string } | null>(null);
   const isMobile = useIsMobile();
+  const [isMobileMenuOpen, setIsMobileMenuOpen] = useState(false);
+  const mobileMenuRef = useRef<HTMLDivElement>(null);
+
+  /**
+   * 移动端下拉菜单外部点击关闭
+   */
+  useEffect(() => {
+    if (!isMobileMenuOpen) return;
+    const handleClickOutside = (e: MouseEvent) => {
+      if (mobileMenuRef.current && !mobileMenuRef.current.contains(e.target as Node)) {
+        setIsMobileMenuOpen(false);
+      }
+    };
+    document.addEventListener('mousedown', handleClickOutside);
+    return () => document.removeEventListener('mousedown', handleClickOutside);
+  }, [isMobileMenuOpen]);
 
   /**
    * 转换store节点为ReactFlow节点
@@ -292,6 +339,7 @@ const CanvasPage: React.FC = () => {
           data: {
             label: node.title || '未命名节点',
             summary: node.summary,
+            nodeType: node.type || 'default',
             isRoot: node.isRoot,
             isComposite: node.isComposite,
             isExpanded: node.expanded,
@@ -299,9 +347,13 @@ const CanvasPage: React.FC = () => {
             conversationId: node.conversationId,
             messageCount: conversation?.messages.length || 0,
             onExpand: node.isComposite ? () => expandCompositeNode(node.id) : undefined,
-            onLongPress: (nodeId: string) => {
+            onLongPress: (nodeId: string, clientX?: number, clientY?: number) => {
               selectNode(nodeId);
-              requestOpenChat(nodeId);
+              setContextMenu({
+                x: clientX ?? 0,
+                y: clientY ?? 0,
+                nodeId,
+              });
             }
           }
         };
@@ -431,8 +483,33 @@ const CanvasPage: React.FC = () => {
     setEdges(flowEdges);
   }, [flowEdges, setEdges]);
 
-  const canUndo = historyIndex >= 0;
-  const canRedo = historyIndex < history.length - 1;
+  /**
+   * 监听focus-node自定义事件，定位到目标节点并居中显示
+   * 搜索面板点击搜索结果时触发此事件
+   */
+  useEffect(() => {
+    const handleFocusNode = (e: Event) => {
+      const customEvent = e as CustomEvent<{ nodeId: string }>;
+      const nodeId = customEvent.detail?.nodeId;
+      if (!nodeId) return;
+
+      selectNode(nodeId);
+
+      requestAnimationFrame(() => {
+        fitView({
+          nodes: [{ id: nodeId }],
+          padding: 0.3,
+          duration: 500,
+        });
+      });
+    };
+
+    window.addEventListener('focus-node', handleFocusNode);
+    return () => window.removeEventListener('focus-node', handleFocusNode);
+  }, [fitView, selectNode]);
+
+  const canUndoValue = canUndo;
+  const canRedoValue = canRedo;
 
   /**
    * 连接节点 - 创建关系
@@ -453,9 +530,9 @@ const CanvasPage: React.FC = () => {
    */
   const handleCreateRootNode = useCallback(() => {
     const id = createRootNode('新对话');
-    setEditingNodeId(id);
-    setIsNodeEditorOpen(true);
-  }, [createRootNode]);
+    selectNode(id);
+    requestOpenChat(id);
+  }, [createRootNode, selectNode, requestOpenChat]);
 
   /**
    * 创建子节点
@@ -466,9 +543,9 @@ const CanvasPage: React.FC = () => {
     }
     
     const id = createChildNode(selectedNodeId, '新分支');
-    setEditingNodeId(id);
-    setIsNodeEditorOpen(true);
-  }, [selectedNodeId, createChildNode]);
+    selectNode(id);
+    requestOpenChat(id);
+  }, [selectedNodeId, createChildNode, selectNode, requestOpenChat]);
 
   /**
    * 节点点击处理
@@ -490,7 +567,7 @@ const CanvasPage: React.FC = () => {
   );
 
   /**
-   * 节点双击 - 编辑或展开
+   * 节点双击 - 打开对话或展开复合节点
    */
   const onNodeDoubleClick = useCallback(
     (_: React.MouseEvent, node: Node) => {
@@ -498,11 +575,11 @@ const CanvasPage: React.FC = () => {
       if (storeNode?.isComposite) {
         expandCompositeNode(node.id);
       } else {
-        setEditingNodeId(node.id);
-        setIsNodeEditorOpen(true);
+        selectNode(node.id);
+        requestOpenChat(node.id);
       }
     },
-    [storeNodes, expandCompositeNode]
+    [storeNodes, expandCompositeNode, selectNode, requestOpenChat]
   );
 
   /**
@@ -514,6 +591,57 @@ const CanvasPage: React.FC = () => {
     },
     [updateNode]
   );
+
+  /**
+   * 节点右键菜单
+   */
+  const onNodeContextMenu = useCallback(
+    (event: React.MouseEvent | MouseEvent, node: Node) => {
+      event.preventDefault();
+      selectNode(node.id);
+      setContextMenu({
+        x: event.clientX,
+        y: event.clientY,
+        nodeId: node.id,
+      });
+    },
+    [selectNode]
+  );
+
+  /**
+   * 上下文菜单操作：编辑节点
+   */
+  const handleContextMenuEdit = useCallback((nodeId: string) => {
+    setEditingNodeId(nodeId);
+    setIsNodeEditorOpen(true);
+  }, []);
+
+  /**
+   * 上下文菜单操作：创建分支
+   */
+  const handleContextMenuBranch = useCallback((nodeId: string) => {
+    const id = createChildNode(nodeId, '新分支');
+    selectNode(id);
+    requestOpenChat(id);
+  }, [createChildNode, selectNode, requestOpenChat]);
+
+  /**
+   * 上下文菜单操作：复制节点
+   */
+  const handleContextMenuCopy = useCallback((nodeId: string) => {
+    const storeNode = storeNodes.get(nodeId);
+    if (storeNode) {
+      const title = storeNode.title || '未命名节点';
+      navigator.clipboard.writeText(title).catch(() => {});
+    }
+  }, [storeNodes]);
+
+  /**
+   * 上下文菜单操作：删除节点
+   */
+  const handleContextMenuDelete = useCallback((nodeId: string) => {
+    deleteNode(nodeId);
+  }, [deleteNode]);
 
   /**
    * 切换多选模式
@@ -563,17 +691,27 @@ const CanvasPage: React.FC = () => {
   }, []);
 
   /**
-   * 同步数据 - 从服务端重新加载当前工作区数据
+   * 同步数据 - 优先处理同步队列，再从服务端重新加载当前工作区数据
    */
   const handleSyncData = useCallback(async () => {
     if (isSyncing) return;
     setIsSyncing(true);
     try {
-      await reloadWorkspaceData();
+      if (pendingSyncCount > 0) {
+        await processSyncQueue();
+      }
+      const success = await reloadWorkspaceData();
+      if (success) {
+        useToastStore.getState().addToast('success', '数据同步成功');
+      } else {
+        useToastStore.getState().addToast('error', '数据同步失败');
+      }
+    } catch {
+      useToastStore.getState().addToast('error', '数据同步失败');
     } finally {
       setIsSyncing(false);
     }
-  }, [isSyncing, reloadWorkspaceData]);
+  }, [isSyncing, reloadWorkspaceData, pendingSyncCount, processSyncQueue]);
 
   /**
    * 打开节点编辑器
@@ -608,6 +746,34 @@ const CanvasPage: React.FC = () => {
     setIsSelectMode(false);
   }, []);
 
+  /**
+   * 删除选中节点（快捷键触发）
+   */
+  const handleDeleteSelected = useCallback(() => {
+    if (selectedNodeId) {
+      setDeleteConfirmOpen(true);
+    }
+  }, [selectedNodeId]);
+
+  /**
+   * 键盘快捷键处理
+   * Ctrl+K: 搜索、Ctrl+Z: 撤销、Ctrl+Y: 重做、Delete: 删除、Ctrl+S: 同步、Escape: 关闭面板/取消选中
+   */
+  useKeyboardShortcuts({
+    onSearch: () => setActivePanel('search'),
+    onUndo: () => undo(),
+    onRedo: () => redo(),
+    onDelete: handleDeleteSelected,
+    onSave: handleSyncData,
+    onEscape: () => {
+      if (activePanel) {
+        setActivePanel(null);
+      } else if (selectedNodeId) {
+        selectNode(null);
+      }
+    }
+  });
+
   const nodeTypes = useMemo(() => ({ custom: CustomNodeComponent }), []);
   const edgeTypes = useMemo(() => ({ 
     smoothstep: RelationEdge,
@@ -617,114 +783,220 @@ const CanvasPage: React.FC = () => {
   return (
     <div className="h-full relative">
 
-      <div className={`absolute z-10 flex gap-1.5 flex-wrap p-2 ${
-        isMobile
-          ? 'top-2 left-2 right-2 max-h-28 overflow-y-auto'
-          : 'top-4 left-4'
-      }`}>
-        <button
-          onClick={handleCreateRootNode}
-          className={`btn-primary text-sm ${isMobile ? 'min-h-[44px]' : ''}`}
-          title="创建根节点（新对话起点）"
-        >
-          <Plus className={isMobile ? 'w-5 h-5' : 'w-4 h-4'} />
-          {!isMobile && <span className="text-sm">创建对话</span>}
-          {isMobile && <span className="text-xs">创建</span>}
-        </button>
-
-        <button
-          onClick={handleSyncData}
-          disabled={isSyncing}
-          className={`btn-icon bg-primary-600/20 border-primary-500/30 ${isMobile ? 'min-w-[44px] min-h-[44px]' : ''} ${isSyncing ? 'text-primary-400' : 'text-primary-300'}`}
-          title="同步数据"
-        >
-          <RefreshCw className={`w-4 h-4 ${isSyncing ? 'animate-spin' : ''}`} />
-        </button>
-
-        {selectedNodeId && (
-          <button
-            onClick={handleCreateChildNode}
-            className={`btn-ghost text-sm ${isMobile ? 'min-h-[44px]' : ''}`}
-            title="创建分支节点"
-          >
-            <GitBranch className={isMobile ? 'w-5 h-5' : 'w-4 h-4'} />
-            {!isMobile && <span className="text-sm">创建分支</span>}
-            {isMobile && <span className="text-xs">分支</span>}
-          </button>
-        )}
-
-        <div className="w-px bg-dark-600/50 h-8 self-center mx-0.5" />
-
-        <button
-          onClick={undo}
-          disabled={!canUndo}
-          className={`btn-icon ${isMobile ? 'min-w-[44px] min-h-[44px]' : ''}`}
-          title="撤销 (Ctrl+Z)"
-        >
-          <Undo2 className="w-4 h-4" />
-        </button>
-        <button
-          onClick={redo}
-          disabled={!canRedo}
-          className={`btn-icon ${isMobile ? 'min-w-[44px] min-h-[44px]' : ''}`}
-          title="重做 (Ctrl+Y)"
-        >
-          <Redo2 className="w-4 h-4" />
-        </button>
-
-        <div className="w-px bg-dark-600/50 h-8 self-center mx-0.5" />
-
-        <button
-          onClick={openNodeEditor}
-          disabled={!selectedNodeId}
-          className={`btn-icon ${isMobile ? 'min-w-[44px] min-h-[44px]' : ''}`}
-          title="编辑节点"
-        >
-          <Edit3 className="w-4 h-4" />
-        </button>
-        <button
-          onClick={() => setIsRelationEditorOpen(true)}
-          className={`btn-icon ${isMobile ? 'min-w-[44px] min-h-[44px]' : ''}`}
-          title="创建关系"
-        >
-          <Link2 className="w-4 h-4" />
-        </button>
-        <button
-          onClick={handleDeleteNode}
-          disabled={!selectedNodeId}
-          className={`btn-icon hover:!text-red-400 hover:!border-red-500/40 hover:!bg-red-900/20 ${isMobile ? 'min-w-[44px] min-h-[44px]' : ''}`}
-          title="删除节点"
-        >
-          <Trash2 className="w-4 h-4" />
-        </button>
-
-        <div className="w-px bg-dark-600/50 h-8 self-center mx-0.5" />
-
-        <button
-          onClick={toggleSelectMode}
-          className={`btn-icon ${isMobile ? 'min-w-[44px] min-h-[44px]' : ''} ${isSelectMode ? '!bg-primary-600/20 !text-primary-400 !border-primary-500/40' : ''}`}
-          title="多选模式（用于聚合节点）"
-        >
-          <Layers className="w-4 h-4" />
-        </button>
-        {isSelectMode && selectedForComposite.length >= 2 && (
-          <button
-            onClick={handleCreateComposite}
-            className={`btn-primary text-sm ${isMobile ? 'min-h-[44px]' : ''}`}
-          >
-            <Layers className="w-4 h-4" />
-            <span className="text-xs">聚合({selectedForComposite.length})</span>
-          </button>
-        )}
-
-        <button
-          onClick={autoLayout}
-          className={`btn-icon ${isMobile ? 'min-w-[44px] min-h-[44px]' : ''}`}
-          title="自动布局"
-        >
-          <LayoutGrid className="w-4 h-4" />
-        </button>
-      </div>
+      {isMobile ? (
+        <div className="absolute z-10 top-2 left-2 right-2">
+          <div className="flex items-center gap-1 p-2 glass rounded-xl">
+            <button
+              onClick={handleCreateRootNode}
+              className="p-2.5 rounded-lg hover:bg-dark-700/50 text-dark-300 transition-colors"
+              title="新建对话"
+            >
+              <MessageSquarePlus className="w-5 h-5" />
+            </button>
+            <button
+              onClick={handleCreateChildNode}
+              disabled={!selectedNodeId}
+              className="p-2.5 rounded-lg hover:bg-dark-700/50 disabled:opacity-40 disabled:cursor-not-allowed text-dark-300 transition-colors"
+              title="创建分支"
+            >
+              <GitBranch className="w-5 h-5" />
+            </button>
+            <button
+              onClick={openNodeEditor}
+              disabled={!selectedNodeId}
+              className="p-2.5 rounded-lg hover:bg-dark-700/50 disabled:opacity-40 disabled:cursor-not-allowed text-dark-300 transition-colors"
+              title="编辑节点"
+            >
+              <Edit3 className="w-5 h-5" />
+            </button>
+            <button
+              onClick={handleDeleteNode}
+              disabled={!selectedNodeId}
+              className="p-2.5 rounded-lg hover:bg-dark-700/50 disabled:opacity-40 disabled:cursor-not-allowed text-dark-300 transition-colors"
+              title="删除 (Delete)"
+            >
+              <Trash2 className="w-5 h-5" />
+            </button>
+            <button
+              onClick={handleSyncData}
+              disabled={isSyncing}
+              className="p-2.5 rounded-lg hover:bg-dark-700/50 disabled:opacity-40 disabled:cursor-not-allowed text-dark-300 transition-colors relative"
+              title="同步数据 (Ctrl+S)"
+            >
+              <RefreshCw className={`w-5 h-5 ${isSyncing ? 'animate-spin' : ''}`} />
+              {pendingSyncCount > 0 && (
+                <span className="absolute -top-1 -right-1 bg-red-500 text-white text-[10px] font-bold min-w-[16px] h-[16px] flex items-center justify-center rounded-full px-0.5 leading-none">
+                  {pendingSyncCount > 99 ? '99+' : pendingSyncCount}
+                </span>
+              )}
+            </button>
+            <div className="relative ml-auto" ref={mobileMenuRef}>
+              <button
+                onClick={() => setIsMobileMenuOpen(prev => !prev)}
+                className={`p-2.5 rounded-lg hover:bg-dark-700/50 text-dark-300 transition-colors ${isMobileMenuOpen ? 'bg-dark-700/50' : ''}`}
+                title="更多操作"
+              >
+                <MoreHorizontal className="w-5 h-5" />
+              </button>
+              {isMobileMenuOpen && (
+                <div className="absolute top-full right-0 mt-1 p-1 glass rounded-xl min-w-[160px] animate-scale-in z-50">
+                  <button
+                    onClick={() => { setIsRelationEditorOpen(true); setIsMobileMenuOpen(false); }}
+                    className="w-full flex items-center gap-3 p-2.5 rounded-lg hover:bg-dark-700/50 text-dark-300 transition-colors"
+                  >
+                    <Link className="w-5 h-5" />
+                    <span className="text-sm">创建关系</span>
+                  </button>
+                  <button
+                    onClick={() => { toggleSelectMode(); setIsMobileMenuOpen(false); }}
+                    className={`w-full flex items-center gap-3 p-2.5 rounded-lg hover:bg-dark-700/50 text-dark-300 transition-colors ${isSelectMode ? 'bg-primary-600/20 text-primary-400' : ''}`}
+                  >
+                    <MousePointer2 className="w-5 h-5" />
+                    <span className="text-sm">多选模式</span>
+                  </button>
+                  <button
+                    onClick={() => { handleCreateComposite(); setIsMobileMenuOpen(false); }}
+                    disabled={!isSelectMode || selectedForComposite.length < 2}
+                    className="w-full flex items-center gap-3 p-2.5 rounded-lg hover:bg-dark-700/50 disabled:opacity-40 disabled:cursor-not-allowed text-dark-300 transition-colors"
+                  >
+                    <Combine className="w-5 h-5" />
+                    <span className="text-sm">聚合{isSelectMode && selectedForComposite.length >= 2 ? `(${selectedForComposite.length})` : ''}</span>
+                  </button>
+                  <button
+                    onClick={() => { autoLayout(); setIsMobileMenuOpen(false); }}
+                    className="w-full flex items-center gap-3 p-2.5 rounded-lg hover:bg-dark-700/50 text-dark-300 transition-colors"
+                  >
+                    <LayoutGrid className="w-5 h-5" />
+                    <span className="text-sm">自动布局</span>
+                  </button>
+                  <div className="my-1 h-px bg-dark-700" />
+                  <button
+                    onClick={() => { undo(); setIsMobileMenuOpen(false); }}
+                    disabled={!canUndoValue}
+                    className="w-full flex items-center gap-3 p-2.5 rounded-lg hover:bg-dark-700/50 disabled:opacity-40 disabled:cursor-not-allowed text-dark-300 transition-colors"
+                  >
+                    <Undo2 className="w-5 h-5" />
+                    <span className="text-sm">撤销</span>
+                  </button>
+                  <button
+                    onClick={() => { redo(); setIsMobileMenuOpen(false); }}
+                    disabled={!canRedoValue}
+                    className="w-full flex items-center gap-3 p-2.5 rounded-lg hover:bg-dark-700/50 disabled:opacity-40 disabled:cursor-not-allowed text-dark-300 transition-colors"
+                  >
+                    <Redo2 className="w-5 h-5" />
+                    <span className="text-sm">重做</span>
+                  </button>
+                </div>
+              )}
+            </div>
+          </div>
+        </div>
+      ) : (
+        <div className="absolute z-10 top-4 left-4">
+          <div className="flex items-center gap-2 p-2 glass rounded-xl">
+            <div className="flex items-center">
+              <button
+                onClick={handleCreateRootNode}
+                className="p-2 rounded-lg hover:bg-dark-700/50 text-dark-300 transition-colors"
+                title="新建对话"
+              >
+                <MessageSquarePlus className="w-[18px] h-[18px]" />
+              </button>
+              <button
+                onClick={handleCreateChildNode}
+                disabled={!selectedNodeId}
+                className="p-2 rounded-lg hover:bg-dark-700/50 disabled:opacity-40 disabled:cursor-not-allowed text-dark-300 transition-colors"
+                title="创建分支"
+              >
+                <GitBranch className="w-[18px] h-[18px]" />
+              </button>
+            </div>
+            <div className="w-px h-6 bg-dark-700" />
+            <div className="flex items-center">
+              <button
+                onClick={openNodeEditor}
+                disabled={!selectedNodeId}
+                className="p-2 rounded-lg hover:bg-dark-700/50 disabled:opacity-40 disabled:cursor-not-allowed text-dark-300 transition-colors"
+                title="编辑节点"
+              >
+                <Edit3 className="w-[18px] h-[18px]" />
+              </button>
+              <button
+                onClick={() => setIsRelationEditorOpen(true)}
+                className="p-2 rounded-lg hover:bg-dark-700/50 text-dark-300 transition-colors"
+                title="创建关系"
+              >
+                <Link className="w-[18px] h-[18px]" />
+              </button>
+              <button
+                onClick={handleDeleteNode}
+                disabled={!selectedNodeId}
+                className="p-2 rounded-lg hover:bg-dark-700/50 disabled:opacity-40 disabled:cursor-not-allowed text-dark-300 transition-colors"
+                title="删除 (Delete)"
+              >
+                <Trash2 className="w-[18px] h-[18px]" />
+              </button>
+            </div>
+            <div className="w-px h-6 bg-dark-700" />
+            <div className="flex items-center">
+              <button
+                onClick={toggleSelectMode}
+                className={`p-2 rounded-lg hover:bg-dark-700/50 text-dark-300 transition-colors ${isSelectMode ? 'bg-primary-600/20 text-primary-400' : ''}`}
+                title="多选模式"
+              >
+                <MousePointer2 className="w-[18px] h-[18px]" />
+              </button>
+              <button
+                onClick={handleCreateComposite}
+                disabled={!isSelectMode || selectedForComposite.length < 2}
+                className="p-2 rounded-lg hover:bg-dark-700/50 disabled:opacity-40 disabled:cursor-not-allowed text-dark-300 transition-colors"
+                title="聚合"
+              >
+                <Combine className="w-[18px] h-[18px]" />
+              </button>
+              <button
+                onClick={autoLayout}
+                className="p-2 rounded-lg hover:bg-dark-700/50 text-dark-300 transition-colors"
+                title="自动布局"
+              >
+                <LayoutGrid className="w-[18px] h-[18px]" />
+              </button>
+            </div>
+            <div className="w-px h-6 bg-dark-700" />
+            <div className="flex items-center">
+              <button
+                onClick={handleSyncData}
+                disabled={isSyncing}
+                className="p-2 rounded-lg hover:bg-dark-700/50 disabled:opacity-40 disabled:cursor-not-allowed text-dark-300 transition-colors relative"
+                title="同步数据 (Ctrl+S)"
+              >
+                <RefreshCw className={`w-[18px] h-[18px] ${isSyncing ? 'animate-spin' : ''}`} />
+                {pendingSyncCount > 0 && (
+                  <span className="absolute -top-1 -right-1 bg-red-500 text-white text-[10px] font-bold min-w-[16px] h-[16px] flex items-center justify-center rounded-full px-0.5 leading-none">
+                    {pendingSyncCount > 99 ? '99+' : pendingSyncCount}
+                  </span>
+                )}
+              </button>
+              <button
+                onClick={undo}
+                disabled={!canUndoValue}
+                className="p-2 rounded-lg hover:bg-dark-700/50 disabled:opacity-40 disabled:cursor-not-allowed text-dark-300 transition-colors"
+                title="撤销 (Ctrl+Z)"
+              >
+                <Undo2 className="w-[18px] h-[18px]" />
+              </button>
+              <button
+                onClick={redo}
+                disabled={!canRedoValue}
+                className="p-2 rounded-lg hover:bg-dark-700/50 disabled:opacity-40 disabled:cursor-not-allowed text-dark-300 transition-colors"
+                title="重做 (Ctrl+Y)"
+              >
+                <Redo2 className="w-[18px] h-[18px]" />
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
 
       <ReactFlow
         nodes={nodes}
@@ -735,6 +1007,7 @@ const CanvasPage: React.FC = () => {
         onNodeClick={onNodeClick}
         onNodeDoubleClick={onNodeDoubleClick}
         onNodeDragStop={onNodeDragStop}
+        onNodeContextMenu={onNodeContextMenu}
         nodeTypes={nodeTypes}
         edgeTypes={edgeTypes}
         fitView
@@ -758,6 +1031,7 @@ const CanvasPage: React.FC = () => {
             className="bg-dark-800 border-dark-700 rounded-xl overflow-hidden"
             nodeColor={(node) => {
               const data = node.data as CustomNodeData;
+              if (data?.nodeType === 'conclusion') return '#f59e0b';
               if (data?.isRoot) return '#0ea5e9';
               if (data?.isComposite) return '#8b5cf6';
               return '#475569';
@@ -767,6 +1041,20 @@ const CanvasPage: React.FC = () => {
         )}
       </ReactFlow>
       
+      {/* 节点右键/长按菜单 */}
+      {contextMenu && (
+        <NodeContextMenu
+          x={contextMenu.x}
+          y={contextMenu.y}
+          nodeId={contextMenu.nodeId}
+          onEdit={handleContextMenuEdit}
+          onCreateBranch={handleContextMenuBranch}
+          onCopy={handleContextMenuCopy}
+          onDelete={handleContextMenuDelete}
+          onClose={() => setContextMenu(null)}
+        />
+      )}
+
       {/* 空状态提示 */}
       {nodes.length === 0 && (
         <div className="absolute inset-0 flex items-center justify-center pointer-events-none">
@@ -796,13 +1084,11 @@ const CanvasPage: React.FC = () => {
       {/* 工具提示 */}
       {!isMobile && (
         <div className="absolute bottom-4 left-4 text-dark-500 text-xs bg-dark-800/90 px-3 py-2 rounded-lg border border-dark-600/50">
-          <span className="text-dark-400">点击「创建对话」添加根节点</span>
+          <span className="text-dark-400">双击节点开始对话</span>
           <span className="mx-2">•</span>
-          <span className="text-dark-400">选中节点后可创建分支</span>
+          <span className="text-dark-400">右键/长按节点更多操作</span>
           <span className="mx-2">•</span>
-          <span className="text-dark-400">双击节点编辑</span>
-          <span className="mx-2">•</span>
-          <span className="text-primary-400">长按节点打开对话</span>
+          <span className="text-primary-400">点击「创建对话」添加根节点</span>
           {isSelectMode && <span className="ml-2 text-primary-400">• 多选模式已开启</span>}
         </div>
       )}

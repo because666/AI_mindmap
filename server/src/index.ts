@@ -5,7 +5,7 @@ import compression from 'compression';
 import morgan from 'morgan';
 import path from 'path';
 import fs from 'fs';
-import { config } from './config';
+import { config, validateConfig } from './config';
 import { 
   rateLimiter, 
   errorHandler, 
@@ -43,8 +43,12 @@ app.set('trust proxy', 1);
 app.use(helmet({
   contentSecurityPolicy: false,
 }));
+const corsOrigins = config.cors.origins
+  ? config.cors.origins.split(',').map((origin: string) => origin.trim())
+  : ['http://127.0.0.1:3001', 'http://localhost:3001', 'http://127.0.0.1:5173', 'http://localhost:5173'];
+
 app.use(cors({
-  origin: '*',
+  origin: corsOrigins,
   credentials: true,
 }));
 app.use(compression());
@@ -89,66 +93,72 @@ app.use('/api/search', searchRouter);
 app.use('/api/ai', aiRouter);
 app.use('/api/feedback', feedbackRouter);
 
-/**
- * 内部API：清除服务端缓存
- * Admin后台操作（封禁用户、关闭工作区、更新敏感词）后调用
- * 需要提供 x-internal-token 请求头
- */
-app.post('/api/internal/clear-cache', async (req, res) => {
-  const internalToken = req.headers['x-internal-token'];
-  if (internalToken !== process.env.INTERNAL_API_TOKEN) {
-    return res.status(403).json({ success: false, error: '无权访问' });
-  }
+const internalApiToken = process.env.INTERNAL_API_TOKEN;
 
-  const { type, visitorId, workspaceId } = req.body;
-
-  try {
-    if (type === 'visitor' && visitorId) {
-      workspaceService.clearVisitorCache(visitorId);
-    } else if (type === 'workspace' && workspaceId) {
-      workspaceService.clearWorkspaceCache(workspaceId);
-    } else if (type === 'sensitive-word') {
-      const { sensitiveWordService } = await import('./services/sensitiveWordService');
-      sensitiveWordService.clearCache();
-    } else {
-      workspaceService.clearAllCache();
-      const { sensitiveWordService } = await import('./services/sensitiveWordService');
-      sensitiveWordService.clearCache();
+if (!internalApiToken) {
+  console.warn('⚠️ INTERNAL_API_TOKEN 环境变量未设置，内部 API 路由已禁用');
+} else {
+  /**
+   * 内部API：清除服务端缓存
+   * Admin后台操作（封禁用户、关闭工作区、更新敏感词）后调用
+   * 需要提供 x-internal-token 请求头
+   */
+  app.post('/api/internal/clear-cache', async (req, res) => {
+    const internalToken = req.headers['x-internal-token'];
+    if (internalToken !== internalApiToken) {
+      return res.status(403).json({ success: false, error: '无权访问' });
     }
 
-    res.json({ success: true });
-  } catch (error) {
-    const message = error instanceof Error ? error.message : String(error);
-    res.status(500).json({ success: false, error: message });
-  }
-});
+    const { type, visitorId, workspaceId } = req.body;
 
-/**
- * 内部API：发送反馈处理结果推送通知
- * Admin后台更新反馈状态后调用
- * 需要提供 x-internal-token 请求头
- */
-app.post('/api/internal/push/feedback-notification', async (req, res) => {
-  const internalToken = req.headers['x-internal-token'];
-  if (internalToken !== process.env.INTERNAL_API_TOKEN) {
-    return res.status(403).json({ success: false, error: '无权访问' });
-  }
+    try {
+      if (type === 'visitor' && visitorId) {
+        workspaceService.clearVisitorCache(visitorId);
+      } else if (type === 'workspace' && workspaceId) {
+        workspaceService.clearWorkspaceCache(workspaceId);
+      } else if (type === 'sensitive-word') {
+        const { sensitiveWordService } = await import('./services/sensitiveWordService');
+        sensitiveWordService.clearCache();
+      } else {
+        workspaceService.clearAllCache();
+        const { sensitiveWordService } = await import('./services/sensitiveWordService');
+        sensitiveWordService.clearCache();
+      }
 
-  const { visitorId, feedbackTitle, newStatus } = req.body;
+      res.json({ success: true });
+    } catch (error) {
+      const message = error instanceof Error ? error.message : String(error);
+      res.status(500).json({ success: false, error: message });
+    }
+  });
 
-  if (!visitorId || !feedbackTitle || !newStatus) {
-    return res.status(400).json({ success: false, error: '缺少必要参数' });
-  }
+  /**
+   * 内部API：发送反馈处理结果推送通知
+   * Admin后台更新反馈状态后调用
+   * 需要提供 x-internal-token 请求头
+   */
+  app.post('/api/internal/push/feedback-notification', async (req, res) => {
+    const internalToken = req.headers['x-internal-token'];
+    if (internalToken !== internalApiToken) {
+      return res.status(403).json({ success: false, error: '无权访问' });
+    }
 
-  try {
-    const result = await pushService.sendFeedbackNotification(visitorId, feedbackTitle, newStatus);
-    res.json({ success: true, data: result ? { messageId: result._id?.toString() } : null });
-  } catch (error) {
-    const message = error instanceof Error ? error.message : String(error);
-    console.error('[内部推送] 反馈推送失败:', message);
-    res.status(500).json({ success: false, error: message });
-  }
-});
+    const { visitorId, feedbackTitle, newStatus } = req.body;
+
+    if (!visitorId || !feedbackTitle || !newStatus) {
+      return res.status(400).json({ success: false, error: '缺少必要参数' });
+    }
+
+    try {
+      const result = await pushService.sendFeedbackNotification(visitorId, feedbackTitle, newStatus);
+      res.json({ success: true, data: result ? { messageId: result._id?.toString() } : null });
+    } catch (error) {
+      const message = error instanceof Error ? error.message : String(error);
+      console.error('[内部推送] 反馈推送失败:', message);
+      res.status(500).json({ success: false, error: message });
+    }
+  });
+}
 
 app.use(errorHandler);
 
@@ -191,6 +201,13 @@ if (fs.existsSync(clientDistPath)) {
 }
 
 async function startServer() {
+  try {
+    validateConfig();
+  } catch (error) {
+    console.error('❌ 配置校验失败，服务拒绝启动:', error instanceof Error ? error.message : String(error));
+    process.exit(1);
+  }
+
   try {
     console.log('');
     console.log('🔄 Connecting to databases...');

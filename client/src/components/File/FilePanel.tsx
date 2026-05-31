@@ -2,6 +2,7 @@ import React, { useState, useRef } from 'react';
 import { X, Download, Upload, FileJson, FileText, AlertCircle, CheckCircle, Loader2 } from 'lucide-react';
 import { nodeApi } from '../../services/api';
 import { useAppStore } from '../../stores/appStore';
+import useIsMobile from '../../hooks/useIsMobile';
 
 interface FilePanelProps {
   isOpen: boolean;
@@ -17,6 +18,7 @@ interface ImportResult {
 /**
  * 文件导入/导出面板组件
  * 支持JSON和Markdown格式的导入导出操作
+ * 桌面端居中弹窗，移动端全屏显示
  */
 const FilePanel: React.FC<FilePanelProps> = ({ isOpen, onClose }) => {
   const [isExporting, setIsExporting] = useState(false);
@@ -26,6 +28,7 @@ const FilePanel: React.FC<FilePanelProps> = ({ isOpen, onClose }) => {
   const [importResult, setImportResult] = useState<ImportResult | null>(null);
   const fileInputRef = useRef<HTMLInputElement>(null);
   const reloadWorkspaceData = useAppStore(state => state.reloadWorkspaceData);
+  const isMobile = useIsMobile();
 
   if (!isOpen) return null;
 
@@ -155,182 +158,196 @@ const FilePanel: React.FC<FilePanelProps> = ({ isOpen, onClose }) => {
     return `${now.getFullYear()}${String(now.getMonth() + 1).padStart(2, '0')}${String(now.getDate()).padStart(2, '0')}-${String(now.getHours()).padStart(2, '0')}${String(now.getMinutes()).padStart(2, '0')}`;
   };
 
+  const panelContent = (
+    <>
+      <div className={`flex items-center justify-between p-5 border-b border-dark-700 ${isMobile ? 'h-14 px-4 py-0' : ''}`}>
+        <div className="flex items-center gap-3">
+          <div className="w-10 h-10 bg-primary-600/20 rounded-xl flex items-center justify-center">
+            <Download className="w-5 h-5 text-primary-400" />
+          </div>
+          <div>
+            <h2 className="text-white font-semibold text-lg">文件管理</h2>
+            <p className="text-dark-400 text-xs">导入导出思维导图数据</p>
+          </div>
+        </div>
+        <button
+          onClick={onClose}
+          className="p-2 text-dark-400 hover:text-white hover:bg-dark-700 rounded-lg transition-colors min-w-[44px] min-h-[44px] flex items-center justify-center"
+        >
+          <X className="w-5 h-5" />
+        </button>
+      </div>
+
+      <div className={`p-5 space-y-6 ${isMobile ? 'flex-1 overflow-y-auto' : ''}`}>
+        {statusMessage && (
+          <div className={`flex items-center gap-2 px-4 py-3 rounded-xl text-sm ${
+            statusMessage.type === 'success'
+              ? 'bg-green-500/10 text-green-400 border border-green-500/20'
+              : 'bg-red-500/10 text-red-400 border border-red-500/20'
+          }`}>
+            {statusMessage.type === 'success' ? (
+              <CheckCircle className="w-4 h-4 shrink-0" />
+            ) : (
+              <AlertCircle className="w-4 h-4 shrink-0" />
+            )}
+            <span>{statusMessage.text}</span>
+          </div>
+        )}
+
+        {importResult && (
+          <div className="bg-primary-600/10 border border-primary-500/20 rounded-xl p-4">
+            <h4 className="text-primary-400 font-medium text-sm mb-2">导入结果</h4>
+            <div className="grid grid-cols-3 gap-3 text-center">
+              <div>
+                <div className="text-white text-xl font-bold">{importResult.nodes}</div>
+                <div className="text-dark-400 text-xs">节点</div>
+              </div>
+              <div>
+                <div className="text-white text-xl font-bold">{importResult.relations}</div>
+                <div className="text-dark-400 text-xs">关系</div>
+              </div>
+              <div>
+                <div className="text-white text-xl font-bold">{importResult.conversations}</div>
+                <div className="text-dark-400 text-xs">对话</div>
+              </div>
+            </div>
+          </div>
+        )}
+
+        <div>
+          <h3 className="text-white font-medium text-sm mb-3 flex items-center gap-2">
+            <Download className="w-4 h-4 text-primary-400" />
+            导出数据
+          </h3>
+          <p className="text-dark-400 text-xs mb-3">
+            将当前工作区的思维导图数据导出为文件，可用于备份或迁移
+          </p>
+          <div className="grid grid-cols-2 gap-3">
+            <button
+              onClick={handleExportJson}
+              disabled={isExporting}
+              className="flex items-center justify-center gap-2 px-4 py-3 bg-dark-800 hover:bg-dark-700 border border-dark-600 hover:border-primary-500/50 rounded-xl text-dark-300 hover:text-white transition-all disabled:opacity-50 disabled:cursor-not-allowed min-h-[44px]"
+            >
+              {isExporting ? (
+                <Loader2 className="w-4 h-4 animate-spin" />
+              ) : (
+                <FileJson className="w-4 h-4" />
+              )}
+              <span className="text-sm">JSON 格式</span>
+            </button>
+            <button
+              onClick={handleExportMarkdown}
+              disabled={isExporting}
+              className="flex items-center justify-center gap-2 px-4 py-3 bg-dark-800 hover:bg-dark-700 border border-dark-600 hover:border-primary-500/50 rounded-xl text-dark-300 hover:text-white transition-all disabled:opacity-50 disabled:cursor-not-allowed min-h-[44px]"
+            >
+              {isExporting ? (
+                <Loader2 className="w-4 h-4 animate-spin" />
+              ) : (
+                <FileText className="w-4 h-4" />
+              )}
+              <span className="text-sm">Markdown 格式</span>
+            </button>
+          </div>
+          <div className="mt-2 text-dark-500 text-xs space-y-1">
+            <p>• JSON：完整数据，包含节点、关系和对话记录，可重新导入</p>
+            <p>• Markdown：大纲格式，适合阅读和文档归档</p>
+          </div>
+        </div>
+
+        <div className="border-t border-dark-700 pt-6">
+          <h3 className="text-white font-medium text-sm mb-3 flex items-center gap-2">
+            <Upload className="w-4 h-4 text-primary-400" />
+            导入数据
+          </h3>
+          <p className="text-dark-400 text-xs mb-3">
+            从文件导入思维导图数据到当前工作区，导入的数据会生成新的ID以避免冲突
+          </p>
+
+          <div className="flex items-center gap-3 mb-3">
+            <span className="text-dark-400 text-xs">格式：</span>
+            <div className="flex gap-2">
+              <button
+                onClick={() => setImportFormat('json')}
+                className={`px-3 py-1.5 rounded-lg text-xs transition-colors min-h-[44px] ${
+                  importFormat === 'json'
+                    ? 'bg-primary-600 text-white'
+                    : 'bg-dark-800 text-dark-400 hover:text-white'
+                }`}
+              >
+                JSON
+              </button>
+              <button
+                onClick={() => setImportFormat('markdown')}
+                className={`px-3 py-1.5 rounded-lg text-xs transition-colors min-h-[44px] ${
+                  importFormat === 'markdown'
+                    ? 'bg-primary-600 text-white'
+                    : 'bg-dark-800 text-dark-400 hover:text-white'
+                }`}
+              >
+                Markdown
+              </button>
+            </div>
+          </div>
+
+          <input
+            ref={fileInputRef}
+            type="file"
+            accept=".json,.md,.markdown,.txt"
+            onChange={handleFileSelect}
+            className="hidden"
+          />
+
+          <button
+            onClick={triggerFileInput}
+            disabled={isImporting}
+            className="w-full flex items-center justify-center gap-2 px-4 py-3 bg-dark-800 hover:bg-dark-700 border-2 border-dashed border-dark-600 hover:border-primary-500/50 rounded-xl text-dark-300 hover:text-white transition-all disabled:opacity-50 disabled:cursor-not-allowed min-h-[44px]"
+          >
+            {isImporting ? (
+              <>
+                <Loader2 className="w-4 h-4 animate-spin" />
+                <span className="text-sm">导入中...</span>
+              </>
+            ) : (
+              <>
+                <Upload className="w-4 h-4" />
+                <span className="text-sm">选择文件导入</span>
+              </>
+            )}
+          </button>
+
+          <div className="mt-2 text-dark-500 text-xs space-y-1">
+            <p>• JSON：从DeepMindMap导出的完整数据文件（.json）</p>
+            <p>• Markdown：层级大纲格式（## 为根节点，缩进列表为子节点）</p>
+            <p>• 导入会自动识别文件格式（.json / .md / .markdown）</p>
+          </div>
+        </div>
+
+        <div className="bg-dark-800/50 border border-dark-700 rounded-xl p-3">
+          <div className="flex items-start gap-2">
+            <AlertCircle className="w-4 h-4 text-yellow-400 shrink-0 mt-0.5" />
+            <div className="text-dark-400 text-xs space-y-1">
+              <p>导入数据会添加到当前工作区，不会覆盖已有数据。</p>
+              <p>建议在导入前先导出备份当前数据。</p>
+            </div>
+          </div>
+        </div>
+      </div>
+    </>
+  );
+
+  if (isMobile) {
+    return (
+      <div className="fixed inset-0 z-[9999] bg-dark-950 flex flex-col">
+        {panelContent}
+      </div>
+    );
+  }
+
   return (
     <div className="fixed inset-0 z-50 flex items-center justify-center">
       <div className="absolute inset-0 bg-black/60 backdrop-blur-sm" onClick={onClose} />
       <div className="relative bg-dark-900 border border-dark-700 rounded-2xl shadow-2xl w-full max-w-lg mx-4 max-h-[90vh] overflow-y-auto">
-        <div className="flex items-center justify-between p-5 border-b border-dark-700">
-          <div className="flex items-center gap-3">
-            <div className="w-10 h-10 bg-primary-600/20 rounded-xl flex items-center justify-center">
-              <Download className="w-5 h-5 text-primary-400" />
-            </div>
-            <div>
-              <h2 className="text-white font-semibold text-lg">文件管理</h2>
-              <p className="text-dark-400 text-xs">导入导出思维导图数据</p>
-            </div>
-          </div>
-          <button
-            onClick={onClose}
-            className="p-2 text-dark-400 hover:text-white hover:bg-dark-700 rounded-lg transition-colors"
-          >
-            <X className="w-5 h-5" />
-          </button>
-        </div>
-
-        <div className="p-5 space-y-6">
-          {statusMessage && (
-            <div className={`flex items-center gap-2 px-4 py-3 rounded-xl text-sm ${
-              statusMessage.type === 'success'
-                ? 'bg-green-500/10 text-green-400 border border-green-500/20'
-                : 'bg-red-500/10 text-red-400 border border-red-500/20'
-            }`}>
-              {statusMessage.type === 'success' ? (
-                <CheckCircle className="w-4 h-4 shrink-0" />
-              ) : (
-                <AlertCircle className="w-4 h-4 shrink-0" />
-              )}
-              <span>{statusMessage.text}</span>
-            </div>
-          )}
-
-          {importResult && (
-            <div className="bg-primary-600/10 border border-primary-500/20 rounded-xl p-4">
-              <h4 className="text-primary-400 font-medium text-sm mb-2">导入结果</h4>
-              <div className="grid grid-cols-3 gap-3 text-center">
-                <div>
-                  <div className="text-white text-xl font-bold">{importResult.nodes}</div>
-                  <div className="text-dark-400 text-xs">节点</div>
-                </div>
-                <div>
-                  <div className="text-white text-xl font-bold">{importResult.relations}</div>
-                  <div className="text-dark-400 text-xs">关系</div>
-                </div>
-                <div>
-                  <div className="text-white text-xl font-bold">{importResult.conversations}</div>
-                  <div className="text-dark-400 text-xs">对话</div>
-                </div>
-              </div>
-            </div>
-          )}
-
-          <div>
-            <h3 className="text-white font-medium text-sm mb-3 flex items-center gap-2">
-              <Download className="w-4 h-4 text-primary-400" />
-              导出数据
-            </h3>
-            <p className="text-dark-400 text-xs mb-3">
-              将当前工作区的思维导图数据导出为文件，可用于备份或迁移
-            </p>
-            <div className="grid grid-cols-2 gap-3">
-              <button
-                onClick={handleExportJson}
-                disabled={isExporting}
-                className="flex items-center justify-center gap-2 px-4 py-3 bg-dark-800 hover:bg-dark-700 border border-dark-600 hover:border-primary-500/50 rounded-xl text-dark-300 hover:text-white transition-all disabled:opacity-50 disabled:cursor-not-allowed"
-              >
-                {isExporting ? (
-                  <Loader2 className="w-4 h-4 animate-spin" />
-                ) : (
-                  <FileJson className="w-4 h-4" />
-                )}
-                <span className="text-sm">JSON 格式</span>
-              </button>
-              <button
-                onClick={handleExportMarkdown}
-                disabled={isExporting}
-                className="flex items-center justify-center gap-2 px-4 py-3 bg-dark-800 hover:bg-dark-700 border border-dark-600 hover:border-primary-500/50 rounded-xl text-dark-300 hover:text-white transition-all disabled:opacity-50 disabled:cursor-not-allowed"
-              >
-                {isExporting ? (
-                  <Loader2 className="w-4 h-4 animate-spin" />
-                ) : (
-                  <FileText className="w-4 h-4" />
-                )}
-                <span className="text-sm">Markdown 格式</span>
-              </button>
-            </div>
-            <div className="mt-2 text-dark-500 text-xs space-y-1">
-              <p>• JSON：完整数据，包含节点、关系和对话记录，可重新导入</p>
-              <p>• Markdown：大纲格式，适合阅读和文档归档</p>
-            </div>
-          </div>
-
-          <div className="border-t border-dark-700 pt-6">
-            <h3 className="text-white font-medium text-sm mb-3 flex items-center gap-2">
-              <Upload className="w-4 h-4 text-primary-400" />
-              导入数据
-            </h3>
-            <p className="text-dark-400 text-xs mb-3">
-              从文件导入思维导图数据到当前工作区，导入的数据会生成新的ID以避免冲突
-            </p>
-
-            <div className="flex items-center gap-3 mb-3">
-              <span className="text-dark-400 text-xs">格式：</span>
-              <div className="flex gap-2">
-                <button
-                  onClick={() => setImportFormat('json')}
-                  className={`px-3 py-1.5 rounded-lg text-xs transition-colors ${
-                    importFormat === 'json'
-                      ? 'bg-primary-600 text-white'
-                      : 'bg-dark-800 text-dark-400 hover:text-white'
-                  }`}
-                >
-                  JSON
-                </button>
-                <button
-                  onClick={() => setImportFormat('markdown')}
-                  className={`px-3 py-1.5 rounded-lg text-xs transition-colors ${
-                    importFormat === 'markdown'
-                      ? 'bg-primary-600 text-white'
-                      : 'bg-dark-800 text-dark-400 hover:text-white'
-                  }`}
-                >
-                  Markdown
-                </button>
-              </div>
-            </div>
-
-            <input
-              ref={fileInputRef}
-              type="file"
-              accept=".json,.md,.markdown,.txt"
-              onChange={handleFileSelect}
-              className="hidden"
-            />
-
-            <button
-              onClick={triggerFileInput}
-              disabled={isImporting}
-              className="w-full flex items-center justify-center gap-2 px-4 py-3 bg-dark-800 hover:bg-dark-700 border-2 border-dashed border-dark-600 hover:border-primary-500/50 rounded-xl text-dark-300 hover:text-white transition-all disabled:opacity-50 disabled:cursor-not-allowed"
-            >
-              {isImporting ? (
-                <>
-                  <Loader2 className="w-4 h-4 animate-spin" />
-                  <span className="text-sm">导入中...</span>
-                </>
-              ) : (
-                <>
-                  <Upload className="w-4 h-4" />
-                  <span className="text-sm">选择文件导入</span>
-                </>
-              )}
-            </button>
-
-            <div className="mt-2 text-dark-500 text-xs space-y-1">
-              <p>• JSON：从DeepMindMap导出的完整数据文件（.json）</p>
-              <p>• Markdown：层级大纲格式（## 为根节点，缩进列表为子节点）</p>
-              <p>• 导入会自动识别文件格式（.json / .md / .markdown）</p>
-            </div>
-          </div>
-
-          <div className="bg-dark-800/50 border border-dark-700 rounded-xl p-3">
-            <div className="flex items-start gap-2">
-              <AlertCircle className="w-4 h-4 text-yellow-400 shrink-0 mt-0.5" />
-              <div className="text-dark-400 text-xs space-y-1">
-                <p>导入数据会添加到当前工作区，不会覆盖已有数据。</p>
-                <p>建议在导入前先导出备份当前数据。</p>
-              </div>
-            </div>
-          </div>
-        </div>
+        {panelContent}
       </div>
     </div>
   );

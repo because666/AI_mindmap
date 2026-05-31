@@ -5,17 +5,25 @@ import { Bell } from 'lucide-react';
 interface UnreadBadgeProps {
   onClick?: () => void;
   size?: number;
+  externalUnreadCount?: number;
+  className?: string;
 }
 
-export function UnreadBadge({ onClick, size = 24 }: UnreadBadgeProps) {
-  const [unreadCount, setUnreadCount] = useState(0);
+export function UnreadBadge({ onClick, size = 24, externalUnreadCount, className }: UnreadBadgeProps) {
+  const [internalUnreadCount, setInternalUnreadCount] = useState(0);
   const [forceReadPending, setForceReadPending] = useState(0);
 
+  const unreadCount = externalUnreadCount !== undefined ? externalUnreadCount : internalUnreadCount;
+
   useEffect(() => {
+    if (externalUnreadCount !== undefined) {
+      return;
+    }
+
     const fetchUnreadCount = async () => {
       try {
         const count = await pushClientService.getUnreadCount();
-        setUnreadCount(count.total);
+        setInternalUnreadCount(count.total);
         setForceReadPending(count.forceReadPending);
       } catch (error) {
         console.error('获取未读数量失败:', error);
@@ -24,7 +32,7 @@ export function UnreadBadge({ onClick, size = 24 }: UnreadBadgeProps) {
 
     fetchUnreadCount();
 
-    const interval = setInterval(fetchUnreadCount, 30000);
+    const interval = setInterval(fetchUnreadCount, 10000);
 
     const handlePushNotificationClick = (_event: Event) => {
       if (onClick) {
@@ -38,12 +46,12 @@ export function UnreadBadge({ onClick, size = 24 }: UnreadBadgeProps) {
       clearInterval(interval);
       window.removeEventListener('push-notification-click', handlePushNotificationClick);
     };
-  }, [onClick]);
+  }, [onClick, externalUnreadCount]);
 
   return (
     <button
       onClick={onClick}
-      className="relative p-2 hover:bg-gray-100 dark:hover:bg-gray-800 rounded-lg transition-colors"
+      className={className || 'relative p-2 hover:bg-gray-100 dark:hover:bg-gray-800 rounded-lg transition-colors'}
       aria-label={`消息中心${unreadCount > 0 ? `，${unreadCount}条未读` : ''}`}
     >
       <Bell

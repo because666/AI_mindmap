@@ -1,465 +1,213 @@
-import React, { useState, useMemo, useEffect } from 'react';
-import { Settings, Server, Key, Globe, Plus, Trash2, Edit3, X, CheckCircle } from 'lucide-react';
+import { useState, useEffect } from 'react';
+import { CheckCircle, Plus, Trash2, Cpu, Zap } from 'lucide-react';
 import { useAPIConfigStore } from '../../stores/apiConfigStore';
 import { AI_PROVIDERS } from '../../utils/aiModels';
 import { chatService } from '../../services/chatService';
-import ConfirmDialog from '../Common/ConfirmDialog';
-import type { AIProvider, AIModel } from '../../types';
+import type { AIProvider } from '../../types';
+import AddModelModal from './AddModelModal';
 
-interface APIConfigPanelProps {
+/**
+ * 内置服务信息接口
+ */
+interface BuiltInServiceInfo {
+  /** 服务商显示名称 */
+  providerName: string;
+  /** 模型显示名称 */
+  modelName: string;
 }
 
 /**
- * 自定义模型表单组件
- */
-const CustomModelForm: React.FC<{
-  provider: AIProvider;
-  onSave: (model: Omit<AIModel, 'id'>) => void;
-  onCancel: () => void;
-  editModel?: AIModel | null;
-}> = ({ provider, onSave, onCancel, editModel }) => {
-  const [name, setName] = useState(editModel?.name || '');
-  const [modelIdInput, setModelIdInput] = useState(editModel?.id?.replace(/^custom-/, '') || '');
-  const [description, setDescription] = useState(editModel?.description || '');
-  const [maxTokens, setMaxTokens] = useState(String(editModel?.maxTokens || 4096));
-
-  const handleSubmit = () => {
-    if (!name.trim() || !modelIdInput.trim()) return;
-    onSave({
-      name: name.trim(),
-      provider,
-      description: description.trim(),
-      maxTokens: parseInt(maxTokens, 10) || 4096,
-    });
-  };
-
-  return (
-    <div className="p-4 bg-dark-800/50 border border-dark-600/50 rounded-xl space-y-3">
-      <div className="flex items-center justify-between">
-        <span className="text-sm font-medium text-white">
-          {editModel ? '编辑模型' : '添加自定义模型'}
-        </span>
-        <button onClick={onCancel} className="p-1 text-dark-400 hover:text-white rounded transition-colors">
-          <X className="w-4 h-4" />
-        </button>
-      </div>
-
-      <div>
-        <label className="block text-xs text-dark-400 mb-1">模型名称</label>
-        <input
-          type="text"
-          value={name}
-          onChange={(e) => setName(e.target.value)}
-          placeholder="如：GPT-4o、Claude-3.5-Sonnet"
-          className="input-field"
-        />
-      </div>
-
-      <div>
-        <label className="block text-xs text-dark-400 mb-1">模型ID（API调用标识）</label>
-        <input
-          type="text"
-          value={modelIdInput}
-          onChange={(e) => setModelIdInput(e.target.value)}
-          placeholder="如：gpt-4o、claude-3-5-sonnet-20241022"
-          className="input-field font-mono text-sm"
-        />
-      </div>
-
-      <div>
-        <label className="block text-xs text-dark-400 mb-1">描述（可选）</label>
-        <input
-          type="text"
-          value={description}
-          onChange={(e) => setDescription(e.target.value)}
-          placeholder="简要说明模型特点或用途"
-          className="input-field"
-        />
-      </div>
-
-      <div>
-        <label className="block text-xs text-dark-400 mb-1">最大Token数</label>
-        <input
-          type="number"
-          value={maxTokens}
-          onChange={(e) => setMaxTokens(e.target.value)}
-          min={256}
-          max={200000}
-          className="input-field font-mono text-sm"
-        />
-      </div>
-
-      <button
-        onClick={handleSubmit}
-        disabled={!name.trim() || !modelIdInput.trim()}
-        className="btn-primary w-full py-2 text-sm"
-      >
-        {editModel ? '保存修改' : '添加模型'}
-      </button>
-    </div>
-  );
-};
-
-/**
  * API配置面板组件
- * 仅显示用户自定义模型，隐藏所有内置默认模型数据
+ * 展示模型配置列表，支持切换激活配置和删除配置，
+ * 包含当前使用状态提示、创意度滑块和添加新模型入口
  */
-const APIConfigPanel: React.FC<APIConfigPanelProps> = () => {
-  const {
-    config,
-    customModels,
-    setProvider,
-    setModel,
-    setApiKey,
-    setBaseUrl,
-    resetConfig,
-    addCustomModel,
-    removeCustomModel,
-    updateCustomModel,
-    getCustomModelsByProvider,
-  } = useAPIConfigStore();
+const APIConfigPanel: React.FC = () => {
+  const savedConfigs = useAPIConfigStore((s) => s.savedConfigs);
+  const activeConfigId = useAPIConfigStore((s) => s.activeConfigId);
+  const temperature = useAPIConfigStore((s) => s.temperature);
+  const setActiveConfigId = useAPIConfigStore((s) => s.setActiveConfigId);
+  const removeSavedConfig = useAPIConfigStore((s) => s.removeSavedConfig);
+  const setTemperature = useAPIConfigStore((s) => s.setTemperature);
 
-  const [showAddModelForm, setShowAddModelForm] = useState(false);
-  const [editingModelId, setEditingModelId] = useState<string | null>(null);
-  const [hasBuiltInKey, setHasBuiltInKey] = useState(false);
-  const [defaultProvider, setDefaultProvider] = useState<string>('zhipu');
-  const [deleteModelConfirmOpen, setDeleteModelConfirmOpen] = useState(false);
-  const [pendingDeleteModelId, setPendingDeleteModelId] = useState<string | null>(null);
+  const [isAddModelModalOpen, setIsAddModelModalOpen] = useState(false);
+  const [builtInInfo, setBuiltInInfo] = useState<BuiltInServiceInfo>({
+    providerName: '智谱AI',
+    modelName: 'glm-4-flash',
+  });
 
+  /**
+   * 组件挂载时从后端获取内置服务状态
+   * 动态更新服务商名称，失败时保持默认值
+   */
   useEffect(() => {
     const fetchStatus = async () => {
-      const result = await chatService.getStatus();
-      if (result.success) {
-        setHasBuiltInKey(result.hasBuiltInKey || false);
-        setDefaultProvider(result.defaultProvider || 'zhipu');
+      try {
+        const result = await chatService.getStatus();
+        if (result.success && result.defaultProvider) {
+          const providerKey = result.defaultProvider as AIProvider;
+          const providerInfo = AI_PROVIDERS[providerKey];
+          if (providerInfo) {
+            setBuiltInInfo({
+              providerName: providerInfo.name,
+              modelName: 'glm-4-flash',
+            });
+          }
+        }
+      } catch {
+        // 获取失败时使用默认内置服务信息
       }
     };
     fetchStatus();
   }, []);
 
   /**
-   * 获取当前提供商的自定义模型列表（安全过滤）
-   * 仅返回用户自己添加的模型，不包含任何默认模型
+   * 当前激活的模型配置
+   * 从 savedConfigs 中查找与 activeConfigId 匹配的配置项
    */
-  const currentModels: AIModel[] = useMemo(() => {
-    return getCustomModelsByProvider(config.provider);
-  }, [config.provider, customModels]);
+  const activeConfig = savedConfigs.find((c) => c.id === activeConfigId) ?? null;
 
   /**
-   * 当前选中模型的显示信息
+   * 处理配置卡片点击，切换激活配置
+   * @param configId - 配置ID，传null表示切换回内置服务
    */
-  const selectedModelInfo: AIModel | undefined = useMemo(() => {
-    if (!config.modelId) return undefined;
-    return customModels.find(m => m.id === config.modelId);
-  }, [config.modelId, customModels]);
-
-  /**
-   * 处理提供商切换
-   */
-  const handleProviderChange = (newProvider: string) => {
-    setProvider(newProvider as AIProvider);
-    setShowAddModelForm(false);
-    setEditingModelId(null);
-    setModel('');
+  const handleConfigClick = (configId: string | null): void => {
+    setActiveConfigId(configId);
   };
 
   /**
-   * 处理模型选择变更（安全验证：仅允许选择自定义模型）
+   * 处理删除配置
+   * 如果删除的是当前激活配置，store会自动切换回null（内置服务）
+   * @param configId - 要删除的配置ID
    */
-  const handleModelChange = (modelId: string) => {
-    const isValidModel = customModels.some(m => m.id === modelId && m.provider === config.provider);
-    if (!isValidModel) return;
-
-    setModel(modelId);
+  const handleDelete = (configId: string): void => {
+    removeSavedConfig(configId);
   };
 
   /**
-   * 添加自定义模型
+   * 打开添加模型弹窗
    */
-  const handleAddModel = (modelData: Omit<AIModel, 'id'>) => {
-    addCustomModel(modelData);
-    setShowAddModelForm(false);
-
-    if (!config.modelId) {
-      setModel(`custom-${Date.now().toString(36)}-${Math.random().toString(36).substring(2, 8)}`);
-    }
+  const handleOpenAddModal = (): void => {
+    setIsAddModelModalOpen(true);
   };
 
   /**
-   * 开始编辑模型
+   * 关闭添加模型弹窗
    */
-  const handleStartEdit = (modelId: string) => {
-    setEditingModelId(modelId);
-    setShowAddModelForm(false);
+  const handleCloseModal = (): void => {
+    setIsAddModelModalOpen(false);
   };
 
   /**
-   * 保存编辑的模型
+   * 处理创意度滑块变化
+   * @param event - range input变化事件
    */
-  const handleSaveEdit = (updates: Omit<AIModel, 'id'>) => {
-    if (!editingModelId) return;
-    updateCustomModel(editingModelId, updates);
-    setEditingModelId(null);
-  };
-
-  /**
-   * 删除自定义模型（带确认弹窗）
-   */
-  const handleDeleteModel = (modelId: string) => {
-    setPendingDeleteModelId(modelId);
-    setDeleteModelConfirmOpen(true);
-  };
-
-  /**
-   * 确认删除模型回调
-   */
-  const handleConfirmDeleteModel = () => {
-    if (pendingDeleteModelId) {
-      removeCustomModel(pendingDeleteModelId);
-    }
-    setDeleteModelConfirmOpen(false);
-    setPendingDeleteModelId(null);
-  };
-
-  /**
-   * 取消删除模型回调
-   */
-  const handleCancelDeleteModel = () => {
-    setDeleteModelConfirmOpen(false);
-    setPendingDeleteModelId(null);
-  };
-
-  /**
-   * 取消编辑
-   */
-  const handleCancelEdit = () => {
-    setEditingModelId(null);
-    setShowAddModelForm(false);
+  const handleTemperatureChange = (event: React.ChangeEvent<HTMLInputElement>): void => {
+    setTemperature(parseFloat(event.target.value));
   };
 
   return (
-    <div className="space-y-6 p-1">
-      {/* 标题 */}
-      <div className="flex items-center gap-2 pb-2 border-b border-dark-700">
-        <Settings className="w-5 h-5 text-primary-400" />
-        <h2 className="text-lg font-semibold text-white">API 配置</h2>
+    <div className="space-y-4 p-1">
+      {/* 当前使用状态提示 */}
+      <div className="p-3 bg-primary-600/10 border border-primary-500/30 rounded-lg">
+        {!activeConfigId ? (
+          <p className="text-sm text-primary-400">
+            ✅ 系统内置AI服务 · {builtInInfo.providerName} · {builtInInfo.modelName}
+          </p>
+        ) : (
+          <p className="text-sm text-primary-400">
+            🤖 {activeConfig?.name ?? '未知配置'} · {AI_PROVIDERS[activeConfig?.provider ?? 'zhipu']?.name ?? '未知服务商'}
+          </p>
+        )}
       </div>
 
-      {/* 内置密钥提示 */}
-      {hasBuiltInKey && (
-        <div className="flex items-start gap-3 p-4 bg-primary-600/10 border border-primary-500/30 rounded-xl">
-          <CheckCircle className="w-5 h-5 text-primary-400 flex-shrink-0 mt-0.5" />
-          <div className="flex-1">
-            <p className="text-sm text-white font-medium mb-1">
-              系统已内置 AI 服务
-            </p>
-            <p className="text-xs text-dark-300 leading-relaxed">
-              您可以直接使用内置的 <span className="text-primary-400">{AI_PROVIDERS[defaultProvider as AIProvider]?.name || defaultProvider}</span> 服务进行对话，无需配置 API 密钥。
-              如需使用其他服务商或自定义模型，请在下方配置您自己的 API 密钥。
+      {/* 模型配置列表 */}
+      <div className="space-y-2 max-h-[300px] overflow-y-auto">
+        {/* 系统内置服务（不可删除） */}
+        <div
+          onClick={() => handleConfigClick(null)}
+          className={`flex items-center gap-3 p-3 bg-dark-700 rounded-lg cursor-pointer hover:bg-dark-600 transition-colors ${
+            activeConfigId === null ? 'border border-primary-500/50' : 'border border-transparent'
+          }`}
+        >
+          <Cpu className="w-4 h-4 text-dark-200 flex-shrink-0" />
+          <div className="flex-1 min-w-0">
+            <p className="text-sm text-dark-200 font-medium">系统内置服务</p>
+            <p className="text-xs text-dark-400">
+              {builtInInfo.providerName} · {builtInInfo.modelName}
             </p>
           </div>
-        </div>
-      )}
-
-      {/* 服务商选择 */}
-      <div>
-        <label className="flex items-center gap-2 text-sm font-medium text-dark-300 mb-2">
-          <Server className="w-4 h-4" />
-          AI 服务提供商
-        </label>
-        <select
-          value={config.provider}
-          onChange={(e) => handleProviderChange(e.target.value)}
-          className="w-full px-4 py-2.5 bg-dark-800 border border-dark-600 rounded-xl text-white focus:border-primary-500 focus:outline-none appearance-none cursor-pointer transition-colors text-sm"
-        >
-          {Object.entries(AI_PROVIDERS).map(([key, { name }]) => (
-            <option key={key} value={key}>{name}</option>
-          ))}
-        </select>
-      </div>
-
-      {/* 模型管理区域 */}
-      <div>
-        <label className="flex items-center justify-between text-sm font-medium text-dark-300 mb-2">
-          <span className="flex items-center gap-2">
-            <Server className="w-4 h-4" />
-            AI 模型
-          </span>
-          {!editingModelId && !showAddModelForm && (
-            <button
-              onClick={() => setShowAddModelForm(true)}
-              className="flex items-center gap-1 px-2 py-1 text-primary-400 hover:text-primary-300 text-xs rounded-lg hover:bg-primary-600/10 transition-all"
-            >
-              <Plus className="w-3.5 h-3.5" />
-              添加模型
-            </button>
+          {activeConfigId === null && (
+            <CheckCircle className="w-4 h-4 text-primary-400 flex-shrink-0" />
           )}
-        </label>
+        </div>
 
-        {currentModels.length > 0 ? (
-          <>
-            <select
-              value={config.modelId}
-              onChange={(e) => handleModelChange(e.target.value)}
-              className="w-full px-4 py-2.5 bg-dark-800 border border-dark-600 rounded-xl text-white focus:border-primary-500 focus:outline-none appearance-none cursor-pointer transition-colors text-sm"
-            >
-              <option value="">请选择模型</option>
-              {currentModels.map((model) => (
-                <option key={model.id} value={model.id}>
-                  {model.name} ({model.id})
-                </option>
-              ))}
-            </select>
-
-            {selectedModelInfo && (
-              <p className="mt-2 text-xs text-dark-400 leading-relaxed">
-                {selectedModelInfo.description || `最大Token: ${selectedModelInfo.maxTokens.toLocaleString()}`}
+        {/* 已保存的用户配置列表 */}
+        {savedConfigs.map((config) => (
+          <div
+            key={config.id}
+            onClick={() => handleConfigClick(config.id)}
+            className={`flex items-center gap-3 p-3 bg-dark-700 rounded-lg cursor-pointer hover:bg-dark-600 transition-colors ${
+              activeConfigId === config.id ? 'border border-primary-500/50' : 'border border-transparent'
+            }`}
+          >
+            <Zap className="w-4 h-4 text-dark-200 flex-shrink-0" />
+            <div className="flex-1 min-w-0">
+              <p className="text-sm text-dark-200 font-medium truncate">{config.name}</p>
+              <p className="text-xs text-dark-400 truncate">
+                {AI_PROVIDERS[config.provider]?.name ?? config.provider}
+                {config.description ? ` · ${config.description}` : ''}
               </p>
-            )}
-
-            {/* 已添加的模型列表 */}
-            <div className="mt-3 space-y-1.5 max-h-48 overflow-y-auto">
-              {currentModels.map((model) => (
-                <div key={model.id} className="flex items-center gap-2 p-2.5 bg-dark-800/60 rounded-lg group">
-                  <div className="flex-1 min-w-0">
-                    <div className="text-white text-sm font-medium truncate">{model.name}</div>
-                    <div className="text-dark-500 text-xs font-mono truncate">{model.id}</div>
-                  </div>
-                  <div className="flex items-center gap-0.5 opacity-0 group-hover:opacity-100 transition-opacity">
-                    <button
-                      onClick={() => handleStartEdit(model.id)}
-                      className="p-1.5 text-dark-400 hover:text-primary-400 rounded-md hover:bg-dark-700 transition-all"
-                      title="编辑"
-                    >
-                      <Edit3 className="w-3.5 h-3.5" />
-                    </button>
-                    <button
-                      onClick={() => handleDeleteModel(model.id)}
-                      className="p-1.5 text-dark-400 hover:text-red-400 rounded-md hover:bg-dark-700 transition-all"
-                      title="删除"
-                    >
-                      <Trash2 className="w-3.5 h-3.5" />
-                    </button>
-                  </div>
-                </div>
-              ))}
             </div>
-          </>
-        ) : (
-          <div className="text-center py-8 px-4 bg-dark-800/30 border border-dashed border-dark-600/50 rounded-xl">
-            <Server className="w-10 h-10 mx-auto mb-3 text-dark-600" />
-            <p className="text-dark-400 text-sm mb-3">尚未添加自定义模型</p>
-            <p className="text-dark-500 text-xs mb-4">
-              请先为当前服务商添加至少一个自定义模型
-            </p>
+            {activeConfigId === config.id && (
+              <CheckCircle className="w-4 h-4 text-primary-400 flex-shrink-0" />
+            )}
             <button
-              onClick={() => setShowAddModelForm(true)}
-              className="btn-primary inline-flex items-center gap-1.5 text-sm"
+              onClick={(e) => {
+                e.stopPropagation();
+                handleDelete(config.id);
+              }}
+              className="p-1 text-red-400 hover:text-red-300 transition-colors flex-shrink-0"
             >
-              <Plus className="w-4 h-4" />
-              添加第一个模型
+              <Trash2 className="w-4 h-4" />
             </button>
           </div>
-        )}
-
-        {/* 编辑模型表单 */}
-        {editingModelId && (
-          <div className="mt-3 animate-in">
-            <CustomModelForm
-              provider={config.provider}
-              editModel={customModels.find(m => m.id === editingModelId) || null}
-              onSave={handleSaveEdit}
-              onCancel={handleCancelEdit}
-            />
-          </div>
-        )}
+        ))}
       </div>
 
-      {/* 添加模型表单 */}
-      {showAddModelForm && !editingModelId && (
-        <div className="animate-in">
-          <CustomModelForm
-            provider={config.provider}
-            onSave={handleAddModel}
-            onCancel={handleCancelEdit}
-          />
-        </div>
-      )}
+      {/* 添加新模型配置按钮 */}
+      <button
+        onClick={handleOpenAddModal}
+        className="w-full flex items-center justify-center gap-2 px-4 py-2.5 bg-dark-700 border border-dark-600 rounded-lg text-dark-200 hover:bg-dark-600 hover:text-white transition-all text-sm"
+      >
+        <Plus className="w-4 h-4" />
+        添加新模型配置
+      </button>
 
-      {/* API密钥 */}
+      {/* 创意度滑块 */}
       <div>
-        <label className="flex items-center gap-2 text-sm font-medium text-dark-300 mb-2">
-          <Key className="w-4 h-4" />
-          API 密钥 {hasBuiltInKey && <span className="text-dark-500 font-normal">（可选）</span>}
-        </label>
-        <div className="relative">
-          <input
-            type="password"
-            value={config.apiKey}
-            onChange={(e) => setApiKey(e.target.value)}
-            placeholder={hasBuiltInKey ? "留空使用内置服务..." : "输入你的API密钥..."}
-            className="w-full pl-4 pr-12 py-2.5 bg-dark-800 border border-dark-600 rounded-xl text-white placeholder-dark-500 focus:border-primary-500 focus:outline-none transition-colors text-sm pr-10"
-          />
-          <button
-            onClick={() => {
-              navigator.clipboard.writeText(config.apiKey);
-            }}
-            className="absolute right-2 top-1/2 -translate-y-1/2 p-1.5 text-dark-400 hover:text-white rounded-md hover:bg-dark-700 transition-all"
-            title="复制密钥"
-          >
-            <svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><rect width="14" height="14" x="8" y="8" rx="2" ry="2"/><path d="M4 16c-1.1 0-2-.9-2-2V4c0-1.1.9-2 2-2h10c1.1 0 2 .9 2 2"/></svg>
-          </button>
+        <div className="flex items-center justify-between mb-2">
+          <label className="text-sm font-medium text-dark-300">创意度</label>
+          <span className="text-sm text-primary-400 font-mono">{temperature.toFixed(1)}</span>
         </div>
-        {hasBuiltInKey ? (
-          <p className="mt-1.5 text-xs text-dark-500">
-            配置您自己的 API 密钥以使用自定义服务商或模型。留空则使用系统内置服务。
-          </p>
-        ) : (
-          <p className="mt-1.5 text-xs text-dark-500">
-            获取密钥：
-            <a href={config.provider === 'zhipu' ? 'https://open.bigmodel.cn/' : config.provider === 'openai' ? 'https://platform.openai.com/api-keys' : 'https://console.anthropic.com/settings/keys'} target="_blank" rel="noopener noreferrer" className="text-primary-400 hover:text-primary-300 underline ml-1">
-              {config.provider === 'zhipu' ? 'https://open.bigmodel.cn/' : config.provider === 'openai' ? 'platform.openai.com' : 'console.anthropic.com'}
-            </a>
-          </p>
-        )}
-      </div>
-
-      {/* 基础URL */}
-      <div>
-        <label className="flex items-center gap-2 text-sm font-medium text-dark-300 mb-2">
-          <Globe className="w-4 h-4" />
-          API 基础地址（可选）
-        </label>
         <input
-          type="url"
-          value={config.baseUrl}
-          onChange={(e) => setBaseUrl(e.target.value)}
-          placeholder={`默认: ${AI_PROVIDERS[config.provider].baseUrl}`}
-          className="w-full px-4 py-2.5 bg-dark-800 border border-dark-600 rounded-xl text-white placeholder-dark-500 focus:border-primary-500 focus:outline-none transition-colors text-sm"
+          type="range"
+          min={0}
+          max={2}
+          step={0.1}
+          value={temperature}
+          onChange={handleTemperatureChange}
+          className="w-full h-2 bg-dark-700 rounded-lg appearance-none cursor-pointer accent-primary-500"
         />
-        <p className="mt-1.5 text-xs text-dark-500">
-          留空使用默认地址，支持自定义代理地址
-        </p>
+        <div className="flex justify-between mt-1">
+          <span className="text-xs text-dark-500">精确</span>
+          <span className="text-xs text-dark-500">创意</span>
+        </div>
       </div>
 
-      {/* 操作按钮 */}
-      <div className="flex gap-3 pt-2">
-        <button
-          onClick={resetConfig}
-          className="px-4 py-2.5 bg-dark-700 border border-dark-600 rounded-xl text-dark-300 hover:bg-dark-600 hover:text-white transition-all"
-        >
-          重置配置
-        </button>
-      </div>
-
-      <ConfirmDialog
-        isOpen={deleteModelConfirmOpen}
-        title="删除模型"
-        message="确定要删除此模型吗？此操作不可撤销。"
-        confirmText="删除"
-        cancelText="取消"
-        onConfirm={handleConfirmDeleteModel}
-        onCancel={handleCancelDeleteModel}
+      {/* 添加模型弹窗 */}
+      <AddModelModal
+        isOpen={isAddModelModalOpen}
+        onClose={handleCloseModal}
       />
     </div>
   );

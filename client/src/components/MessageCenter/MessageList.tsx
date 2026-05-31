@@ -42,17 +42,6 @@ export function MessageList({ onMessageClick, onUnreadCountChange }: MessageList
     fetchMessages();
   }, [fetchMessages]);
 
-  useEffect(() => {
-    const interval = setInterval(async () => {
-      const count = await pushClientService.getUnreadCount();
-      setUnreadCount(count.total);
-      if (onUnreadCountChange) {
-        onUnreadCountChange(count.total);
-      }
-    }, 60000);
-    return () => clearInterval(interval);
-  }, [onUnreadCountChange]);
-
   const handleMarkAllRead = async () => {
     try {
       await pushClientService.markAllAsRead();
@@ -94,14 +83,14 @@ export function MessageList({ onMessageClick, onUnreadCountChange }: MessageList
   ];
 
   return (
-    <div className="flex flex-col h-full bg-gray-50 dark:bg-gray-900">
-      <div className="sticky top-0 z-10 bg-white dark:bg-gray-800 border-b border-gray-200 dark:border-gray-700 px-4 py-3">
+    <div className="flex flex-col h-full bg-dark-950">
+      <div className="sticky top-0 z-10 bg-dark-800 border-b border-dark-700 px-4 py-3">
         <div className="flex items-center justify-between mb-3">
-          <h2 className="text-lg font-semibold text-gray-900 dark:text-white">消息中心</h2>
+          <h2 className="text-lg font-semibold text-white">消息中心</h2>
           {unreadCount > 0 && (
             <button
               onClick={handleMarkAllRead}
-              className="flex items-center gap-1 text-sm text-blue-600 dark:text-blue-400 hover:text-blue-700 dark:hover:text-blue-300 transition-colors"
+              className="flex items-center gap-1 text-sm text-primary-400 hover:text-primary-300 transition-colors"
             >
               <CheckCheck size={16} />
               全部已读
@@ -109,7 +98,7 @@ export function MessageList({ onMessageClick, onUnreadCountChange }: MessageList
           )}
         </div>
 
-        <div className="flex gap-2 border-b border-gray-200 dark:border-gray-700 -mb-3">
+        <div className="flex gap-2 border-b border-dark-700 -mb-3">
           {tabs.map((tab) => (
             <button
               key={tab.key}
@@ -119,8 +108,8 @@ export function MessageList({ onMessageClick, onUnreadCountChange }: MessageList
               }}
               className={`flex items-center gap-1 px-3 py-2 text-sm font-medium border-b-2 transition-colors ${
                 activeTab === tab.key
-                  ? 'border-blue-500 text-blue-600 dark:text-blue-400'
-                  : 'border-transparent text-gray-500 dark:text-gray-400 hover:text-gray-700 dark:hover:text-gray-300'
+                  ? 'border-primary-500 text-primary-400'
+                  : 'border-transparent text-dark-400 hover:text-dark-200'
               }`}
             >
               <tab.icon size={14} />
@@ -132,23 +121,23 @@ export function MessageList({ onMessageClick, onUnreadCountChange }: MessageList
 
       <div className="flex-1 overflow-y-auto">
         {loading && messages.length === 0 ? (
-          <div className="flex flex-col items-center justify-center py-12 text-gray-500 dark:text-gray-400">
+          <div className="flex flex-col items-center justify-center py-12 text-dark-400">
             <Bell size={48} strokeWidth={1} className="mb-2 opacity-30" />
             <p>加载中...</p>
           </div>
         ) : messages.length === 0 ? (
-          <div className="flex flex-col items-center justify-center py-12 text-gray-500 dark:text-gray-400">
+          <div className="flex flex-col items-center justify-center py-12 text-dark-400">
             <Bell size={48} strokeWidth={1} className="mb-2 opacity-30" />
             <p>暂无消息</p>
           </div>
         ) : (
-          <ul className="divide-y divide-gray-100 dark:divide-gray-800">
+          <ul className="divide-y divide-dark-800">
             {messages.map((message) => (
               <li
                 key={message.id}
                 onClick={() => onMessageClick(message.id)}
-                className={`px-4 py-3 cursor-pointer transition-colors hover:bg-gray-100 dark:hover:bg-gray-800 ${
-                  !message.read ? 'bg-blue-50/50 dark:bg-blue-900/10' : ''
+                className={`px-4 py-3 cursor-pointer transition-colors hover:bg-dark-800 ${
+                  !message.read ? 'bg-primary-600/10' : ''
                 }`}
               >
                 <div className="flex items-start gap-3">
@@ -156,32 +145,32 @@ export function MessageList({ onMessageClick, onUnreadCountChange }: MessageList
                     {!message.read ? (
                       <span className="w-2 h-2 bg-red-500 rounded-full block"></span>
                     ) : (
-                      <span className="w-2 h-2 bg-gray-300 dark:bg-gray-600 rounded-full block"></span>
+                      <span className="w-2 h-2 bg-dark-600 rounded-full block"></span>
                     )}
                   </div>
                   <div className="flex-1 min-w-0">
                     <div className="flex items-center gap-2 mb-1">
                       <span className={`text-sm font-medium truncate ${
                         !message.read
-                          ? 'text-gray-900 dark:text-white'
-                          : 'text-gray-600 dark:text-gray-300'
+                          ? 'text-white'
+                          : 'text-dark-300'
                       }`}>
                         {message.title}
                       </span>
                       {message.forceRead && !message.read && (
-                        <span className="px-1.5 py-0.5 text-xs bg-orange-100 dark:bg-orange-900/30 text-orange-600 dark:text-orange-400 rounded font-medium flex-shrink-0">
+                        <span className="px-1.5 py-0.5 text-xs bg-orange-900/30 text-orange-400 rounded font-medium flex-shrink-0">
                           强制
                         </span>
                       )}
                     </div>
-                    <p className="text-sm text-gray-500 dark:text-gray-400 line-clamp-2 mb-1">
+                    <p className="text-sm text-dark-400 line-clamp-2 mb-1">
                       {message.summary}
                     </p>
                     <div className="flex items-center justify-between">
-                      <span className="text-xs text-gray-400 dark:text-gray-500">
+                      <span className="text-xs text-dark-500">
                         {formatTime(message.createdAt)}
                       </span>
-                      <span className="text-xs text-gray-400 dark:text-gray-500">
+                      <span className="text-xs text-dark-500">
                         {message.senderName}
                       </span>
                     </div>
@@ -196,7 +185,7 @@ export function MessageList({ onMessageClick, onUnreadCountChange }: MessageList
           <div className="py-4 text-center">
             <button
               onClick={() => setPage((prev) => prev + 1)}
-              className="text-sm text-blue-600 dark:text-blue-400 hover:underline"
+              className="text-sm text-primary-400 hover:underline"
             >
               加载更多
             </button>
@@ -205,7 +194,7 @@ export function MessageList({ onMessageClick, onUnreadCountChange }: MessageList
       </div>
 
       {total > 0 && (
-        <div className="px-4 py-2 bg-gray-100 dark:bg-gray-800 text-xs text-gray-500 dark:text-gray-400 text-center border-t border-gray-200 dark:border-gray-700">
+        <div className="px-4 py-2 bg-dark-800 text-xs text-dark-400 text-center border-t border-dark-700">
           共 {total} 条消息，{unreadCount > 0 ? `${unreadCount} 条未读` : '全部已读'}
         </div>
       )}

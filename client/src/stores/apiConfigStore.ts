@@ -1,32 +1,29 @@
 import { create } from 'zustand';
 import { persist } from 'zustand/middleware';
-import type { APIConfig, AIProvider, AIModel } from '../types';
-import { DEFAULT_API_CONFIG, AI_PROVIDERS } from '../utils/aiModels';
+import type { APIConfig, AIProvider, ModelConfig } from '../types';
+import { AI_PROVIDERS } from '../utils/aiModels';
 
 /**
  * API配置状态接口
  */
 interface APIConfigState {
-  config: APIConfig;
-  customModels: AIModel[];
-  setProvider: (provider: AIProvider) => void;
-  setModel: (modelId: string) => void;
-  setApiKey: (apiKey: string) => void;
-  setBaseUrl: (baseUrl: string) => void;
-  setConfig: (config: Partial<APIConfig>) => void;
-  resetConfig: () => void;
-  addCustomModel: (model: Omit<AIModel, 'id'>) => string;
-  removeCustomModel: (modelId: string) => void;
-  updateCustomModel: (modelId: string, updates: Partial<Omit<AIModel, 'id'>>) => void;
-  getCustomModelsByProvider: (provider: AIProvider) => AIModel[];
+  savedConfigs: ModelConfig[];
+  activeConfigId: string | null;
+  temperature: number;
+  addSavedConfig: (config: ModelConfig) => void;
+  removeSavedConfig: (id: string) => void;
+  setActiveConfigId: (id: string | null) => void;
+  getActiveConfig: () => ModelConfig | null;
+  getAPIConfigFromActive: () => APIConfig | null;
+  setTemperature: (temperature: number) => void;
 }
 
 /**
- * 生成唯一模型ID
+ * 生成唯一配置ID
  * @returns 唯一标识符字符串
  */
-const generateModelId = (): string => {
-  return `custom-${Date.now().toString(36)}-${Math.random().toString(36).substring(2, 8)}`;
+const generateConfigId = (): string => {
+  return `cfg-${Date.now().toString(36)}-${Math.random().toString(36).substring(2, 8)}`;
 };
 
 /**
@@ -35,137 +32,135 @@ const generateModelId = (): string => {
 export const useAPIConfigStore = create<APIConfigState>()(
   persist(
     (set, get) => ({
-      config: DEFAULT_API_CONFIG,
-      customModels: [] as AIModel[],
-      
-      /**
-       * 设置AI服务提供商
-       */
-      setProvider: (provider: AIProvider) => {
-        const providerConfig = AI_PROVIDERS[provider];
-        set((state) => ({
-          config: {
-            ...state.config,
-            provider,
-            baseUrl: providerConfig.baseUrl
-          }
-        }));
-      },
-      
-      /**
-       * 设置AI模型（仅限用户自定义模型）
-       */
-      setModel: (modelId: string) => {
-        const customModels = get().customModels;
-        const exists = customModels.some(m => m.id === modelId);
-        if (!exists) return;
-
-        set((state) => ({
-          config: {
-            ...state.config,
-            modelId
-          }
-        }));
-      },
-      
-      /**
-       * 设置API密钥
-       */
-      setApiKey: (apiKey: string) => {
-        set((state) => ({
-          config: {
-            ...state.config,
-            apiKey
-          }
-        }));
-      },
-      
-      /**
-       * 设置API基础URL
-       */
-      setBaseUrl: (baseUrl: string) => {
-        set((state) => ({
-          config: {
-            ...state.config,
-            baseUrl
-          }
-        }));
-      },
-      
-      /**
-       * 批量设置配置
-       */
-      setConfig: (newConfig: Partial<APIConfig>) => {
-        set((state) => ({
-          config: {
-            ...state.config,
-            ...newConfig
-          }
-        }));
-      },
-      
-      /**
-       * 重置为默认配置（保留自定义模型）
-       */
-      resetConfig: () => {
-        set({ config: DEFAULT_API_CONFIG });
-      },
+      savedConfigs: [] as ModelConfig[],
+      activeConfigId: null as string | null,
+      temperature: 0.7,
 
       /**
-       * 添加自定义模型
-       * @param model - 模型数据（不含id，系统自动生成或使用用户指定的API标识）
-       * @returns 新创建的模型ID
+       * 添加模型配置到保存列表
+       * @param config - 完整的模型配置对象
        */
-      addCustomModel: (model: Omit<AIModel, 'id'>): string => {
-        const id = generateModelId();
-        const newModel: AIModel = { ...model, id };
+      addSavedConfig: (config: ModelConfig): void => {
         set((state) => ({
-          customModels: [...state.customModels, newModel]
-        }));
-        return id;
-      },
-
-      /**
-       * 删除自定义模型
-       * @param modelId - 要删除的模型ID
-       */
-      removeCustomModel: (modelId: string) => {
-        const currentModelId = get().config.modelId;
-        set((state) => ({
-          customModels: state.customModels.filter(m => m.id !== modelId),
-          config: currentModelId === modelId
-            ? { ...state.config, modelId: '' }
-            : state.config
+          savedConfigs: [...state.savedConfigs, config],
+          activeConfigId: config.id
         }));
       },
 
       /**
-       * 更新自定义模型信息
-       * @param modelId - 模型ID
-       * @param updates - 要更新的字段
+       * 删除已保存的模型配置
+       * 如果删除的是当前激活配置，自动切换回内置服务
+       * @param id - 配置ID
        */
-      updateCustomModel: (modelId: string, updates: Partial<Omit<AIModel, 'id'>>): void => {
-        set((state) => ({
-          customModels: state.customModels.map(m =>
-            m.id === modelId ? { ...m, ...updates } : m
-          )
-        }));
+      removeSavedConfig: (id: string): void => {
+        set((state) => {
+          const newConfigs = state.savedConfigs.filter(c => c.id !== id);
+          const newActiveId = state.activeConfigId === id ? null : state.activeConfigId;
+          return {
+            savedConfigs: newConfigs,
+            activeConfigId: newActiveId
+          };
+        });
       },
 
       /**
-       * 获取指定提供商的自定义模型列表
-       * @param provider - 服务商类型
-       * @returns 该服务商下的自定义模型列表
+       * 设置当前激活的模型配置ID
+       * 传null表示使用内置服务
+       * @param id - 配置ID或null
        */
-      getCustomModelsByProvider: (provider: AIProvider): AIModel[] => {
-        return get().customModels.filter(m => m.provider === provider);
+      setActiveConfigId: (id: string | null): void => {
+        set({ activeConfigId: id });
+      },
+
+      /**
+       * 获取当前激活的模型配置
+       * @returns 激活的ModelConfig对象，如果使用内置服务则返回null
+       */
+      getActiveConfig: (): ModelConfig | null => {
+        const { savedConfigs, activeConfigId } = get();
+        if (!activeConfigId) return null;
+        return savedConfigs.find(c => c.id === activeConfigId) || null;
+      },
+
+      /**
+       * 从当前激活配置生成chatService所需的APIConfig格式
+       * @returns APIConfig对象，如果使用内置服务则返回null
+       */
+      getAPIConfigFromActive: (): APIConfig | null => {
+        const activeConfig = get().getActiveConfig();
+        if (!activeConfig) return null;
+        return {
+          provider: activeConfig.provider,
+          modelId: activeConfig.modelId,
+          apiKey: activeConfig.apiKey,
+          baseUrl: activeConfig.baseUrl,
+          temperature: get().temperature
+        };
+      },
+
+      /**
+       * 设置温度参数
+       * @param temperature - 温度值，范围0-2，超出范围会被截断
+       */
+      setTemperature: (temperature: number): void => {
+        set({ temperature: Math.max(0, Math.min(2, temperature)) });
       },
     }),
     {
       name: 'api-config-storage',
-      partialize: (state) => ({ 
-        config: state.config,
-        customModels: state.customModels 
+      version: 2,
+      migrate: (persistedState: unknown, version: number): APIConfigState => {
+        const state = persistedState as Record<string, unknown>;
+        if (version < 2) {
+          const savedConfigs: ModelConfig[] = [];
+          const oldConfig = state.config as Record<string, unknown> | undefined;
+          const oldCustomModels = state.customModels as Array<Record<string, unknown>> | undefined;
+
+          if (oldConfig && oldConfig.apiKey && typeof oldConfig.apiKey === 'string' && (oldConfig.apiKey as string).trim() !== '') {
+            const provider = (oldConfig.provider as AIProvider) || 'zhipu';
+            const modelId = (oldConfig.modelId as string) || '';
+            const providerInfo = AI_PROVIDERS[provider];
+            savedConfigs.push({
+              id: generateConfigId(),
+              name: modelId || `${providerInfo.name}自定义模型`,
+              provider,
+              modelId,
+              apiKey: oldConfig.apiKey as string,
+              baseUrl: oldConfig.baseUrl as string | undefined,
+              isCustom: true,
+              description: '从旧版本迁移的配置'
+            });
+          }
+
+          if (oldCustomModels && Array.isArray(oldCustomModels)) {
+            for (const model of oldCustomModels) {
+              savedConfigs.push({
+                id: (model.id as string) || generateConfigId(),
+                name: (model.name as string) || (model.id as string) || '未知模型',
+                provider: (model.provider as AIProvider) || 'zhipu',
+                modelId: (model.id as string) || '',
+                apiKey: (oldConfig?.apiKey as string) || '',
+                baseUrl: oldConfig?.baseUrl as string | undefined,
+                isCustom: true,
+                description: (model.description as string) || ''
+              });
+            }
+          }
+
+          const newState = { ...state } as Record<string, unknown>;
+          delete newState.config;
+          delete newState.customModels;
+          newState.savedConfigs = savedConfigs;
+          newState.activeConfigId = savedConfigs.length > 0 ? savedConfigs[0].id : null;
+          newState.temperature = (oldConfig?.temperature as number) ?? 0.7;
+          return newState as unknown as APIConfigState;
+        }
+        return persistedState as unknown as APIConfigState;
+      },
+      partialize: (state) => ({
+        savedConfigs: state.savedConfigs,
+        activeConfigId: state.activeConfigId,
+        temperature: state.temperature
       })
     }
   )
@@ -173,7 +168,14 @@ export const useAPIConfigStore = create<APIConfigState>()(
 
 /**
  * 获取当前API配置
+ * @returns APIConfig对象或null（使用内置服务时）
  */
-export const getAPIConfig = (): APIConfig => {
-  return useAPIConfigStore.getState().config;
+export const getAPIConfig = (): APIConfig | null => {
+  return useAPIConfigStore.getState().getAPIConfigFromActive();
 };
+
+/**
+ * 创建新的模型配置ID
+ * @returns 唯一配置ID字符串
+ */
+export const createConfigId = generateConfigId;

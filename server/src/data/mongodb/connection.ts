@@ -17,23 +17,23 @@ class MongoDBService {
 
   async connect(): Promise<void> {
     if (this.client) return;
-    
+
     const uri = config.mongodb.uri;
     const database = config.mongodb.database;
-    
+
     if (!uri || uri === 'mongodb://localhost:27017') {
       console.log('⚠️ MongoDB not configured, skipping connection');
       return;
     }
-    
+
     console.log('🔌 Connecting to MongoDB...');
-    
+
     try {
       this.client = new MongoClient(uri);
       await this.client.connect();
       this.db = this.client.db(database);
       console.log('✅ MongoDB connected successfully');
-      await this.initializeIndexes();
+      await this.ensureIndexes();
     } catch (error: any) {
       const errorMsg = error?.message || String(error);
       console.error('❌ MongoDB connection failed:', errorMsg);
@@ -43,9 +43,13 @@ class MongoDBService {
     }
   }
 
-  private async initializeIndexes(): Promise<void> {
+  /**
+   * 确保所有集合的索引已创建
+   * 索引创建失败时仅输出警告，不影响服务启动
+   */
+  private async ensureIndexes(): Promise<void> {
     if (!this.db) return;
-    
+
     try {
       await this.db.collection('conversations').createIndex({ nodeId: 1 });
       await this.db.collection('conversations').createIndex({ createdAt: -1 });
@@ -55,6 +59,13 @@ class MongoDBService {
       await this.db.collection('feedbacks').createIndex({ createdAt: -1 });
       await this.db.collection('feedbacks').createIndex({ status: 1 });
       await this.db.collection('feedbacks').createIndex({ type: 1 });
+      await this.db.collection('ai_usage').createIndex({ visitorId: 1, createdAt: -1 });
+      await this.db.collection('ai_usage').createIndex({ workspaceId: 1, createdAt: -1 });
+      await this.db.collection('ai_usage').createIndex({ model: 1, createdAt: -1 });
+      await this.db.collection('ai_usage').createIndex({ createdAt: -1 });
+      await this.db.collection('visitors').createIndex({ id: 1 }, { unique: true, background: true });
+      await this.db.collection('workspaces').createIndex({ id: 1 }, { unique: true, background: true });
+      await this.db.collection('attack_logs').createIndex({ ipAddress: 1 }, { background: true });
       console.log('✅ MongoDB indexes initialized');
     } catch (error) {
       console.warn('Index creation warning:', error);
@@ -76,7 +87,7 @@ class MongoDBService {
   async insertOne<T extends Document>(collection: string, doc: Omit<T, '_id'>): Promise<string | null> {
     const col = this.getCollection<T>(collection);
     if (!col) return null;
-    
+
     const result = await col.insertOne(doc as any);
     return result.insertedId.toString();
   }
@@ -84,29 +95,29 @@ class MongoDBService {
   async findOne<T extends Document>(collection: string, filter: Filter<T>): Promise<T | null> {
     const col = this.getCollection<T>(collection);
     if (!col) return null;
-    
+
     return await col.findOne(filter) as T | null;
   }
 
   async find<T extends Document>(
-    collection: string, 
-    filter: Filter<T>, 
+    collection: string,
+    filter: Filter<T>,
     options?: FindOptions
   ): Promise<T[]> {
     const col = this.getCollection<T>(collection);
     if (!col) return [];
-    
+
     return await col.find(filter, options).toArray() as T[];
   }
 
   async updateOne<T extends Document>(
-    collection: string, 
-    filter: Filter<T>, 
+    collection: string,
+    filter: Filter<T>,
     update: UpdateFilter<T>
   ): Promise<boolean> {
     const col = this.getCollection<T>(collection);
     if (!col) return false;
-    
+
     const result = await col.updateOne(filter, update);
     return result.modifiedCount > 0;
   }
@@ -114,7 +125,7 @@ class MongoDBService {
   async deleteOne<T extends Document>(collection: string, filter: Filter<T>): Promise<boolean> {
     const col = this.getCollection<T>(collection);
     if (!col) return false;
-    
+
     const result = await col.deleteOne(filter);
     return result.deletedCount > 0;
   }
@@ -122,7 +133,7 @@ class MongoDBService {
   async deleteMany<T extends Document>(collection: string, filter: Filter<T>): Promise<number> {
     const col = this.getCollection<T>(collection);
     if (!col) return 0;
-    
+
     const result = await col.deleteMany(filter);
     return result.deletedCount;
   }

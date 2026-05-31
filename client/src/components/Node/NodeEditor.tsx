@@ -16,7 +16,7 @@ interface NodeEditorProps {
  * 支持桌面端居中弹窗和移动端全屏显示
  */
 const NodeEditor: React.FC<NodeEditorProps> = ({ nodeId, isOpen, onClose, allNodes }) => {
-  const { updateNode, deleteNode } = useAppStore();
+  const { updateNode, deleteNode, markNodeManuallyTitled } = useAppStore();
   const [title, setTitle] = useState('');
   const [summary, setSummary] = useState('');
   const [tags, setTags] = useState<string[]>([]);
@@ -39,6 +39,10 @@ const NodeEditor: React.FC<NodeEditorProps> = ({ nodeId, isOpen, onClose, allNod
 
   const handleSave = () => {
     if (nodeId && title.trim()) {
+      const currentNode = allNodes.get(nodeId);
+      if (currentNode && currentNode.title !== title.trim()) {
+        markNodeManuallyTitled(nodeId);
+      }
       updateNode(nodeId, {
         title: title.trim(),
         summary: summary.trim(),

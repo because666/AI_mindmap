@@ -361,10 +361,11 @@ class PushService {
   /**
    * 发送反馈处理结果推送通知
    * 当管理员更新反馈状态时，向反馈提交者发送推送通知
+   * 先创建push_messages记录（不论有无设备），再检查设备情况决定是否推送
    * @param visitorId 反馈提交者的访客ID
    * @param feedbackTitle 反馈标题
    * @param newStatus 新的反馈状态
-   * @returns 创建的消息记录，如果visitorId为anonymous则返回null
+   * @returns 创建的消息记录，如果visitorId为anonymous/空值则返回null
    */
   async sendFeedbackNotification(
     visitorId: string,
@@ -386,14 +387,11 @@ class PushService {
     const title = '反馈处理通知';
     const content = `您提交的反馈"${feedbackTitle}"${statusLabel}，感谢您的反馈！`;
 
-    const registrationIds = await this.getUserDevices(visitorId);
-    if (registrationIds.length === 0) {
-      console.log(`[Push] 反馈推送跳过：visitorId=${visitorId} 无已注册设备`);
-      return null;
-    }
-
     const now = new Date();
     const expireAt = new Date(now.getTime() + 30 * 24 * 60 * 60 * 1000);
+
+    const registrationIds = await this.getUserDevices(visitorId);
+    const hasDevices = registrationIds.length > 0;
 
     const messageRecipients: MessageRecipient[] = [{
       userId: visitorId,
@@ -415,7 +413,7 @@ class PushService {
       expireAt,
       recipients: messageRecipients,
       stats: {
-        totalCount: 1,
+        totalCount: hasDevices ? 1 : 0,
         deliveredCount: 0,
         readCount: 0,
         readRate: 0,
@@ -431,14 +429,18 @@ class PushService {
     const result = await collection.insertOne(messageData as never);
     const message = { ...messageData, _id: result.insertedId } as PushMessage;
 
-    await this.sendPushNotification(result.insertedId.toString(), title, content, [visitorId]);
-    await collection.updateOne(
-      { _id: result.insertedId },
-      { $set: { sentAt: now } }
-    );
-    message.sentAt = now;
+    if (hasDevices) {
+      await this.sendPushNotification(result.insertedId.toString(), title, content, [visitorId]);
+      await collection.updateOne(
+        { _id: result.insertedId },
+        { $set: { sentAt: now } }
+      );
+      message.sentAt = now;
+      console.log(`[Push] 反馈推送已发送：visitorId=${visitorId}, status=${newStatus}`);
+    } else {
+      console.log(`[Push] 反馈推送已记录但无可用设备: visitorId=${visitorId}`);
+    }
 
-    console.log(`[Push] 反馈推送已发送：visitorId=${visitorId}, status=${newStatus}`);
     return message;
   }
 

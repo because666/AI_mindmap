@@ -1,0 +1,22 @@
+# 修复模型配置列表与切换 - 验收清单
+
+- [ ] ModelConfig 类型定义完整（id/name/provider/modelId/apiKey/baseUrl/apiFormat/isCustom/description/isMultimodal）
+- [ ] Store 包含 savedConfigs 数组和 activeConfigId 字段
+- [ ] Store 包含 addSavedConfig/removeSavedConfig/setActiveConfigId/getActiveConfig/getAPIConfigFromActive 方法
+- [ ] temperature 作为全局参数独立于单个配置
+- [ ] 数据迁移：旧版 config + customModels 自动迁移为 savedConfigs
+- [ ] AddModelModal 保存时生成完整 ModelConfig 写入 savedConfigs
+- [ ] AddModelModal 保存后自动激活该配置
+- [ ] API配置面板展示模型配置列表（内置服务 + 已保存配置）
+- [ ] 内置服务选项始终存在且不可删除
+- [ ] 当前激活配置有高亮标识
+- [ ] 点击配置卡片可切换激活配置
+- [ ] 自定义配置卡片有删除按钮
+- [ ] 删除当前激活配置时自动切换回内置服务
+- [ ] chatService 从 activeConfig 读取配置
+- [ ] activeConfigId 为 null 时使用内置服务
+- [ ] 客户端构建无错误
+- [ ] 服务端构建无错误
+- [ ] 线上环境添加模型后能在列表中看到
+- [ ] 线上环境点击切换模型正常工作
+- [ ] 线上环境AI对话使用正确的模型配置

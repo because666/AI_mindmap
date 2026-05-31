@@ -1,7 +1,7 @@
 /**
  * AI服务提供商类型定义
  */
-export type AIProvider = 'zhipu' | 'openai' | 'anthropic';
+export type AIProvider = 'zhipu' | 'openai' | 'anthropic' | 'deepseek';
 
 /**
  * AI模型配置接口
@@ -12,6 +12,11 @@ export interface AIModel {
   provider: AIProvider;
   maxTokens: number;
   description: string;
+  isMultimodal?: boolean;
+  isPreset?: boolean;
+  apiFormat?: 'openai' | 'zhipu' | 'anthropic' | 'deepseek';
+  temperature?: number;
+  isCustom?: boolean;
 }
 
 /**
@@ -22,6 +27,23 @@ export interface APIConfig {
   modelId: string;
   apiKey: string;
   baseUrl?: string;
+  temperature: number;
+}
+
+/**
+ * 模型配置接口（完整持久化的模型配置项）
+ */
+export interface ModelConfig {
+  id: string;
+  name: string;
+  provider: AIProvider;
+  modelId: string;
+  apiKey: string;
+  baseUrl?: string;
+  apiFormat?: 'openai' | 'zhipu' | 'anthropic' | 'deepseek';
+  isCustom?: boolean;
+  description?: string;
+  isMultimodal?: boolean;
 }
 
 /**

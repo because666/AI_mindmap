@@ -197,6 +197,7 @@ router.post('/', async (req: Request, res: Response) => {
     }
 
     try {
+      console.log('[Feedback] 准备写入反馈数据, isConnected:', mongoDBService.isConnected());
       const insertedId = await mongoDBService.insertOne('feedbacks', {
         title: safeTitle,
         description: safeDescription,
@@ -207,11 +208,13 @@ router.post('/', async (req: Request, res: Response) => {
         status: 'pending',
         createdAt: new Date(),
       });
-      if (!insertedId) {
-        console.error('[Feedback] 反馈数据存储失败：数据库连接不可用');
+      if (insertedId) {
+        console.log('[Feedback] 反馈数据已存储:', insertedId);
+      } else {
+        console.error('[Feedback] 反馈数据存储失败: 数据库连接不可用, isConnected:', mongoDBService.isConnected());
       }
     } catch (dbError) {
-      console.error('[Feedback] 反馈数据存储失败:', dbError instanceof Error ? dbError.message : String(dbError));
+      console.error('[Feedback] 反馈数据存储异常:', dbError instanceof Error ? dbError.stack : String(dbError));
     }
 
     res.json({

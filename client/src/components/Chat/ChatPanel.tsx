@@ -1,15 +1,55 @@
 import React, { useState, useRef, useEffect, useMemo, useCallback } from 'react';
-import { Send, Loader2, Trash2, User, Bot, Sparkles, GitBranch, MessageSquare, Copy, Check, Plus, Brain, ChevronDown, ChevronUp, Paperclip, X, FileText, File, Image } from 'lucide-react';
+import { Send, Loader2, Trash2, User, Bot, Sparkles, GitBranch, MessageSquare, Copy, Check, Plus, Brain, ChevronDown, ChevronUp, Paperclip, X, FileText, File, Image, RefreshCw, Lightbulb } from 'lucide-react';
 import { useAppStore } from '../../stores/appStore';
 import { useAPIConfigStore } from '../../stores/apiConfigStore';
+import { useToastStore } from '../../stores/toastStore';
 import { chatService } from '../../services/chatService';
-import { fileApi } from '../../services/api';
+import { fileApi, conversationApi } from '../../services/api';
 import type { FileInfo } from '../../services/api';
 import useMobile from '../../hooks/useMobile';
+import useIsMobile from '../../hooks/useIsMobile';
 import type { StreamEvent } from '../../types';
 import MarkdownRenderer from './MarkdownRenderer';
 import MindMapThumbnail from './MindMapThumbnail';
 import ConfirmDialog from '../Common/ConfirmDialog';
+
+/**
+ * 估算文本的Token数量
+ * 采用通用估算方式：中文约1.5 token/字，英文约0.75 token/word
+ * 使用 Math.ceil(text.length * 0.7) 作为保守估算，实际Token数可能更少
+ * @param text - 需要估算的文本内容
+ * @returns 估算的Token数量
+ */
+function estimateTokens(text: string): number {
+  return Math.ceil(text.length * 1.2);
+}
+
+/**
+ * 模型上下文窗口大小映射
+ * 定义各AI模型支持的最大上下文Token数
+ */
+const MODEL_CONTEXT_WINDOWS: Record<string, number> = {
+  'glm-4': 8192,
+  'glm-4-flash': 8192,
+  'glm-4-plus': 128000,
+  'glm-4-long': 128000,
+  'deepseek-chat': 32768,
+  'deepseek-reasoner': 65536,
+  'deepseek-coder': 16384,
+  'gpt-4o': 128000,
+  'gpt-4o-mini': 128000,
+  'gpt-4-turbo': 128000,
+  'gpt-4': 8192,
+  'o1-preview': 128000,
+  'o1-mini': 128000,
+  'claude-3-5-sonnet': 200000,
+  'claude-3-opus': 200000,
+  'claude-3-haiku': 200000,
+  'qwen-plus': 32768,
+  'qwen-turbo': 8192,
+  'qwen-max': 8192,
+  'default': 8192
+};
 
 interface ChatPanelProps {
   nodeId?: string | null;
@@ -33,6 +73,7 @@ const MessageContent: React.FC<{
     try {
       await navigator.clipboard.writeText(content);
       setCopied(true);
+      useToastStore.getState().addToast('success', '已复制到剪贴板');
       setTimeout(() => setCopied(false), 2000);
     } catch (err) {
       console.error('复制失败:', err);
@@ -47,6 +88,7 @@ const MessageContent: React.FC<{
   const handleLongPress = (text: string) => {
     navigator.clipboard.writeText(text).then(() => {
       setCopied(true);
+      useToastStore.getState().addToast('success', '已复制到剪贴板');
       setTimeout(() => setCopied(false), 2000);
     }).catch((err: unknown) => {
       console.error('长按复制失败:', err);
@@ -162,6 +204,34 @@ const ThinkingProcess: React.FC<{
 };
 
 /**
+ * 上下文使用量指示器组件
+ * 在对话面板顶部显示上下文Token使用量的细进度条
+ * 颜色根据使用比例变化：<50% emerald，50-80% amber，>80% red
+ */
+const ContextUsageIndicator: React.FC<{
+  used: number;
+  limit: number;
+}> = ({ used, limit }) => {
+  const percentage = Math.min(100, Math.round((used / limit) * 100));
+  const barColor = percentage < 50
+    ? 'bg-emerald-400'
+    : percentage <= 80
+      ? 'bg-amber-400'
+      : 'bg-red-400';
+
+  return (
+    <div className="mt-1.5" title={`上下文: ${used}/${limit} tokens`}>
+      <div className="h-1 w-full bg-dark-700 rounded-full overflow-hidden">
+        <div
+          className={`h-full rounded-full transition-all duration-300 ${barColor}`}
+          style={{ width: `${percentage}%` }}
+        />
+      </div>
+    </div>
+  );
+};
+
+/**
  * 聊天面板组件 - 支持分支隔离上下文和流式传输
  * 包含快捷创建分支按钮，优化移动端操作体验
  */
@@ -175,11 +245,15 @@ const ChatPanel: React.FC<ChatPanelProps> = ({ nodeId }) => {
     clearConversation,
     getConversationContext,
     createChildNode,
+    createConclusionNode,
     selectNode,
     requestOpenChat,
+    updateNode,
+    markNodeManuallyTitled,
+    isNodeManuallyTitled,
   } = useAppStore();
-  const { config } = useAPIConfigStore();
   const { keepAwake, allowSleep, haptic } = useMobile();
+  const isMobile = useIsMobile();
   const [input, setInput] = useState('');
   const [isLoading, setIsLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
@@ -192,6 +266,8 @@ const ChatPanel: React.FC<ChatPanelProps> = ({ nodeId }) => {
   const [isUploading, setIsUploading] = useState(false);
   const [showFilePanel, setShowFilePanel] = useState(false);
   const [confirmDialogOpen, setConfirmDialogOpen] = useState(false);
+  const [isGeneratingTitle, setIsGeneratingTitle] = useState(false);
+  const [isExtractingConclusion, setIsExtractingConclusion] = useState(false);
   const messagesEndRef = useRef<HTMLDivElement>(null);
   const fileInputRef = useRef<HTMLInputElement>(null);
   const textareaRef = useRef<HTMLTextAreaElement>(null);
@@ -214,6 +290,15 @@ const ChatPanel: React.FC<ChatPanelProps> = ({ nodeId }) => {
   useEffect(() => {
     messagesEndRef.current?.scrollIntoView({ behavior: 'smooth' });
   }, [messages, streamingContent, streamingThinkingContent]);
+
+  useEffect(() => {
+    if (nodeId && !isMobile && textareaRef.current) {
+      const timer = setTimeout(() => {
+        textareaRef.current?.focus();
+      }, 100);
+      return () => clearTimeout(timer);
+    }
+  }, [nodeId, isMobile]);
 
   useEffect(() => {
     if (isLoading || streamingContent) {
@@ -356,13 +441,32 @@ const ChatPanel: React.FC<ChatPanelProps> = ({ nodeId }) => {
   }, [nodeId, node, getConversationContext]);
 
   /**
+   * 计算上下文Token使用量
+   * 根据当前对话上下文消息估算已使用的Token数和模型上下文窗口限制
+   * @returns 上下文使用信息，包含已用Token数和限制Token数；无对话时返回null
+   */
+  const contextUsage = useMemo(() => {
+    if (!nodeId || messages.length === 0) return null;
+
+    const activeConfig = useAPIConfigStore.getState().getActiveConfig();
+    const model = activeConfig?.modelId || 'default';
+    const limit = MODEL_CONTEXT_WINDOWS[model] || MODEL_CONTEXT_WINDOWS['default'];
+
+    const contextMessages = getConversationContext(nodeId);
+    const used = contextMessages.reduce((sum, msg) => sum + estimateTokens(msg.content), 0);
+
+    return { used, limit };
+  }, [nodeId, messages, getConversationContext]);
+
+  /**
    * 发送消息（流式传输）
    */
   const handleSend = async () => {
     if (!input.trim() || isLoading) return;
     haptic('light');
     
-    if (!config.apiKey && !hasBuiltInKey) {
+    const activeConfig = useAPIConfigStore.getState().getActiveConfig();
+    if (!activeConfig?.apiKey && !hasBuiltInKey) {
       setError('请先在设置中配置API密钥');
       return;
     }
@@ -380,6 +484,14 @@ const ChatPanel: React.FC<ChatPanelProps> = ({ nodeId }) => {
     setError(null);
     setStreamingContent('');
     setStreamingThinkingContent('');
+
+    const DEFAULT_TITLES = ['新对话', '新分支'];
+    if (nodeId && node && DEFAULT_TITLES.includes(node.title || '')) {
+      const autoTitle = userMessage.length > 15
+        ? userMessage.substring(0, 15) + '...'
+        : userMessage;
+      updateNode(nodeId, { title: autoTitle });
+    }
 
     let convId = node?.conversationId;
     if (!convId) {
@@ -423,7 +535,7 @@ const ChatPanel: React.FC<ChatPanelProps> = ({ nodeId }) => {
       }
     };
 
-    const result = await chatService.sendMessageStream(allMessages, config, handleStream, selectedFileIds.length > 0 ? selectedFileIds : undefined);
+    const result = await chatService.sendMessageStream(allMessages, handleStream, selectedFileIds.length > 0 ? selectedFileIds : undefined);
 
     setIsLoading(false);
     setStreamingContent('');
@@ -432,6 +544,22 @@ const ChatPanel: React.FC<ChatPanelProps> = ({ nodeId }) => {
 
     if (result.success && result.content) {
       addMessage(convId, { role: 'assistant', content: result.content });
+
+      const currentConv = useAppStore.getState().conversations.get(convId);
+      const userMsgCount = currentConv?.messages.filter((m) => m.role === 'user').length || 0;
+      const assistantMsgCount = currentConv?.messages.filter((m) => m.role === 'assistant').length || 0;
+
+      if (userMsgCount === 1 && assistantMsgCount === 1 && nodeId) {
+        const currentNode = useAppStore.getState().nodes.get(nodeId);
+        const isDefaultTitle = !currentNode?.title
+          || currentNode.title.includes('...')
+          || currentNode.title === '新对话'
+          || currentNode.title === '新分支';
+
+        if (isDefaultTitle && !isNodeManuallyTitled(nodeId)) {
+          handleGenerateTitle();
+        }
+      }
     } else if (!result.success) {
       if (result.sensitiveWords && result.sensitiveWords.length > 0) {
         setError(`消息包含敏感内容（${result.sensitiveWords.join('、')}），请修改后重试`);
@@ -490,6 +618,7 @@ const ChatPanel: React.FC<ChatPanelProps> = ({ nodeId }) => {
   const handleConfirmClear = () => {
     if (conversation?.id) {
       clearConversation(conversation.id);
+      useToastStore.getState().addToast('success', '对话已清空');
     }
     setConfirmDialogOpen(false);
   };
@@ -510,7 +639,8 @@ const ChatPanel: React.FC<ChatPanelProps> = ({ nodeId }) => {
     if (!text.trim() || isLoading) return;
     haptic('light');
 
-    if (!config.apiKey && !hasBuiltInKey) {
+    const activeConfigForText = useAPIConfigStore.getState().getActiveConfig();
+    if (!activeConfigForText?.apiKey && !hasBuiltInKey) {
       setError('请先在设置中配置API密钥');
       return;
     }
@@ -554,7 +684,7 @@ const ChatPanel: React.FC<ChatPanelProps> = ({ nodeId }) => {
       }
     };
 
-    const result = await chatService.sendMessageStream(allMessages, config, handleStream, selectedFileIds.length > 0 ? selectedFileIds : undefined);
+    const result = await chatService.sendMessageStream(allMessages, handleStream, selectedFileIds.length > 0 ? selectedFileIds : undefined);
 
     setIsLoading(false);
     setStreamingContent('');
@@ -563,6 +693,22 @@ const ChatPanel: React.FC<ChatPanelProps> = ({ nodeId }) => {
 
     if (result.success && result.content) {
       addMessage(convId, { role: 'assistant', content: result.content });
+
+      const currentConv = useAppStore.getState().conversations.get(convId);
+      const userMsgCount = currentConv?.messages.filter((m) => m.role === 'user').length || 0;
+      const assistantMsgCount = currentConv?.messages.filter((m) => m.role === 'assistant').length || 0;
+
+      if (userMsgCount === 1 && assistantMsgCount === 1 && nodeId) {
+        const currentNode = useAppStore.getState().nodes.get(nodeId);
+        const isDefaultTitle = !currentNode?.title
+          || currentNode.title.includes('...')
+          || currentNode.title === '新对话'
+          || currentNode.title === '新分支';
+
+        if (isDefaultTitle && !isNodeManuallyTitled(nodeId)) {
+          handleGenerateTitle();
+        }
+      }
     } else if (!result.success) {
       if (result.sensitiveWords && result.sensitiveWords.length > 0) {
         setError(`消息包含敏感内容（${result.sensitiveWords.join('、')}），请修改后重试`);
@@ -602,6 +748,74 @@ const ChatPanel: React.FC<ChatPanelProps> = ({ nodeId }) => {
   };
 
   /**
+   * 生成智能标题
+   * 根据当前对话消息调用AI生成精炼标题，更新节点标题
+   * @param force - 是否强制生成（忽略手动修改标记）
+   */
+  const handleGenerateTitle = useCallback(async (force: boolean = false) => {
+    if (!nodeId || !node || isGeneratingTitle) return;
+
+    if (!force && isNodeManuallyTitled(nodeId)) return;
+
+    const currentConversation = node.conversationId
+      ? conversations.get(node.conversationId)
+      : null;
+    const currentMessages = currentConversation?.messages || [];
+
+    if (currentMessages.length === 0) return;
+
+    setIsGeneratingTitle(true);
+    try {
+      const titleMessages = currentMessages
+        .filter((msg) => msg.role === 'user' || msg.role === 'assistant')
+        .map((msg) => ({ role: msg.role, content: msg.content }));
+
+      let parentNodeTitle: string | undefined;
+      if (node.parentIds.length > 0) {
+        const parentNode = nodes.get(node.parentIds[0]);
+        if (parentNode) {
+          parentNodeTitle = parentNode.title;
+        }
+      }
+
+      const generatedTitle = await conversationApi.generateTitle(titleMessages, parentNodeTitle);
+
+      if (generatedTitle && generatedTitle !== '新对话') {
+        updateNode(nodeId, { title: generatedTitle });
+      }
+    } catch (error: unknown) {
+      console.error('[ChatPanel] 生成标题失败:', error);
+    } finally {
+      setIsGeneratingTitle(false);
+    }
+  }, [nodeId, node, isGeneratingTitle, isNodeManuallyTitled, conversations, nodes, updateNode]);
+
+  /**
+   * 提炼结论处理
+   * 调用AI从当前对话中提炼核心结论，创建结论节点
+   */
+  const handleExtractConclusion = useCallback(async () => {
+    if (!nodeId || isExtractingConclusion) return;
+
+    setIsExtractingConclusion(true);
+    try {
+      const result = await conversationApi.extractConclusion(nodeId);
+
+      if (result.success && result.conclusion) {
+        createConclusionNode(nodeId, result.conclusion);
+        useToastStore.getState().addToast('success', '结论提炼成功');
+      } else {
+        useToastStore.getState().addToast('error', '结论提炼失败，请确保对话有足够内容');
+      }
+    } catch (error: unknown) {
+      console.error('[ChatPanel] 提炼结论失败:', error);
+      useToastStore.getState().addToast('error', '结论提炼失败，请稍后重试');
+    } finally {
+      setIsExtractingConclusion(false);
+    }
+  }, [nodeId, isExtractingConclusion, createConclusionNode]);
+
+  /**
    * 缩略图节点点击处理
    * 选中目标节点并请求打开其对话面板
    * @param targetNodeId - 目标节点ID
@@ -639,6 +853,21 @@ const ChatPanel: React.FC<ChatPanelProps> = ({ nodeId }) => {
           )}
           <span className="text-white font-medium truncate flex-1">{node?.title}</span>
           
+          {messages.length > 0 && (
+            <button
+              onClick={() => handleGenerateTitle(true)}
+              disabled={isGeneratingTitle}
+              className="p-1.5 text-dark-400 hover:text-primary-400 hover:bg-dark-700 rounded-xl transition-colors disabled:opacity-40 disabled:cursor-not-allowed"
+              title="重新生成标题"
+            >
+              {isGeneratingTitle ? (
+                <Loader2 className="w-3.5 h-3.5 animate-spin" />
+              ) : (
+                <RefreshCw className="w-3.5 h-3.5" />
+              )}
+            </button>
+          )}
+          
           {/* 快捷创建分支按钮 - 移动端核心优化 */}
           <button
             onClick={handleCreateBranch}
@@ -671,6 +900,9 @@ const ChatPanel: React.FC<ChatPanelProps> = ({ nodeId }) => {
               </span>
             )}
           </div>
+        )}
+        {contextUsage && (
+          <ContextUsageIndicator used={contextUsage.used} limit={contextUsage.limit} />
         )}
       </div>
 
@@ -792,6 +1024,24 @@ const ChatPanel: React.FC<ChatPanelProps> = ({ nodeId }) => {
         )}
         
         <div ref={messagesEndRef} />
+
+        {messages.length > 0 && (
+          <div className="flex justify-center pt-2">
+            <button
+              onClick={handleExtractConclusion}
+              disabled={isExtractingConclusion || isLoading}
+              className="flex items-center gap-1.5 px-3 py-1.5 bg-amber-600/15 border border-amber-500/30 text-amber-400 rounded-xl text-xs font-medium hover:bg-amber-600/25 hover:border-amber-500/50 active:scale-95 transition-all disabled:opacity-40 disabled:cursor-not-allowed"
+              title="提炼对话结论"
+            >
+              {isExtractingConclusion ? (
+                <Loader2 className="w-3.5 h-3.5 animate-spin" />
+              ) : (
+                <Lightbulb className="w-3.5 h-3.5" />
+              )}
+              <span>提炼结论</span>
+            </button>
+          </div>
+        )}
       </div>
 
       {/* 输入区域 */}

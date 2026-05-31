@@ -2,6 +2,7 @@ import React, { useState, useEffect } from 'react';
 import { X, Link2, Save, Info } from 'lucide-react';
 import { useAppStore, RELATION_TYPE_LABELS, type RelationType } from '../../stores/appStore';
 import type { NodeData } from '../../stores/appStore';
+import { useToastStore } from '../../stores/toastStore';
 import useIsMobile from '../../hooks/useIsMobile';
 
 interface RelationEditorProps {
@@ -37,12 +38,12 @@ const RelationEditor: React.FC<RelationEditorProps> = ({
 
   const handleSave = () => {
     if (!sourceId || !targetId) {
-      alert('请选择源节点和目标节点');
+      useToastStore.getState().addToast('warning', '请选择源节点和目标节点');
       return;
     }
 
     if (sourceId === targetId) {
-      alert('源节点和目标节点不能相同');
+      useToastStore.getState().addToast('warning', '源节点和目标节点不能相同');
       return;
     }
 

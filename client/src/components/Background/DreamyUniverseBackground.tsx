@@ -1,5 +1,6 @@
 import { useRef, useEffect } from 'react';
 import type { FC } from 'react';
+import { useUISettingsStore } from '../../stores/uiSettingsStore';
 
 /** 粒子对象结构 */
 interface Particle {
@@ -39,7 +40,10 @@ interface ConfigType {
   LINE_ALPHA_FACTOR: number;
   TRAIL_ALPHA: number;
   FPS_LOW_THRESHOLD: number;
-  FPS_CHECK_DURATION: number;
+  FPS_HIGH_THRESHOLD: number;
+  FPS_CHECK_INTERVAL: number;
+  FPS_LOW_TRIGGER_COUNT: number;
+  FPS_HIGH_TRIGGER_COUNT: number;
   COLOR_R: number;
   COLOR_G: number;
   COLOR_B: number;
@@ -69,7 +73,10 @@ const CONFIG: ConfigType = {
   LINE_ALPHA_FACTOR: 0.5,
   TRAIL_ALPHA: 0.15,
   FPS_LOW_THRESHOLD: 30,
-  FPS_CHECK_DURATION: 3000,
+  FPS_HIGH_THRESHOLD: 50,
+  FPS_CHECK_INTERVAL: 2000,
+  FPS_LOW_TRIGGER_COUNT: 3,
+  FPS_HIGH_TRIGGER_COUNT: 5,
   COLOR_R: 14,
   COLOR_G: 165,
   COLOR_B: 233,
@@ -92,9 +99,12 @@ const FLOW_COLORS: readonly { r: number; g: number; b: number }[] = [
 /**
  * 粒子网络背景组件
  * 使用 Canvas 2D 绘制粒子网络 + 流光渐变效果，支持鼠标交互排斥与 FPS 自动降级
+ * 性能模式下：粒子数量降至 1/3，禁用流光渐变动画，添加 data-performance-mode 属性
  */
 const ParticleNetworkBackground: FC = () => {
   const canvasRef = useRef<HTMLCanvasElement>(null);
+  const performanceMode = useUISettingsStore((state) => state.performanceMode);
+  const setPerformanceMode = useUISettingsStore((state) => state.setPerformanceMode);
 
   useEffect(() => {
     const canvas = canvasRef.current;
@@ -103,9 +113,12 @@ const ParticleNetworkBackground: FC = () => {
     if (!ctx) return;
 
     /** 当前粒子数量（可能因降级而减少） */
-    let currentParticleCount = CONFIG.PARTICLE_COUNT;
-    /** 是否已执行降级 */
-    let hasDegraded = false;
+    let currentParticleCount = performanceMode
+      ? Math.floor(CONFIG.PARTICLE_COUNT / 3)
+      : CONFIG.PARTICLE_COUNT;
+
+    /** 是否禁用流光渐变 */
+    let flowDisabled = performanceMode;
 
     /** 鼠标位置，初始在画布外 */
     const mouse = { x: -9999, y: -9999 };
@@ -119,11 +132,32 @@ const ParticleNetworkBackground: FC = () => {
     /** FPS 统计相关 */
     let fpsFrameCount = 0;
     let fpsLastTime = performance.now();
-    let fpsLowStartTime = 0;
-    let fpsIsLow = false;
+
+    /** 连续低 FPS 检测计数 */
+    let consecutiveLowFpsCount = 0;
+
+    /** 连续高 FPS 检测计数 */
+    let consecutiveHighFpsCount = 0;
+
+    /** 当前性能模式状态（本地缓存，避免频繁读取 store） */
+    let isPerformanceMode = performanceMode;
 
     /** 动画帧 ID，用于卸载时取消 */
     let animFrameId = 0;
+
+    /**
+     * 同步性能模式状态到 DOM 和本地变量
+     * @param enabled - 是否启用性能模式
+     */
+    const syncPerformanceMode = (enabled: boolean): void => {
+      isPerformanceMode = enabled;
+      flowDisabled = enabled;
+      if (enabled) {
+        document.documentElement.setAttribute('data-performance-mode', 'true');
+      } else {
+        document.documentElement.removeAttribute('data-performance-mode');
+      }
+    };
 
     /**
      * 设置 Canvas 像素尺寸为窗口尺寸
@@ -189,6 +223,7 @@ const ParticleNetworkBackground: FC = () => {
      * 更新流光位置，到达边界时反弹
      */
     const updateFlows = (): void => {
+      if (flowDisabled) return;
       for (let i = 0; i < flows.length; i++) {
         const f = flows[i];
         f.x += f.vx;
@@ -200,8 +235,10 @@ const ParticleNetworkBackground: FC = () => {
 
     /**
      * 绘制流光渐变效果，使用径向渐变叠加半透明色块
+     * 性能模式下跳过绘制
      */
     const drawFlowingGradients = (): void => {
+      if (flowDisabled) return;
       for (let i = 0; i < flows.length; i++) {
         const f = flows[i];
         const cx = f.x * canvas.width;
@@ -357,33 +394,49 @@ const ParticleNetworkBackground: FC = () => {
     };
 
     /**
-     * 更新 FPS 计数器，检测低帧率并执行自动降级
-     * 连续 3 秒低于 30fps 时将粒子数从 80 减为 40 并重新初始化
+     * 更新 FPS 计数器，每2秒计算一次平均 FPS
+     * 连续3次（6秒）平均 FPS < 30 时自动启用性能模式
+     * 连续5次（10秒）平均 FPS > 50 时自动禁用性能模式
      */
     const updateFps = (): void => {
       fpsFrameCount++;
       const now = performance.now();
       const elapsed = now - fpsLastTime;
 
-      if (elapsed >= 1000) {
+      if (elapsed >= CONFIG.FPS_CHECK_INTERVAL) {
         const currentFps = Math.round((fpsFrameCount * 1000) / elapsed);
         fpsFrameCount = 0;
         fpsLastTime = now;
 
         if (currentFps < CONFIG.FPS_LOW_THRESHOLD) {
-          if (!fpsIsLow) {
-            fpsIsLow = true;
-            fpsLowStartTime = now;
-          } else if (
-            now - fpsLowStartTime >= CONFIG.FPS_CHECK_DURATION &&
-            !hasDegraded
+          consecutiveLowFpsCount++;
+          consecutiveHighFpsCount = 0;
+
+          if (
+            consecutiveLowFpsCount >= CONFIG.FPS_LOW_TRIGGER_COUNT &&
+            !isPerformanceMode
           ) {
-            hasDegraded = true;
-            currentParticleCount = Math.floor(CONFIG.PARTICLE_COUNT / 2);
+            currentParticleCount = Math.floor(CONFIG.PARTICLE_COUNT / 3);
             initParticles();
+            syncPerformanceMode(true);
+            setPerformanceMode(true);
+          }
+        } else if (currentFps > CONFIG.FPS_HIGH_THRESHOLD) {
+          consecutiveHighFpsCount++;
+          consecutiveLowFpsCount = 0;
+
+          if (
+            consecutiveHighFpsCount >= CONFIG.FPS_HIGH_TRIGGER_COUNT &&
+            isPerformanceMode
+          ) {
+            currentParticleCount = CONFIG.PARTICLE_COUNT;
+            initParticles();
+            syncPerformanceMode(false);
+            setPerformanceMode(false);
           }
         } else {
-          fpsIsLow = false;
+          consecutiveLowFpsCount = 0;
+          consecutiveHighFpsCount = 0;
         }
       }
     };
@@ -432,6 +485,8 @@ const ParticleNetworkBackground: FC = () => {
       resizeCanvas();
     };
 
+    syncPerformanceMode(isPerformanceMode);
+
     window.addEventListener('mousemove', handleMouseMove);
     window.addEventListener('mouseout', handleMouseOut);
     window.addEventListener('resize', handleResize);
@@ -446,8 +501,9 @@ const ParticleNetworkBackground: FC = () => {
       window.removeEventListener('mousemove', handleMouseMove);
       window.removeEventListener('mouseout', handleMouseOut);
       window.removeEventListener('resize', handleResize);
+      document.documentElement.removeAttribute('data-performance-mode');
     };
-  }, []);
+  }, [performanceMode, setPerformanceMode]);
 
   return (
     <canvas

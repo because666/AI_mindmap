@@ -1,6 +1,17 @@
 import { Router, Request, Response } from 'express';
 import { dashboardService } from '../services/dashboardService';
 import { requireAuth } from '../middleware/auth';
+import { TrendData } from '../types';
+
+/**
+ * 趋势类型到 TrendData 字段的映射
+ */
+const TREND_TYPE_FIELD_MAP: Record<string, keyof Omit<TrendData, 'dates'>> = {
+  user_growth: 'visitors',
+  active_users: 'visitors',
+  workspace_activity: 'workspaces',
+  message_volume: 'conversations',
+};
 
 const router = Router();
 
@@ -37,8 +48,10 @@ router.get('/trends', requireAuth, async (req: Request, res: Response) => {
       return;
     }
 
-    const data = await dashboardService.getTrends(type, days);
-    res.json({ success: true, data });
+    const data = await dashboardService.getTrends(days);
+    const field = TREND_TYPE_FIELD_MAP[type];
+    const values = data[field];
+    res.json({ success: true, data: { dates: data.dates, values } });
   } catch (error) {
     console.error('获取趋势数据失败:', error);
     res.status(500).json({ success: false, error: '获取趋势数据失败' });

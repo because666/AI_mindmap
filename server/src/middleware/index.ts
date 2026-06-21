@@ -1,5 +1,6 @@
 import { Request, Response, NextFunction } from 'express';
 import rateLimit from 'express-rate-limit';
+import crypto from 'crypto';
 import { config } from '../config';
 import { workspaceService } from '../services/workspaceService';
 import { mongoDBService } from '../data/mongodb/connection';
@@ -84,13 +85,104 @@ async function updateVisitorIp(visitorId: string, ip: string): Promise<void> {
 }
 
 /**
+ * 访客签名有效期（5分钟）
+ * 时间戳与服务器当前时间差超过此值则认为签名过期
+ */
+const VISITOR_TOKEN_TTL_MS = 5 * 60 * 1000;
+
+/**
+ * 访客签名校验结果
+ */
+type VisitorSignatureResult =
+  | { valid: true }
+  | { valid: false; error: string; code: 'AUTH_FAILED' | 'AUTH_EXPIRED' | 'AUTH_MISSING' };
+
+/**
+ * 判断当前是否为开发环境（非生产环境）
+ * 开发环境允许无签名请求通过，便于本地调试
+ * @returns 是否为开发环境
+ */
+function isDevEnvironment(): boolean {
+  return process.env.NODE_ENV !== 'production';
+}
+
+/**
+ * 校验访客请求签名
+ * 使用 HMAC-SHA256 算法，以 visitorSecret 为密钥对 `${visitorId}:${timestamp}` 进行签名
+ * 校验规则：
+ * 1. 开发环境（NODE_ENV !== 'production'）允许无签名请求通过
+ * 2. 生产环境强制要求 X-Visitor-Token 和 X-Visitor-Ts
+ * 3. 时间戳与服务器时间差超过 5 分钟则认为过期
+ * 4. 使用 crypto.timingSafeEqual 防止时序攻击
+ * @param visitorId - 访客ID
+ * @param visitorSecret - 访客签名密钥
+ * @param token - 请求头中的 X-Visitor-Token（HMAC 签名 hex）
+ * @param ts - 请求头中的 X-Visitor-Ts（时间戳字符串）
+ * @returns 校验结果，valid 为 true 表示通过，否则包含错误信息
+ */
+function validateVisitorSignature(
+  visitorId: string,
+  visitorSecret: string,
+  token: string | undefined,
+  ts: string | undefined
+): VisitorSignatureResult {
+  // 开发环境无签名时放行，仅校验 visitorId 存在
+  if (isDevEnvironment() && (!token || !ts)) {
+    return { valid: true };
+  }
+
+  // 生产环境强制要求签名信息
+  if (!token || !ts) {
+    return { valid: false, error: '缺少认证信息', code: 'AUTH_MISSING' };
+  }
+
+  // 解析时间戳并校验新鲜度
+  const timestamp = parseInt(ts, 10);
+  if (Number.isNaN(timestamp)) {
+    return { valid: false, error: '缺少认证信息', code: 'AUTH_MISSING' };
+  }
+
+  const now = Date.now();
+  if (Math.abs(now - timestamp) >= VISITOR_TOKEN_TTL_MS) {
+    return { valid: false, error: '认证已过期', code: 'AUTH_EXPIRED' };
+  }
+
+  // 使用 HMAC-SHA256 计算期望签名
+  const expectedSignature = crypto
+    .createHmac('sha256', visitorSecret)
+    .update(`${visitorId}:${ts}`)
+    .digest('hex');
+
+  // 长度不一致直接失败，避免 timingSafeEqual 抛出异常
+  if (expectedSignature.length !== token.length) {
+    return { valid: false, error: '认证失败', code: 'AUTH_FAILED' };
+  }
+
+  // 使用 timingSafeEqual 防止时序攻击
+  try {
+    const expectedBuffer = Buffer.from(expectedSignature);
+    const providedBuffer = Buffer.from(token);
+    if (!crypto.timingSafeEqual(expectedBuffer, providedBuffer)) {
+      return { valid: false, error: '认证失败', code: 'AUTH_FAILED' };
+    }
+  } catch {
+    return { valid: false, error: '认证失败', code: 'AUTH_FAILED' };
+  }
+
+  return { valid: true };
+}
+
+/**
  * 访客鉴权中间件
  * 从请求头中获取 X-Visitor-Id，验证访客身份
  * 检查IP封禁状态（优先）和账号封禁状态
  * 更新访客IP记录
+ * 生产环境强制校验 HMAC-SHA256 签名（X-Visitor-Token + X-Visitor-Ts）
  */
 export const visitorAuth = async (req: Request, res: Response, next: NextFunction) => {
   const visitorId = req.headers['x-visitor-id'] as string;
+  const token = req.headers['x-visitor-token'] as string | undefined;
+  const ts = req.headers['x-visitor-ts'] as string | undefined;
   const clientIp = getClientIp(req);
 
   const ipBan = await checkIpBan(clientIp);
@@ -135,6 +227,16 @@ export const visitorAuth = async (req: Request, res: Response, next: NextFunctio
     }
   }
 
+  // 签名校验：需要 visitorSecret，若历史访客缺少密钥则视为无签名
+  const visitorSecret = visitor.visitorSecret || '';
+  const signatureResult = validateVisitorSignature(visitorId, visitorSecret, token, ts);
+  if (!signatureResult.valid) {
+    return res.status(401).json({
+      success: false,
+      error: signatureResult.error,
+    });
+  }
+
   req.visitorId = visitorId;
   req.clientIp = clientIp;
 
@@ -148,9 +250,12 @@ export const visitorAuth = async (req: Request, res: Response, next: NextFunctio
 /**
  * 可选访客鉴权中间件
  * 如果提供了 X-Visitor-Id 则验证，否则继续
+ * 当提供了访客标识时，生产环境同样强制校验签名，签名失败返回 401
  */
 export const optionalVisitorAuth = async (req: Request, res: Response, next: NextFunction) => {
   const visitorId = req.headers['x-visitor-id'] as string;
+  const token = req.headers['x-visitor-token'] as string | undefined;
+  const ts = req.headers['x-visitor-ts'] as string | undefined;
   const clientIp = getClientIp(req);
 
   const ipBan = await checkIpBan(clientIp);
@@ -169,6 +274,17 @@ export const optionalVisitorAuth = async (req: Request, res: Response, next: Nex
           return next();
         }
       }
+
+      // 签名校验：提供了 visitorId 时必须通过签名验证
+      const visitorSecret = visitor.visitorSecret || '';
+      const signatureResult = validateVisitorSignature(visitorId, visitorSecret, token, ts);
+      if (!signatureResult.valid) {
+        return res.status(401).json({
+          success: false,
+          error: signatureResult.error,
+        });
+      }
+
       req.visitorId = visitorId;
 
       updateVisitorIp(visitorId, clientIp).catch(err => {
@@ -327,8 +443,10 @@ export const requestLogger = (req: Request, res: Response, next: NextFunction) =
   const start = Date.now();
 
   res.on('finish', () => {
-    const duration = Date.now() - start;
-    console.log(`${req.method} ${req.path} - ${res.statusCode} (${duration}ms)`);
+    if (process.env.NODE_ENV !== 'production') {
+      const duration = Date.now() - start;
+      console.log(`${req.method} ${req.path} - ${res.statusCode} (${duration}ms)`);
+    }
   });
 
   next();

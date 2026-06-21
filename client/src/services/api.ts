@@ -1,4 +1,4 @@
-import axios from 'axios';
+import axios, { type InternalAxiosRequestConfig } from 'axios';
 import type { IWorkspace, IVisitor, WorkspaceType } from '../types';
 
 const getApiBaseUrl = () => {
@@ -17,16 +17,128 @@ const API_BASE_URL = getApiBaseUrl();
  * 获取本地存储的访客ID
  * @returns 访客ID或null
  */
-const getLocalVisitorId = (): string | null => {
+export const getLocalVisitorId = (): string | null => {
   return localStorage.getItem('visitorId');
+};
+
+/**
+ * 获取本地存储的访客签名密钥
+ * @returns 访客签名密钥或null
+ */
+export const getLocalVisitorSecret = (): string | null => {
+  return localStorage.getItem('visitorSecret');
+};
+
+/**
+ * 签名生成结果
+ */
+export interface VisitorTokenResult {
+  /** HMAC-SHA256 签名（hex 字符串） */
+  token: string;
+  /** 当前时间戳（毫秒，字符串形式） */
+  ts: string;
+}
+
+/**
+ * 生成访客请求签名
+ * 使用 Web Crypto API（crypto.subtle）计算 HMAC-SHA256 签名
+ * 签名内容为 `${visitorId}:${timestamp}`，密钥为 visitorSecret
+ * @param visitorId - 访客ID
+ * @param secret - 访客签名密钥（服务端注册时返回的 visitorSecret）
+ * @returns 签名结果，包含 token（hex 签名）和 ts（时间戳字符串）
+ * @throws 当 Web Crypto API 不可用或签名计算失败时抛出异常
+ */
+export const generateVisitorToken = async (
+  visitorId: string,
+  secret: string
+): Promise<VisitorTokenResult> => {
+  const ts = Date.now().toString();
+  const message = `${visitorId}:${ts}`;
+  const encoder = new TextEncoder();
+
+  // 导入 HMAC 密钥
+  const key = await crypto.subtle.importKey(
+    'raw',
+    encoder.encode(secret),
+    { name: 'HMAC', hash: 'SHA-256' },
+    false,
+    ['sign']
+  );
+
+  // 计算签名
+  const signatureBuffer = await crypto.subtle.sign(
+    'HMAC',
+    key,
+    encoder.encode(message)
+  );
+
+  // 将 ArrayBuffer 转换为 hex 字符串
+  const token = Array.from(new Uint8Array(signatureBuffer))
+    .map((byte) => byte.toString(16).padStart(2, '0'))
+    .join('');
+
+  return { token, ts };
 };
 
 /**
  * 获取本地存储的当前工作区ID
  * @returns 工作区ID或null
  */
-const getLocalWorkspaceId = (): string | null => {
+export const getLocalWorkspaceId = (): string | null => {
   return localStorage.getItem('currentWorkspaceId');
+};
+
+/**
+ * 获取服务端基础URL（不含 /api 前缀）
+ * 用于需要手动拼接 /api 路径的场景（如 fetch 发起的 SSE 流式请求）
+ * @returns 服务端基础URL，开发环境为 http://localhost:3001，生产环境为空字符串
+ */
+export const getServerBaseUrl = (): string => {
+  if (import.meta.env.VITE_API_URL) {
+    const url = import.meta.env.VITE_API_URL;
+    if (url.endsWith('/api')) {
+      return url.slice(0, -4);
+    }
+    return url;
+  }
+  if (import.meta.env.PROD) {
+    return '';
+  }
+  return 'http://localhost:3001';
+};
+
+/**
+ * 构建通用认证请求头（含访客ID、签名和工作区ID）
+ * 用于非 axios 的请求（如 fetch SSE 流式请求），确保请求头注入逻辑与 axios 拦截器一致
+ * @param acceptSSE - 是否添加 SSE Accept 头
+ * @returns Promise，resolve 为请求头对象，包含 Content-Type 和可选的 X-Visitor-Id、X-Visitor-Token、X-Visitor-Ts、X-Workspace-Id
+ */
+export const buildAuthHeaders = async (acceptSSE: boolean = false): Promise<Record<string, string>> => {
+  const headers: Record<string, string> = {
+    'Content-Type': 'application/json',
+  };
+  if (acceptSSE) {
+    headers['Accept'] = 'text/event-stream';
+  }
+  const visitorId = getLocalVisitorId();
+  if (visitorId) {
+    headers['X-Visitor-Id'] = visitorId;
+    const secret = getLocalVisitorSecret();
+    if (secret) {
+      try {
+        const { token, ts } = await generateVisitorToken(visitorId, secret);
+        headers['X-Visitor-Token'] = token;
+        headers['X-Visitor-Ts'] = ts;
+      } catch (err) {
+        console.error('生成访客签名失败:', err);
+      }
+    }
+  }
+  const workspaceId = getLocalWorkspaceId();
+  if (workspaceId) {
+    headers['X-Workspace-Id'] = workspaceId;
+  }
+  return headers;
 };
 
 const api = axios.create({
@@ -37,12 +149,23 @@ const api = axios.create({
 });
 
 /**
- * 请求拦截器：自动添加访客ID和工作区ID请求头
+ * 请求拦截器：自动添加访客ID、签名和工作区ID请求头
+ * 签名通过 Web Crypto API 异步生成，拦截器返回 Promise
  */
-api.interceptors.request.use((config) => {
+api.interceptors.request.use(async (config) => {
   const visitorId = getLocalVisitorId();
   if (visitorId) {
     config.headers['X-Visitor-Id'] = visitorId;
+    const secret = getLocalVisitorSecret();
+    if (secret) {
+      try {
+        const { token, ts } = await generateVisitorToken(visitorId, secret);
+        config.headers['X-Visitor-Token'] = token;
+        config.headers['X-Visitor-Ts'] = ts;
+      } catch (err) {
+        console.error('生成访客签名失败:', err);
+      }
+    }
   }
 
   const workspaceId = getLocalWorkspaceId();
@@ -74,13 +197,45 @@ export function isBannedOrClosedError(error: unknown): error is { response: { st
     (err?.response?.data?.code === 'BANNED' || err?.response?.data?.code === 'WORKSPACE_CLOSED' || err?.response?.data?.code === 'IP_BANNED');
 }
 
+/**
+ * 可重试的请求配置
+ * 扩展 axios 配置类型，增加 _retried 标记防止重复重试
+ */
+interface RetriableRequestConfig extends InternalAxiosRequestConfig {
+  _retried?: boolean;
+}
+
 api.interceptors.response.use(
   (response) => response.data,
-  (error) => {
+  async (error) => {
+    // 401 签名过期自动重试：重新生成签名并重试一次
+    const originalRequest = error.config as RetriableRequestConfig | undefined;
+    if (
+      error.response?.status === 401 &&
+      originalRequest &&
+      !originalRequest._retried &&
+      error.response?.data?.error === '认证已过期'
+    ) {
+      originalRequest._retried = true;
+      const visitorId = getLocalVisitorId();
+      const secret = getLocalVisitorSecret();
+      if (visitorId && secret) {
+        try {
+          const { token, ts } = await generateVisitorToken(visitorId, secret);
+          originalRequest.headers['X-Visitor-Token'] = token;
+          originalRequest.headers['X-Visitor-Ts'] = ts;
+          return api(originalRequest);
+        } catch (err) {
+          console.error('重试生成签名失败:', err);
+        }
+      }
+    }
+
     if (error.response?.status === 403) {
       const data = error.response.data as BannedError | undefined;
       if (data?.code === 'BANNED') {
         localStorage.removeItem('visitorId');
+        localStorage.removeItem('visitorSecret');
         window.dispatchEvent(new CustomEvent('auth:banned', {
           detail: { error: data.error, code: data.code }
         }));
@@ -286,8 +441,10 @@ export const conversationApi = {
    * @param parentNodeTitle - 父节点标题，用于保持语义连贯
    * @returns 生成的标题文本
    */
-  generateTitle: async (messages: Array<{ role: string; content: string }>, parentNodeTitle?: string): Promise<string> => {
-    const response = await api.post<{ success: boolean; title: string }>('/conversations/generate-title', { messages, parentNodeTitle });
+  generateTitle: async (messages: Array<{ role: string; content: string }>, parentNodeTitle?: string, language?: string): Promise<string> => {
+    const body: Record<string, unknown> = { messages, parentNodeTitle };
+    if (language) body.language = language;
+    const response = await api.post<{ success: boolean; title: string }>('/conversations/generate-title', body);
     return (response as unknown as { success: boolean; title: string }).title;
   },
 
@@ -297,10 +454,31 @@ export const conversationApi = {
    * @param nodeId - 节点ID
    * @returns 提炼结果，包含成功标志和结论文本
    */
-  extractConclusion: async (nodeId: string): Promise<{ success: boolean; conclusion: string }> => {
-    const response = await api.post<{ success: boolean; conclusion: string }>('/conversations/extract-conclusion', { nodeId });
+  extractConclusion: async (nodeId: string, language?: string): Promise<{ success: boolean; conclusion: string }> => {
+    const body: Record<string, unknown> = { nodeId };
+    if (language) body.language = language;
+    const response = await api.post<{ success: boolean; conclusion: string }>('/conversations/extract-conclusion', body);
     return (response as unknown as { success: boolean; conclusion: string });
   },
+
+  /**
+   * 分页查询对话消息
+   * 从独立 messages 集合查询，支持 cursor 分页加载更早的消息
+   * @param conversationId - 对话ID
+   * @param limit - 每页数量，默认50
+   * @param beforeTimestamp - cursor 分页游标，查询此时间之前的消息
+   * @returns 分页查询结果，包含消息列表和是否还有更多消息的标志
+   */
+  getConversationMessages: (conversationId: string, limit?: number, beforeTimestamp?: string) =>
+    api.get<{ success: boolean; data: { messages: MessageData[]; hasMore: boolean } }>(
+      `/conversations/${conversationId}/messages`,
+      {
+        params: {
+          ...(limit ? { limit } : {}),
+          ...(beforeTimestamp ? { beforeTimestamp } : {}),
+        },
+      }
+    ),
 };
 
 /**
@@ -405,5 +583,43 @@ export const fileApi = {
   delete: (fileId: string) =>
     api.delete<{ success: boolean }>(`/files/${fileId}`),
 };
+
+/**
+ * 功能开关可见性映射接口
+ * 键为功能开关键名，值为是否对当前用户可见
+ */
+export interface FeatureVisibility {
+  [key: string]: boolean;
+}
+
+/**
+ * 功能开关API
+ * 从 /api/features 获取当前用户的功能开关状态
+ */
+export const featuresApi = {
+  /**
+   * 获取当前用户可见的功能开关列表
+   * 根据请求者的 userId/IP/workspaceId 评估灰度规则
+   * @returns 功能开关可见性映射
+   */
+  fetchFeatures: (): Promise<FeatureVisibility> =>
+    api.get<{ success: boolean; data: FeatureVisibility }>('/features')
+      .then((res) => {
+        const data = res as unknown as { success: boolean; data: FeatureVisibility };
+        return data.data || {};
+      })
+      .catch((error: unknown) => {
+        console.error('获取功能开关失败:', error);
+        return {} as FeatureVisibility;
+      }),
+};
+
+/**
+ * 统一的 HTTP 客户端实例（axios）
+ * 已配置 baseURL、请求拦截器（自动注入 X-Visitor-Id、X-Workspace-Id）
+ * 和响应拦截器（返回 response.data、处理封禁状态）
+ * 其他 service 文件应复用此实例，避免重复配置 baseURL 和请求头注入逻辑
+ */
+export const httpClient = api;
 
 export default api;

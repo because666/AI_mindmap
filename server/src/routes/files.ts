@@ -3,7 +3,7 @@ import multer from 'multer';
 import path from 'path';
 import fs from 'fs';
 import { v4 as uuidv4 } from 'uuid';
-import { fileService } from '../services/fileService';
+import { fileService, verifyFileSignature } from '../services/fileService';
 import { workspaceMemberAuth } from '../middleware';
 
 const router = Router();
@@ -86,6 +86,14 @@ router.post('/upload', workspaceMemberAuth, upload.array('files', 10) as unknown
     const errors: Array<{ filename: string; error: string }> = [];
 
     for (const file of files) {
+      // 空文件直接拒绝
+      if (file.size === 0) {
+        if (fs.existsSync(file.path)) {
+          fs.unlinkSync(file.path);
+        }
+        return res.status(400).json({ success: false, error: '文件不能为空' });
+      }
+
       const ext = path.extname(file.originalname).toLowerCase();
       const mimeAllowed = ALLOWED_MIME_TYPES.includes(file.mimetype);
       const extAllowed = ALLOWED_EXTENSIONS.includes(ext);
@@ -97,6 +105,30 @@ router.post('/upload', workspaceMemberAuth, upload.array('files', 10) as unknown
         }
         errors.push({ filename: file.originalname, error: `不支持的文件类型: ${ext || file.mimetype}` });
         continue;
+      }
+
+      // 读取文件前 16 字节进行 magic bytes 校验
+      let fileHeader: Buffer;
+      try {
+        const fd = fs.openSync(file.path, 'r');
+        const headerBuffer = Buffer.alloc(16);
+        const bytesRead = fs.readSync(fd, headerBuffer, 0, 16, 0);
+        fs.closeSync(fd);
+        fileHeader = headerBuffer.subarray(0, bytesRead);
+      } catch (readError: unknown) {
+        if (fs.existsSync(file.path)) {
+          fs.unlinkSync(file.path);
+        }
+        const readMsg = readError instanceof Error ? readError.message : String(readError);
+        return res.status(500).json({ success: false, error: `文件读取失败: ${readMsg}` });
+      }
+
+      // 校验文件头与声明的 MIME 类型是否匹配
+      if (!verifyFileSignature(fileHeader, file.mimetype)) {
+        if (fs.existsSync(file.path)) {
+          fs.unlinkSync(file.path);
+        }
+        return res.status(415).json({ success: false, error: '文件类型不合法' });
       }
 
       const fileId = `file_${uuidv4()}`;

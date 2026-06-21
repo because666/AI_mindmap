@@ -1,59 +1,27 @@
 import React, { useState, useRef, useEffect, useMemo, useCallback } from 'react';
+import { useTranslation } from 'react-i18next';
+import i18n from 'i18next';
 import { Send, Loader2, Trash2, User, Bot, Sparkles, GitBranch, MessageSquare, Copy, Check, Plus, Brain, ChevronDown, ChevronUp, Paperclip, X, FileText, File, Image, RefreshCw, Lightbulb, AlertTriangle, Settings } from 'lucide-react';
 import { useAppStore } from '../../stores/appStore';
 import { useAPIConfigStore } from '../../stores/apiConfigStore';
 import { useToastStore } from '../../stores/toastStore';
 import { chatService } from '../../services/chatService';
-import { fileApi } from '../../services/api';
-import type { FileInfo } from '../../services/api';
+import { fileApi, conversationApi } from '../../services/api';
+import type { FileInfo, MessageData } from '../../services/api';
 import useMobile from '../../hooks/useMobile';
 import useIsMobile from '../../hooks/useIsMobile';
-import type { StreamEvent } from '../../types';
+import { useFeatures } from '../../hooks/useFeatures';
+import type { ConversationMessage, StreamEvent, ToolCall } from '../../types';
+import { executeTools } from '../../services/toolExecutor';
 import MarkdownRenderer from './MarkdownRenderer';
 import MindMapThumbnail from './MindMapThumbnail';
 import ConfirmDialog from '../Common/ConfirmDialog';
-
-/**
- * 估算文本的Token数量
- * 采用通用估算方式：中文约1.5 token/字，英文约0.75 token/word
- * 使用 Math.ceil(text.length * 0.7) 作为保守估算，实际Token数可能更少
- * @param text - 需要估算的文本内容
- * @returns 估算的Token数量
- */
-function estimateTokens(text: string): number {
-  return Math.ceil(text.length * 1.2);
-}
-
-/**
- * 模型上下文窗口大小映射
- * 定义各AI模型支持的最大上下文Token数
- */
-const MODEL_CONTEXT_WINDOWS: Record<string, number> = {
-  'glm-4': 8192,
-  'glm-4-flash': 8192,
-  'glm-4-plus': 128000,
-  'glm-4-long': 128000,
-  'deepseek-chat': 32768,
-  'deepseek-reasoner': 65536,
-  'deepseek-coder': 16384,
-  'gpt-4o': 128000,
-  'gpt-4o-mini': 128000,
-  'gpt-4-turbo': 128000,
-  'gpt-4': 8192,
-  'o1-preview': 128000,
-  'o1-mini': 128000,
-  'claude-3-5-sonnet': 200000,
-  'claude-3-opus': 200000,
-  'claude-3-haiku': 200000,
-  'qwen-plus': 32768,
-  'qwen-turbo': 8192,
-  'qwen-max': 8192,
-  'default': 8192
-};
+import { MODEL_CONTEXT_WINDOWS, estimateTokens } from '../../constants/modelContext';
 
 interface ChatPanelProps {
   nodeId?: string | null;
 }
+
 
 /**
  * 消息内容组件
@@ -65,6 +33,7 @@ const MessageContent: React.FC<{
   role: 'user' | 'assistant' | 'system';
 }> = ({ content, role }) => {
   const [copied, setCopied] = useState(false);
+  const { t } = useTranslation('chat');
 
   /**
    * 复制消息内容到剪贴板
@@ -73,7 +42,7 @@ const MessageContent: React.FC<{
     try {
       await navigator.clipboard.writeText(content);
       setCopied(true);
-      useToastStore.getState().addToast('success', '已复制到剪贴板');
+      useToastStore.getState().addToast('success', t('copiedToClipboard'));
       setTimeout(() => setCopied(false), 2000);
     } catch (err) {
       console.error('复制失败:', err);
@@ -88,7 +57,7 @@ const MessageContent: React.FC<{
   const handleLongPress = (text: string) => {
     navigator.clipboard.writeText(text).then(() => {
       setCopied(true);
-      useToastStore.getState().addToast('success', '已复制到剪贴板');
+      useToastStore.getState().addToast('success', t('copiedToClipboard'));
       setTimeout(() => setCopied(false), 2000);
     }).catch((err: unknown) => {
       console.error('长按复制失败:', err);
@@ -134,7 +103,7 @@ const MessageContent: React.FC<{
         onTouchStart={(e) => handleTouchStart(e, content)}
         onTouchEnd={handleTouchEnd}
         className="absolute top-0 right-0 p-1 opacity-70 md:opacity-0 md:group-hover:opacity-100 transition-opacity bg-dark-600 rounded-xl text-dark-400 hover:text-white"
-        title="复制内容"
+        title={t('copyContent')}
       >
         {copied ? <Check className="w-3.5 h-3.5 text-green-400" /> : <Copy className="w-3.5 h-3.5" />}
       </button>
@@ -144,15 +113,25 @@ const MessageContent: React.FC<{
 
 /**
  * 流式消息组件
- * 用于渲染正在生成的 AI 消息
+ * 流式阶段使用纯文本渲染以降低开销，流式结束后切换为Markdown渲染
+ * @param content - 消息内容文本
+ * @param isStreaming - 是否处于流式生成阶段
  */
 const StreamingMessage: React.FC<{
   content: string;
-}> = ({ content }) => {
+  isStreaming: boolean;
+}> = ({ content, isStreaming }) => {
+  if (isStreaming) {
+    return (
+      <div className="relative group">
+        <p className="whitespace-pre-wrap break-words text-sm leading-relaxed">{content}</p>
+        <span className="inline-block w-2 h-4 bg-primary-400 animate-pulse ml-0.5" />
+      </div>
+    );
+  }
   return (
     <div className="relative group">
       <MarkdownRenderer content={content} />
-      <span className="inline-block w-2 h-4 bg-primary-400 animate-pulse ml-0.5" />
     </div>
   );
 };
@@ -166,6 +145,7 @@ const ThinkingProcess: React.FC<{
   isStreaming?: boolean;
 }> = ({ content, isStreaming = false }) => {
   const [isExpanded, setIsExpanded] = useState(true);
+  const { t } = useTranslation('chat');
 
   if (!content) return null;
 
@@ -176,7 +156,7 @@ const ThinkingProcess: React.FC<{
         className="w-full flex items-center gap-2 px-3 py-2 text-xs font-medium text-dark-300 hover:text-primary-400 hover:bg-dark-700/50 transition-colors"
       >
         <Brain className="w-3.5 h-3.5 text-primary-400" />
-        <span>思考过程</span>
+        <span>{t('thinkingProcess')}</span>
         {isStreaming && (
           <span className="flex gap-1 ml-1">
             <span className="w-1 h-1 bg-primary-400 rounded-full animate-bounce" style={{ animationDelay: '0ms' }}></span>
@@ -213,6 +193,7 @@ const ContextUsageIndicator: React.FC<{
   limit: number;
 }> = ({ used, limit }) => {
   const percentage = Math.min(100, Math.round((used / limit) * 100));
+  const { t } = useTranslation('chat');
   const barColor = percentage < 50
     ? 'bg-emerald-400'
     : percentage <= 80
@@ -220,7 +201,7 @@ const ContextUsageIndicator: React.FC<{
       : 'bg-red-400';
 
   return (
-    <div className="mt-1.5" title={`上下文: ${used}/${limit} tokens`}>
+    <div className="mt-1.5" title={t('contextUsage', { used, limit })}>
       <div className="h-1 w-full bg-dark-700 rounded-full overflow-hidden">
         <div
           className={`h-full rounded-full transition-all duration-300 ${barColor}`}
@@ -241,6 +222,7 @@ const RateLimitGuide: React.FC<{
   onGoToConfig: () => void;
 }> = ({ onClose, onGoToConfig }) => {
   const [visible, setVisible] = useState(true);
+  const { t } = useTranslation('chat');
 
   useEffect(() => {
     const timer = setTimeout(() => {
@@ -258,14 +240,14 @@ const RateLimitGuide: React.FC<{
     >
       <AlertTriangle className="w-4 h-4 text-amber-400 flex-shrink-0" />
       <span className="text-sm text-amber-200 flex-1">
-        当前使用人数较多，配置自己的 API Key 可享受无限对话
+        {t('rateLimitGuide')}
       </span>
       <button
         onClick={onGoToConfig}
         className="flex items-center gap-1 px-3 py-1 bg-amber-600/30 hover:bg-amber-600/50 border border-amber-500/40 text-amber-300 rounded-lg text-xs font-medium transition-colors flex-shrink-0"
       >
         <Settings className="w-3 h-3" />
-        去配置
+        {t('goToConfig')}
       </button>
       <button
         onClick={() => {
@@ -298,11 +280,12 @@ const ChatPanel: React.FC<ChatPanelProps> = ({ nodeId }) => {
     selectNode,
     requestOpenChat,
     updateNode,
-    markNodeManuallyTitled,
     isNodeManuallyTitled,
   } = useAppStore();
+  const { t } = useTranslation('chat');
   const { keepAwake, allowSleep, haptic } = useMobile();
   const isMobile = useIsMobile();
+  const { isVisible: isFeatureVisible } = useFeatures();
   const [input, setInput] = useState('');
   const [isLoading, setIsLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
@@ -318,21 +301,34 @@ const ChatPanel: React.FC<ChatPanelProps> = ({ nodeId }) => {
   const [isGeneratingTitle, setIsGeneratingTitle] = useState(false);
   const [isExtractingConclusion, setIsExtractingConclusion] = useState(false);
   const [showRateLimitGuide, setShowRateLimitGuide] = useState(false);
+  const [isLoadingMore, setIsLoadingMore] = useState(false);
+  const [hasMoreMessages, setHasMoreMessages] = useState(false);
   const messagesEndRef = useRef<HTMLDivElement>(null);
+  const messagesContainerRef = useRef<HTMLDivElement>(null);
   const fileInputRef = useRef<HTMLInputElement>(null);
   const textareaRef = useRef<HTMLTextAreaElement>(null);
   const titleGenerationTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
   const conclusionTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+  const autoGeneratedTitleRef = useRef<string>('');
+  const streamBufferRef = useRef<string>('');
+  const displayedContentRef = useRef<string>('');
+  const thinkingBufferRef = useRef<string>('');
+  const displayedThinkingRef = useRef<string>('');
+  const animationFrameRef = useRef<number>(0);
+  /** 当前正在执行的工具调用列表 */
+  const [activeToolCalls, setActiveToolCalls] = useState<ToolCall[]>([]);
+  /** 工具执行结果列表（用于 UI 展示） */
+  const [toolResults, setToolResults] = useState<Array<{ name: string; success: boolean; message: string }>>([]);
 
   /**
    * 快捷提问建议列表
    * 与思维导图场景相关，引导用户快速开始对话
    */
   const quickSuggestions = [
-    '帮我分析这个主题的关键概念',
-    '生成子主题扩展思路',
-    '总结当前节点的核心要点',
-    '推荐相关联的知识方向',
+    t('analyzeKeyConcepts'),
+    t('expandSubTopics'),
+    t('summarizeCorePoints'),
+    t('suggestRelatedDirections'),
   ];
 
   const node = nodeId ? nodes.get(nodeId) : null;
@@ -367,6 +363,9 @@ const ChatPanel: React.FC<ChatPanelProps> = ({ nodeId }) => {
       }
       if (conclusionTimerRef.current) {
         clearTimeout(conclusionTimerRef.current);
+      }
+      if (animationFrameRef.current) {
+        cancelAnimationFrame(animationFrameRef.current);
       }
     };
   }, []);
@@ -425,7 +424,7 @@ const ChatPanel: React.FC<ChatPanelProps> = ({ nodeId }) => {
         await loadWorkspaceFiles();
       }
     } catch {
-      setError('文件上传失败，请重试');
+      setError(t('fileUploadFailed'));
     } finally {
       setIsUploading(false);
       if (fileInputRef.current) {
@@ -461,7 +460,7 @@ const ChatPanel: React.FC<ChatPanelProps> = ({ nodeId }) => {
       setSelectedFileIds(prev => prev.filter(id => id !== fileId));
       await loadWorkspaceFiles();
     } catch {
-      setError('删除文件失败');
+      setError(t('deleteFileFailed'));
     }
   };
 
@@ -522,43 +521,117 @@ const ChatPanel: React.FC<ChatPanelProps> = ({ nodeId }) => {
   }, [nodeId, messages, getConversationContext]);
 
   /**
-   * 发送消息（流式传输）
+   * 获取工具操作的中文标签
+   * @param toolName - 工具名称
+   * @returns 操作标签
    */
-  const handleSend = async () => {
-    if (!input.trim() || isLoading) return;
+  const getToolActionLabel = (toolName: string): string => {
+    const labels: Record<string, string> = {
+      create_node: '创建节点',
+      create_relation: '创建关系',
+      update_node: '编辑节点',
+      expand_node: '扩展节点',
+      get_mindmap_context: '获取导图结构',
+      get_node_detail: '获取节点详情',
+    };
+    return labels[toolName] || toolName;
+  };
+
+  /**
+   * 获取工具操作的详细描述
+   * @param toolName - 工具名称
+   * @returns 工具描述
+   */
+  const getToolDescription = (toolName: string): string => {
+    const descriptions: Record<string, string> = {
+      create_node: '正在思维导图中添加新节点',
+      create_relation: '正在建立节点之间的关联',
+      update_node: '正在修改节点内容',
+      expand_node: '正在生成子主题并布局',
+      get_mindmap_context: '正在分析导图结构',
+      get_node_detail: '正在读取节点详细信息',
+    };
+    return descriptions[toolName] || '正在执行操作';
+  };
+
+  /**
+   * 将缓冲区内容逐字符刷新到显示状态
+   * 使用 requestAnimationFrame 节流，每帧最多追加一定数量的字符
+   * 实现平滑的打字机效果
+   */
+  const flushBufferToDisplay = useCallback(() => {
+    const contentBuffer = streamBufferRef.current;
+    const thinkingBuffer = thinkingBufferRef.current;
+    let needsUpdate = false;
+
+    if (contentBuffer) {
+      const charsToFlush = Math.min(contentBuffer.length, 3);
+      const flushed = contentBuffer.slice(0, charsToFlush);
+      const remaining = contentBuffer.slice(charsToFlush);
+      streamBufferRef.current = remaining;
+      displayedContentRef.current += flushed;
+      needsUpdate = true;
+    }
+
+    if (thinkingBuffer) {
+      const charsToFlush = Math.min(thinkingBuffer.length, 5);
+      const flushed = thinkingBuffer.slice(0, charsToFlush);
+      const remaining = thinkingBuffer.slice(charsToFlush);
+      thinkingBufferRef.current = remaining;
+      displayedThinkingRef.current += flushed;
+      needsUpdate = true;
+    }
+
+    if (needsUpdate) {
+      setStreamingContent(displayedContentRef.current);
+      setStreamingThinkingContent(displayedThinkingRef.current);
+    }
+
+    if (streamBufferRef.current || thinkingBufferRef.current) {
+      animationFrameRef.current = requestAnimationFrame(flushBufferToDisplay);
+    }
+  }, []);
+
+  /**
+   * 发送消息内部方法（流式传输）- 客户端驱动模式
+   * 包含完整的发送逻辑：前置校验（apiKey、nodeId）、状态重置、上下文构建、
+   * 流式处理（handleStream 回调）、工具调用循环（MAX_TOOL_CALL_ROUNDS=5）、
+   * 清理逻辑、标题自动生成、错误处理、限流引导
+   * 当 AI 返回工具调用时，客户端执行工具后主动发起新的流式请求
+   * 循环直到 AI 不再返回工具调用或达到最大轮次
+   * @param userMessage - 已 trim 的用户消息内容，为空则直接返回
+   * @returns 无返回值，所有结果通过状态更新体现
+   */
+  const sendMessage = async (userMessage: string) => {
+    if (!userMessage || isLoading) return;
     haptic('light');
-    
+
     const activeConfig = useAPIConfigStore.getState().getActiveConfig();
     if (!activeConfig?.apiKey && !hasBuiltInKey) {
-      setError('请先在设置中配置API密钥');
+      setError(t('configureApiKeyFirst'));
       return;
     }
 
     if (!nodeId) {
-      setError('请先选择一个节点');
+      setError(t('selectNodeFirst'));
       return;
     }
 
-    const userMessage = input.trim();
     setInput('');
-    if (textareaRef.current) {
-      textareaRef.current.style.height = 'auto';
-    }
     setError(null);
     setStreamingContent('');
     setStreamingThinkingContent('');
+    streamBufferRef.current = '';
+    displayedContentRef.current = '';
+    thinkingBufferRef.current = '';
+    displayedThinkingRef.current = '';
+    // 重置工具调用状态
+    setActiveToolCalls([]);
+    setToolResults([]);
 
     if (titleGenerationTimerRef.current) {
       clearTimeout(titleGenerationTimerRef.current);
       titleGenerationTimerRef.current = null;
-    }
-
-    const DEFAULT_TITLES = ['新对话', '新分支'];
-    if (nodeId && node && DEFAULT_TITLES.includes(node.title || '')) {
-      const autoTitle = userMessage.length > 15
-        ? userMessage.substring(0, 15) + '...'
-        : userMessage;
-      updateNode(nodeId, { title: autoTitle });
     }
 
     let convId = node?.conversationId;
@@ -569,9 +642,9 @@ const ChatPanel: React.FC<ChatPanelProps> = ({ nodeId }) => {
     setIsLoading(true);
 
     const contextMessages = getConversationContext(nodeId);
-    
+
     addMessage(convId, { role: 'user', content: userMessage });
-    
+
     const allMessages = [
       ...contextMessages,
       { role: 'user' as const, content: userMessage }
@@ -586,36 +659,146 @@ const ChatPanel: React.FC<ChatPanelProps> = ({ nodeId }) => {
       if (fileContextParts.length > 0) {
         allMessages.push({
           role: 'system' as const,
-          content: `[用户引用了以下文件: ${fileContextParts.join(', ')}，请在回答时参考这些文件内容]`
+          content: t('fileReferenced', { files: fileContextParts.join(', ') })
         });
       }
     }
 
+    /**
+     * 流式回调函数（同步，仅处理内容/思考/错误事件）
+     * 工具调用不再在回调中执行，由外部循环控制
+     */
     const handleStream = (event: StreamEvent) => {
-      if (event.type === 'content' && event.fullContent) {
-        setStreamingContent(event.fullContent);
-      } else if (event.type === 'thinking' && event.fullThinkingContent) {
-        setStreamingThinkingContent(event.fullThinkingContent);
+      if (event.type === 'content' && event.content) {
+        streamBufferRef.current += event.content;
+        if (!animationFrameRef.current) {
+          animationFrameRef.current = requestAnimationFrame(flushBufferToDisplay);
+        }
+      } else if (event.type === 'thinking' && event.thinkingContent) {
+        thinkingBufferRef.current += event.thinkingContent;
+        if (!animationFrameRef.current) {
+          animationFrameRef.current = requestAnimationFrame(flushBufferToDisplay);
+        }
       } else if (event.type === 'error') {
-        setError(event.error || '发送消息失败');
+        cancelAnimationFrame(animationFrameRef.current);
+        animationFrameRef.current = 0;
+        streamBufferRef.current = '';
+        displayedContentRef.current = '';
+        thinkingBufferRef.current = '';
+        displayedThinkingRef.current = '';
+        setError(event.error || t('sendMessageFailed'));
         setStreamingContent('');
         setStreamingThinkingContent('');
       }
     };
 
-    const result = await chatService.sendMessageStream(allMessages, handleStream, selectedFileIds.length > 0 ? selectedFileIds : undefined, {
-      onRateLimited: () => {
-        setShowRateLimitGuide(true);
-      }
-    });
+    // 客户端驱动的工具调用循环
+    const MAX_TOOL_CALL_ROUNDS = 5;
+    let toolCallRound = 0;
+    const currentMessages: ConversationMessage[] = [...allMessages];
+    let finalContent = '';
+    let hasError = false;
 
+    while (toolCallRound < MAX_TOOL_CALL_ROUNDS) {
+      // 重置流式缓冲区（每轮新请求前清空，但保留已显示的内容）
+      streamBufferRef.current = '';
+      displayedContentRef.current = '';
+      thinkingBufferRef.current = '';
+      displayedThinkingRef.current = '';
+      setStreamingContent('');
+      setStreamingThinkingContent('');
+
+      const result = await chatService.sendMessageStream(currentMessages, handleStream, selectedFileIds.length > 0 ? selectedFileIds : undefined, {
+        onRateLimited: () => {
+          setShowRateLimitGuide(true);
+        }
+      }, nodeId || undefined);
+
+      if (!result.success) {
+        // 请求失败，退出循环
+        if (result.sensitiveWords && result.sensitiveWords.length > 0) {
+          setError(t('sensitiveContentDetected', { words: result.sensitiveWords.join('、') }));
+        } else {
+          setError(result.error || t('sendMessageFailed'));
+        }
+        hasError = true;
+        break;
+      }
+
+      // 累积内容
+      finalContent = result.content || '';
+
+      // 检查是否有工具调用需要处理
+      if (result.toolCalls && result.toolCalls.length > 0 && result.toolCallPending) {
+        // 显示工具调用动画
+        setActiveToolCalls(result.toolCalls);
+
+        // 执行工具
+        try {
+          const toolExecutionResults = await executeTools(result.toolCalls);
+
+          // 更新工具结果状态
+          const resultDetails = result.toolCalls.map((tc, i) => {
+            const execResult = toolExecutionResults[i];
+            const parsedContent = execResult ? JSON.parse(execResult.content) as { success: boolean; message: string } : { success: false, message: '未知错误' };
+            return {
+              name: tc.name,
+              success: parsedContent.success,
+              message: parsedContent.message,
+            };
+          });
+          setToolResults(resultDetails);
+          setActiveToolCalls([]);
+
+          // 将 assistant 消息（含 tool_calls）和 tool 结果加入消息历史
+          currentMessages.push({
+            role: 'assistant',
+            content: result.content || '',
+            tool_calls: result.toolCalls,
+          });
+          for (const tr of toolExecutionResults) {
+            currentMessages.push({
+              role: 'tool',
+              content: tr.content,
+              tool_call_id: tr.tool_call_id,
+            });
+          }
+        } catch (error) {
+          console.error('工具执行失败:', error);
+          setActiveToolCalls([]);
+          setToolResults(result.toolCalls.map(tc => ({
+            name: tc.name,
+            success: false,
+            message: '工具执行异常',
+          })));
+          // 工具执行异常时退出循环
+          break;
+        }
+
+        toolCallRound++;
+      } else {
+        // 没有工具调用，退出循环
+        break;
+      }
+    }
+
+    // 清理动画帧和缓冲区
+    cancelAnimationFrame(animationFrameRef.current);
+    animationFrameRef.current = 0;
+    streamBufferRef.current = '';
+    displayedContentRef.current = '';
+    thinkingBufferRef.current = '';
+    displayedThinkingRef.current = '';
     setIsLoading(false);
     setStreamingContent('');
     setStreamingThinkingContent('');
     setSelectedFileIds([]);
+    // 重置工具调用状态
+    setActiveToolCalls([]);
+    setToolResults([]);
 
-    if (result.success && result.content) {
-      addMessage(convId, { role: 'assistant', content: result.content });
+    if (!hasError && finalContent) {
+      addMessage(convId, { role: 'assistant', content: finalContent });
 
       const currentConv = useAppStore.getState().conversations.get(convId);
       const userMsgCount = currentConv?.messages.filter((m) => m.role === 'user').length || 0;
@@ -625,8 +808,9 @@ const ChatPanel: React.FC<ChatPanelProps> = ({ nodeId }) => {
         const currentNode = useAppStore.getState().nodes.get(nodeId);
         const isDefaultTitle = !currentNode?.title
           || currentNode.title.includes('...')
-          || currentNode.title === '新对话'
-          || currentNode.title === '新分支';
+          || currentNode.title === t('newConversation')
+          || currentNode.title === t('newBranch')
+          || currentNode.title === autoGeneratedTitleRef.current;
 
         if (isDefaultTitle && !isNodeManuallyTitled(nodeId)) {
           titleGenerationTimerRef.current = setTimeout(() => {
@@ -634,13 +818,33 @@ const ChatPanel: React.FC<ChatPanelProps> = ({ nodeId }) => {
           }, 5000);
         }
       }
-    } else if (!result.success) {
-      if (result.sensitiveWords && result.sensitiveWords.length > 0) {
-        setError(`消息包含敏感内容（${result.sensitiveWords.join('、')}），请修改后重试`);
-      } else {
-        setError(result.error || '发送消息失败');
-      }
     }
+  };
+
+  /**
+   * 发送消息（流式传输）- 从输入框发送
+   * 读取输入框内容，清空输入框，处理默认标题自动设置，然后调用 sendMessage 发送
+   */
+  const handleSend = async () => {
+    if (!input.trim() || isLoading) return;
+
+    const userMessage = input.trim();
+    setInput('');
+    if (textareaRef.current) {
+      textareaRef.current.style.height = 'auto';
+    }
+
+    // 默认标题自动设置：当节点标题为默认值时，用用户消息前15字符作为临时标题
+    const DEFAULT_TITLES = [t('newConversation'), t('newBranch')];
+    if (nodeId && node && DEFAULT_TITLES.includes(node.title || '')) {
+      const autoTitle = userMessage.length > 15
+        ? userMessage.substring(0, 15) + '...'
+        : userMessage;
+      updateNode(nodeId, { title: autoTitle });
+      autoGeneratedTitleRef.current = autoTitle;
+    }
+
+    await sendMessage(userMessage);
   };
 
   /**
@@ -692,7 +896,7 @@ const ChatPanel: React.FC<ChatPanelProps> = ({ nodeId }) => {
   const handleConfirmClear = () => {
     if (conversation?.id) {
       clearConversation(conversation.id);
-      useToastStore.getState().addToast('success', '对话已清空');
+      useToastStore.getState().addToast('success', t('conversationCleared'));
     }
     setConfirmDialogOpen(false);
   };
@@ -706,101 +910,12 @@ const ChatPanel: React.FC<ChatPanelProps> = ({ nodeId }) => {
 
   /**
    * 使用指定文本发送消息
-   * 从快捷建议等场景调用，复用 handleSend 的核心逻辑
+   * 从快捷建议等场景调用，复用 sendMessage 内部逻辑
    * @param text - 要发送的文本内容
    */
   const handleSendWithText = async (text: string) => {
     if (!text.trim() || isLoading) return;
-    haptic('light');
-
-    const activeConfigForText = useAPIConfigStore.getState().getActiveConfig();
-    if (!activeConfigForText?.apiKey && !hasBuiltInKey) {
-      setError('请先在设置中配置API密钥');
-      return;
-    }
-
-    if (!nodeId) {
-      setError('请先选择一个节点');
-      return;
-    }
-
-    const userMessage = text.trim();
-    setInput('');
-    setError(null);
-    setStreamingContent('');
-    setStreamingThinkingContent('');
-
-    if (titleGenerationTimerRef.current) {
-      clearTimeout(titleGenerationTimerRef.current);
-      titleGenerationTimerRef.current = null;
-    }
-
-    let convId = node?.conversationId;
-    if (!convId) {
-      convId = addConversation(nodeId);
-    }
-
-    setIsLoading(true);
-
-    const contextMessages = getConversationContext(nodeId);
-
-    addMessage(convId, { role: 'user', content: userMessage });
-
-    const allMessages = [
-      ...contextMessages,
-      { role: 'user' as const, content: userMessage }
-    ];
-
-    const handleStream = (event: StreamEvent) => {
-      if (event.type === 'content' && event.fullContent) {
-        setStreamingContent(event.fullContent);
-      } else if (event.type === 'thinking' && event.fullThinkingContent) {
-        setStreamingThinkingContent(event.fullThinkingContent);
-      } else if (event.type === 'error') {
-        setError(event.error || '发送消息失败');
-        setStreamingContent('');
-        setStreamingThinkingContent('');
-      }
-    };
-
-    const result = await chatService.sendMessageStream(allMessages, handleStream, selectedFileIds.length > 0 ? selectedFileIds : undefined, {
-      onRateLimited: () => {
-        setShowRateLimitGuide(true);
-      }
-    });
-
-    setIsLoading(false);
-    setStreamingContent('');
-    setStreamingThinkingContent('');
-    setSelectedFileIds([]);
-
-    if (result.success && result.content) {
-      addMessage(convId, { role: 'assistant', content: result.content });
-
-      const currentConv = useAppStore.getState().conversations.get(convId);
-      const userMsgCount = currentConv?.messages.filter((m) => m.role === 'user').length || 0;
-      const assistantMsgCount = currentConv?.messages.filter((m) => m.role === 'assistant').length || 0;
-
-      if (userMsgCount === 1 && assistantMsgCount === 1 && nodeId) {
-        const currentNode = useAppStore.getState().nodes.get(nodeId);
-        const isDefaultTitle = !currentNode?.title
-          || currentNode.title.includes('...')
-          || currentNode.title === '新对话'
-          || currentNode.title === '新分支';
-
-        if (isDefaultTitle && !isNodeManuallyTitled(nodeId)) {
-          titleGenerationTimerRef.current = setTimeout(() => {
-            handleGenerateTitle();
-          }, 5000);
-        }
-      }
-    } else if (!result.success) {
-      if (result.sensitiveWords && result.sensitiveWords.length > 0) {
-        setError(`消息包含敏感内容（${result.sensitiveWords.join('、')}），请修改后重试`);
-      } else {
-        setError(result.error || '发送消息失败');
-      }
-    }
+    await sendMessage(text.trim());
   };
 
   /**
@@ -821,7 +936,7 @@ const ChatPanel: React.FC<ChatPanelProps> = ({ nodeId }) => {
     if (!nodeId || branchCreating) return;
     setBranchCreating(true);
     try {
-      const childId = createChildNode(nodeId, '新分支');
+      const childId = createChildNode(nodeId, t('newBranch'));
       if (childId) {
         selectNode(childId);
       }
@@ -838,12 +953,16 @@ const ChatPanel: React.FC<ChatPanelProps> = ({ nodeId }) => {
    * @param force - 是否强制生成（忽略手动修改标记）
    */
   const handleGenerateTitle = useCallback(async (force: boolean = false) => {
-    if (!nodeId || !node || isGeneratingTitle) return;
+    if (!nodeId || isGeneratingTitle) return;
 
     if (!force && isNodeManuallyTitled(nodeId)) return;
 
-    const currentConversation = node.conversationId
-      ? conversations.get(node.conversationId)
+    const currentState = useAppStore.getState();
+    const currentNode = currentState.nodes.get(nodeId);
+    if (!currentNode) return;
+
+    const currentConversation = currentNode.conversationId
+      ? currentState.conversations.get(currentNode.conversationId)
       : null;
     const currentMessages = currentConversation?.messages || [];
 
@@ -853,31 +972,50 @@ const ChatPanel: React.FC<ChatPanelProps> = ({ nodeId }) => {
     try {
       const titleMessages = currentMessages
         .filter((msg) => msg.role === 'user' || msg.role === 'assistant')
-        .map((msg) => ({ role: msg.role, content: msg.content }));
+        .map((msg) => ({ role: msg.role, content: msg.content.trim() }))
+        .filter((msg) => msg.content.length > 0);
+
+      const hasUserMessage = titleMessages.some((msg) => msg.role === 'user');
+      const hasAssistantMessage = titleMessages.some((msg) => msg.role === 'assistant');
+      if (!hasUserMessage || !hasAssistantMessage) {
+        if (force) {
+          useToastStore.getState().addToast('error', t('titleGenerationNeedsQA'));
+        }
+        return;
+      }
 
       let parentNodeTitle: string | undefined;
-      if (node.parentIds.length > 0) {
-        const parentNode = nodes.get(node.parentIds[0]);
+      if (currentNode.parentIds.length > 0) {
+        const parentNode = currentState.nodes.get(currentNode.parentIds[0]);
         if (parentNode) {
           parentNodeTitle = parentNode.title;
         }
       }
 
-      const titleResult = await chatService.generateTitleStream(titleMessages, parentNodeTitle);
+      const currentLanguage = i18n.language?.startsWith('en') ? 'en' : 'zh';
+      const titleResult = await chatService.generateTitleStream(titleMessages, parentNodeTitle, currentLanguage);
 
       if (titleResult.rateLimited) {
-        useToastStore.getState().addToast('error', '标题生成失败，稍后重试');
+        useToastStore.getState().addToast('error', titleResult.error || t('requestTooFrequent'));
       }
 
-      if (titleResult.title && titleResult.title !== '新对话') {
+      if (!titleResult.rateLimited && titleResult.error && force) {
+        useToastStore.getState().addToast('error', titleResult.error);
+      }
+
+      if (titleResult.title.trim() && titleResult.title !== t('newConversation')) {
         updateNode(nodeId, { title: titleResult.title });
+        autoGeneratedTitleRef.current = '';
       }
     } catch (error: unknown) {
       console.error('[ChatPanel] 生成标题失败:', error);
+      if (force) {
+        useToastStore.getState().addToast('error', t('titleGenerationFailed'));
+      }
     } finally {
       setIsGeneratingTitle(false);
     }
-  }, [nodeId, node, isGeneratingTitle, isNodeManuallyTitled, conversations, nodes, updateNode]);
+  }, [nodeId, isGeneratingTitle, isNodeManuallyTitled, updateNode, t]);
 
   /**
    * 提炼结论处理（流式）
@@ -896,24 +1034,41 @@ const ChatPanel: React.FC<ChatPanelProps> = ({ nodeId }) => {
     conclusionTimerRef.current = setTimeout(async () => {
       conclusionTimerRef.current = null;
       try {
-        const result = await chatService.extractConclusionStream(nodeId);
+        const currentNode = useAppStore.getState().nodes.get(nodeId);
+        const currentConversation = currentNode?.conversationId
+          ? useAppStore.getState().conversations.get(currentNode.conversationId)
+          : null;
+        const conclusionMessages = (currentConversation?.messages || [])
+          .filter((msg) => msg.role === 'user' || msg.role === 'assistant')
+          .map((msg) => ({ role: msg.role, content: msg.content.trim() }))
+          .filter((msg) => msg.content.length > 0);
+        const hasUserMessage = conclusionMessages.some((msg) => msg.role === 'user');
+        const hasAssistantMessage = conclusionMessages.some((msg) => msg.role === 'assistant');
+
+        if (!hasUserMessage || !hasAssistantMessage) {
+          useToastStore.getState().addToast('error', t('conclusionNeedsQA'));
+          return;
+        }
+
+        const currentLanguage = i18n.language?.startsWith('en') ? 'en' : 'zh';
+        const result = await chatService.extractConclusionStream(nodeId, conclusionMessages, currentLanguage);
 
         if (result.rateLimited) {
-          useToastStore.getState().addToast('error', '结论提炼失败，稍后重试');
+          useToastStore.getState().addToast('error', result.error || t('requestTooFrequent'));
         } else if (result.success && result.conclusion) {
           createConclusionNode(nodeId, result.conclusion);
-          useToastStore.getState().addToast('success', '结论提炼成功');
+          useToastStore.getState().addToast('success', t('conclusionExtractSuccess'));
         } else {
-          useToastStore.getState().addToast('error', '结论提炼失败，请确保对话有足够内容');
+          useToastStore.getState().addToast('error', result.error || t('conclusionExtractFailed'));
         }
       } catch (error: unknown) {
         console.error('[ChatPanel] 提炼结论失败:', error);
-        useToastStore.getState().addToast('error', '结论提炼失败，请稍后重试');
+        useToastStore.getState().addToast('error', t('conclusionExtractFailedRetry'));
       } finally {
         setIsExtractingConclusion(false);
       }
     }, 2000);
-  }, [nodeId, isExtractingConclusion, createConclusionNode]);
+  }, [nodeId, isExtractingConclusion, createConclusionNode, t]);
 
   /**
    * 缩略图节点点击处理
@@ -934,16 +1089,100 @@ const ChatPanel: React.FC<ChatPanelProps> = ({ nodeId }) => {
     window.dispatchEvent(new CustomEvent('settings:open-api'));
   }, []);
 
+  /**
+   * 加载更多历史消息
+   * 调用分页接口获取更早的消息，追加到现有消息列表前面
+   * 加载完成后恢复滚动位置，避免视觉跳动
+   */
+  const handleLoadMoreMessages = useCallback(async () => {
+    if (!conversation?.id || isLoadingMore || !hasMoreMessages) return;
+
+    setIsLoadingMore(true);
+    try {
+      const earliestTimestamp = messages.length > 0
+        ? new Date(messages[0].timestamp).toISOString()
+        : undefined;
+
+      const result = await conversationApi.getConversationMessages(
+        conversation.id,
+        50,
+        earliestTimestamp
+      ) as unknown as { success: boolean; data: { messages: MessageData[]; hasMore: boolean } };
+
+      if (result.success && result.data) {
+        const olderMessages = result.data.messages;
+        setHasMoreMessages(result.data.hasMore);
+
+        if (olderMessages.length > 0) {
+          const container = messagesContainerRef.current;
+          const previousScrollHeight = container?.scrollHeight || 0;
+
+          const formattedMessages: Array<{ _id: string; role: 'user' | 'assistant' | 'system'; content: string; timestamp: Date }> = olderMessages.map((msg: MessageData) => ({
+            _id: msg._id,
+            role: msg.role,
+            content: msg.content,
+            timestamp: new Date(msg.timestamp),
+          }));
+
+          const currentState = useAppStore.getState();
+          const currentConv = currentState.conversations.get(conversation.id);
+          if (currentConv) {
+            const mergedMessages = [...formattedMessages, ...currentConv.messages];
+            const newConversations = new Map(currentState.conversations);
+            newConversations.set(conversation.id, {
+              ...currentConv,
+              messages: mergedMessages,
+            });
+            useAppStore.setState({ conversations: newConversations });
+          }
+
+          requestAnimationFrame(() => {
+            if (container) {
+              const newScrollHeight = container.scrollHeight;
+              container.scrollTop = newScrollHeight - previousScrollHeight;
+            }
+          });
+        }
+      }
+    } catch (error: unknown) {
+      const errorMsg = error instanceof Error ? error.message : String(error);
+      console.error('[ChatPanel] 加载更多消息失败:', errorMsg);
+    } finally {
+      setIsLoadingMore(false);
+    }
+  }, [conversation?.id, isLoadingMore, hasMoreMessages, messages]);
+
+  /**
+   * 滚动事件处理
+   * 当用户滚动到消息列表顶部时，自动触发加载更多历史消息
+   */
+  const handleMessagesScroll = useCallback(() => {
+    const container = messagesContainerRef.current;
+    if (!container) return;
+
+    if (container.scrollTop <= 50 && hasMoreMessages && !isLoadingMore) {
+      handleLoadMoreMessages();
+    }
+  }, [hasMoreMessages, isLoadingMore, handleLoadMoreMessages]);
+
+  useEffect(() => {
+    if (conversation?.id && messages.length >= 50) {
+      setHasMoreMessages(true);
+    } else {
+      setHasMoreMessages(false);
+    }
+  }, [conversation?.id, messages.length]);
+
   if (!nodeId) {
     return (
-      <div className="h-full flex flex-col bg-dark-950/30 backdrop-blur-sm">
+      <div className="h-full w-full min-w-0 flex flex-col bg-dark-950/30 backdrop-blur-sm">
         <div className="flex-1 flex items-center justify-center">
           <div className="text-center text-dark-400 px-6">
             <div className="w-16 h-16 mx-auto mb-4 rounded-2xl bg-dark-700 flex items-center justify-center">
               <MessageSquare className="w-8 h-8 text-dark-500" />
             </div>
-            <p className="text-lg font-medium text-white mb-2">选择节点开始对话</p>
-            <p className="text-sm">点击画布上的节点，或创建新节点</p>
+            <p className="text-lg font-medium text-white mb-2">{t('selectNodeToChat')}</p>
+            <p className="text-sm">{t('clickNodeOrCreate')}</p>
           </div>
         </div>
       </div>
@@ -951,7 +1190,7 @@ const ChatPanel: React.FC<ChatPanelProps> = ({ nodeId }) => {
   }
 
   return (
-    <div className="h-full flex flex-col bg-dark-950/30 backdrop-blur-sm" data-testid="chat-panel-v2">
+    <div className="h-full w-full min-w-0 flex flex-col bg-dark-950/30 backdrop-blur-sm" data-testid="chat-panel-v2">
       {/* 节点信息头部 */}
       <div className="px-4 py-3 border-b border-dark-700/30">
         <div className="flex items-center gap-2">
@@ -967,7 +1206,7 @@ const ChatPanel: React.FC<ChatPanelProps> = ({ nodeId }) => {
               onClick={() => handleGenerateTitle(true)}
               disabled={isGeneratingTitle}
               className="p-1.5 text-dark-400 hover:text-primary-400 hover:bg-dark-700 rounded-xl transition-colors disabled:opacity-40 disabled:cursor-not-allowed"
-              title="重新生成标题"
+              title={t('regenerateTitle')}
             >
               {isGeneratingTitle ? (
                 <Loader2 className="w-3.5 h-3.5 animate-spin" />
@@ -982,20 +1221,20 @@ const ChatPanel: React.FC<ChatPanelProps> = ({ nodeId }) => {
             onClick={handleCreateBranch}
             disabled={branchCreating || !nodeId}
             className="flex items-center gap-1.5 px-3 py-1.5 bg-primary-600/15 border border-primary-500/30 text-primary-400 rounded-xl text-xs font-medium hover:bg-primary-600/25 hover:border-primary-500/50 active:scale-95 transition-all disabled:opacity-40 disabled:cursor-not-allowed"
-            title="从此节点创建分支"
+            title={t('createConversationBranch')}
           >
             {branchCreating ? (
               <Loader2 className="w-3.5 h-3.5 animate-spin" />
             ) : (
               <Plus className="w-3.5 h-3.5" />
             )}
-            <span>分支</span>
+            <span>{t('branchBtn')}</span>
           </button>
 
           <button
             onClick={handleClear}
             className="p-1.5 text-dark-200 hover:text-red-400 hover:bg-dark-700 rounded-xl transition-colors"
-            title="清空对话"
+            title={t('clearConversation')}
           >
             <Trash2 className="w-4 h-4" />
           </button>
@@ -1005,7 +1244,7 @@ const ChatPanel: React.FC<ChatPanelProps> = ({ nodeId }) => {
             {contextInfo.parentCount > 0 && (
               <span className="flex items-center gap-1 px-2 py-0.5 bg-dark-700 rounded-full">
                 <GitBranch className="w-3 h-3" />
-                继承 {contextInfo.parentCount} 个父节点
+                {t('inheritParentNodes', { count: contextInfo.parentCount })}
               </span>
             )}
           </div>
@@ -1016,7 +1255,37 @@ const ChatPanel: React.FC<ChatPanelProps> = ({ nodeId }) => {
       </div>
 
       {/* 消息列表 */}
-      <div className="flex-1 overflow-y-auto p-4 space-y-4 relative">
+      <div
+        ref={messagesContainerRef}
+        onScroll={handleMessagesScroll}
+        className="flex-1 overflow-y-auto p-4 space-y-4 relative"
+        style={{ scrollbarGutter: 'stable' }}
+      >
+        {/* 加载更多指示器 */}
+        {messages.length > 0 && hasMoreMessages && (
+          <div className="flex justify-center py-2">
+            <button
+              onClick={handleLoadMoreMessages}
+              disabled={isLoadingMore}
+              className="flex items-center gap-1.5 px-3 py-1.5 text-xs text-dark-400 hover:text-primary-400 bg-dark-800/50 hover:bg-dark-700/50 rounded-xl transition-colors disabled:opacity-50"
+            >
+              {isLoadingMore ? (
+                <>
+                  <Loader2 className="w-3.5 h-3.5 animate-spin" />
+                  <span>{t('loading', { ns: 'common' })}</span>
+                </>
+              ) : (
+                <span>{t('loadMoreMessages')}</span>
+              )}
+            </button>
+          </div>
+        )}
+        {isLoadingMore && messages.length === 0 && (
+          <div className="flex justify-center py-2">
+            <Loader2 className="w-3.5 h-3.5 animate-spin text-primary-400" />
+          </div>
+        )}
+
         {showRateLimitGuide && (
           <RateLimitGuide
             onClose={() => setShowRateLimitGuide(false)}
@@ -1033,16 +1302,21 @@ const ChatPanel: React.FC<ChatPanelProps> = ({ nodeId }) => {
         {messages.length === 0 && !streamingContent ? (
           <div className="text-center text-dark-400 py-8">
             <Sparkles className="w-12 h-12 mx-auto mb-3 opacity-50" />
-            <p className="text-lg font-medium text-white mb-1">开始与AI对话</p>
+            <p className="text-lg font-medium text-white mb-1">{t('startAiConversation')}</p>
             <p className="text-sm">
-              {node?.isRoot 
-                ? '这是一个根节点，对话将从这里开始'
-                : '对话将自动继承父节点的上下文'
+              {node?.isRoot
+                ? t('rootNodeConversation')
+                : t('inheritParentContext')
               }
             </p>
+            {!isFeatureVisible('sensitiveWordCheck') && (
+              <p className="text-xs text-amber-400/70 mt-2">
+                {t('sensitiveCheckDisabled')}
+              </p>
+            )}
             {contextInfo.parentCount > 0 && (
               <p className="text-xs text-primary-400 mt-2">
-                已继承 {contextInfo.parentCount} 个父节点的对话历史
+                {t('inheritedParentHistory', { count: contextInfo.parentCount })}
               </p>
             )}
             <div className="mt-4 space-y-2">
@@ -1064,7 +1338,7 @@ const ChatPanel: React.FC<ChatPanelProps> = ({ nodeId }) => {
               className="mt-4 inline-flex items-center gap-1.5 px-4 py-2 bg-primary-600/15 border border-primary-500/30 text-primary-400 rounded-xl text-sm font-medium hover:bg-primary-600/25 active:scale-95 transition-all"
             >
               <GitBranch className="w-4 h-4" />
-              <span>创建对话分支</span>
+              <span>{t('createConversationBranch')}</span>
             </button>
           </div>
         ) : (
@@ -1072,7 +1346,7 @@ const ChatPanel: React.FC<ChatPanelProps> = ({ nodeId }) => {
             {messages.map((message) => (
               <div
                 key={message._id}
-                className={`flex gap-3 ${message.role === 'user' ? 'flex-row-reverse' : ''}`}
+                className={`flex gap-3 w-full ${message.role === 'user' ? 'flex-row-reverse justify-start' : 'justify-start'}`}
               >
                 <div
                   className={`w-8 h-8 rounded-full flex items-center justify-center flex-shrink-0 ${
@@ -1093,7 +1367,7 @@ const ChatPanel: React.FC<ChatPanelProps> = ({ nodeId }) => {
                   }`}
                 >
                   <MessageContent content={message.content} role={message.role} />
-                  <div className="text-xs mt-1" style={{ color: '#64748b' }}>
+                  <div className="text-xs mt-1 text-dark-500">
                     {formatMessageTime(message.timestamp)}
                   </div>
                 </div>
@@ -1101,27 +1375,129 @@ const ChatPanel: React.FC<ChatPanelProps> = ({ nodeId }) => {
             ))}
             
             {streamingContent && (
-              <div className="flex gap-3">
+              <div className="flex gap-3 w-full justify-start">
                 <div className="w-8 h-8 rounded-full bg-dark-700 flex items-center justify-center">
                   <Bot className="w-4 h-4 text-primary-400" />
                 </div>
                 <div className="max-w-[85%] px-4 py-2.5 rounded-2xl bg-dark-700 text-white rounded-tl-sm">
                   <ThinkingProcess content={streamingThinkingContent} isStreaming={true} />
-                  <StreamingMessage content={streamingContent} />
+                  <StreamingMessage content={streamingContent} isStreaming={true} />
+                  {/* 工具调用状态展示 */}
+                  {activeToolCalls.length > 0 && (
+                    <div className="flex flex-col gap-2 mt-2">
+                      {activeToolCalls.map((tc, idx) => (
+                        <div
+                          key={tc.id}
+                          className="flex items-center gap-3 px-3 py-2.5 rounded-lg bg-primary-600/10 border border-primary-500/20"
+                        >
+                          {/* 脉冲动画图标 */}
+                          <div className="relative flex items-center justify-center">
+                            <div className="absolute w-5 h-5 rounded-full bg-primary-400/20 animate-ping" />
+                            <div className="relative w-3 h-3 rounded-full bg-primary-400 animate-pulse" />
+                          </div>
+                          <div className="flex flex-col">
+                            <span className="text-sm text-primary-300 font-medium">
+                              正在{getToolActionLabel(tc.name)}
+                            </span>
+                            <span className="text-xs text-dark-400 mt-0.5">
+                              {getToolDescription(tc.name)}
+                            </span>
+                          </div>
+                          {/* 进度点动画 */}
+                          <div className="ml-auto flex gap-1">
+                            {[0, 1, 2].map((i) => (
+                              <div
+                                key={i}
+                                className="w-1.5 h-1.5 rounded-full bg-primary-400"
+                                style={{
+                                  animation: 'pulse 1.4s ease-in-out infinite',
+                                  animationDelay: `${idx * 200 + i * 200}ms`,
+                                }}
+                              />
+                            ))}
+                          </div>
+                        </div>
+                      ))}
+                    </div>
+                  )}
+                  {/* 工具执行结果展示 */}
+                  {toolResults.length > 0 && activeToolCalls.length === 0 && (
+                    <div className="flex flex-col gap-1 mt-2">
+                      {toolResults.map((result, i) => (
+                        <div
+                          key={i}
+                          className={`flex items-center gap-2 px-3 py-1.5 rounded-lg text-sm animate-fade ${
+                            result.success
+                              ? 'bg-emerald-400/10 border border-emerald-400/20 text-emerald-300'
+                              : 'bg-red-400/10 border border-red-400/20 text-red-300'
+                          }`}
+                        >
+                          <span>{result.success ? '✓' : '✗'}</span>
+                          <span>{result.message}</span>
+                        </div>
+                      ))}
+                    </div>
+                  )}
+                </div>
+              </div>
+            )}
+
+            {/* 工具调用中但无流式文本时，独立展示工具调用状态 */}
+            {!streamingContent && activeToolCalls.length > 0 && (
+              <div className="flex gap-3 w-full justify-start">
+                <div className="w-8 h-8 rounded-full bg-dark-700 flex items-center justify-center">
+                  <Bot className="w-4 h-4 text-primary-400" />
+                </div>
+                <div className="max-w-[85%] px-4 py-2.5 rounded-2xl bg-dark-700 text-white rounded-tl-sm">
+                  <div className="flex flex-col gap-2">
+                    {activeToolCalls.map((tc, idx) => (
+                      <div
+                        key={tc.id}
+                        className="flex items-center gap-3 px-3 py-2.5 rounded-lg bg-primary-600/10 border border-primary-500/20"
+                      >
+                        {/* 脉冲动画图标 */}
+                        <div className="relative flex items-center justify-center">
+                          <div className="absolute w-5 h-5 rounded-full bg-primary-400/20 animate-ping" />
+                          <div className="relative w-3 h-3 rounded-full bg-primary-400 animate-pulse" />
+                        </div>
+                        <div className="flex flex-col">
+                          <span className="text-sm text-primary-300 font-medium">
+                            正在{getToolActionLabel(tc.name)}
+                          </span>
+                          <span className="text-xs text-dark-400 mt-0.5">
+                            {getToolDescription(tc.name)}
+                          </span>
+                        </div>
+                        {/* 进度点动画 */}
+                        <div className="ml-auto flex gap-1">
+                          {[0, 1, 2].map((i) => (
+                            <div
+                              key={i}
+                              className="w-1.5 h-1.5 rounded-full bg-primary-400"
+                              style={{
+                                animation: 'pulse 1.4s ease-in-out infinite',
+                                animationDelay: `${idx * 200 + i * 200}ms`,
+                              }}
+                            />
+                          ))}
+                        </div>
+                      </div>
+                    ))}
+                  </div>
                 </div>
               </div>
             )}
           </>
         )}
-        
-        {isLoading && !streamingContent && (
-          <div className="flex gap-3">
+
+        {isLoading && !streamingContent && activeToolCalls.length === 0 && (
+          <div className="flex gap-3 w-full justify-start">
             <div className="w-8 h-8 rounded-full bg-dark-700 flex items-center justify-center">
               <Loader2 className="w-4 h-4 text-primary-400 animate-spin" />
             </div>
             <div className="px-4 py-2.5 rounded-2xl bg-dark-700 text-dark-300 rounded-tl-sm">
               <div className="flex items-center gap-2">
-                <span className="text-sm">正在思考</span>
+                <span className="text-sm">{t('thinking')}</span>
                 <span className="flex gap-1">
                   <span className="w-1.5 h-1.5 bg-primary-400 rounded-full animate-bounce" style={{ animationDelay: '0ms' }}></span>
                   <span className="w-1.5 h-1.5 bg-primary-400 rounded-full animate-bounce" style={{ animationDelay: '150ms' }}></span>
@@ -1133,34 +1509,34 @@ const ChatPanel: React.FC<ChatPanelProps> = ({ nodeId }) => {
         )}
         
         {error && (
-          <div className="text-center text-red-400 text-sm py-2 px-4 bg-red-900/20 rounded-2xl">
+          <div className="w-full text-center text-red-400 text-sm py-2 px-4 bg-red-900/20 rounded-2xl">
             {error}
           </div>
         )}
         
         <div ref={messagesEndRef} />
 
-        {messages.length > 0 && (
+        {messages.length > 0 && isFeatureVisible('dataExport') && (
           <div className="flex justify-center pt-2">
             <button
               onClick={handleExtractConclusion}
               disabled={isExtractingConclusion || isLoading}
               className="flex items-center gap-1.5 px-3 py-1.5 bg-amber-600/15 border border-amber-500/30 text-amber-400 rounded-xl text-xs font-medium hover:bg-amber-600/25 hover:border-amber-500/50 active:scale-95 transition-all disabled:opacity-40 disabled:cursor-not-allowed"
-              title="提炼对话结论"
+              title={t('extractConclusion')}
             >
               {isExtractingConclusion ? (
                 <Loader2 className="w-3.5 h-3.5 animate-spin" />
               ) : (
                 <Lightbulb className="w-3.5 h-3.5" />
               )}
-              <span>提炼结论</span>
+              <span>{t('extractConclusion')}</span>
             </button>
           </div>
         )}
       </div>
 
       {/* 输入区域 */}
-      <div className="p-4 border-t border-dark-600/50 bg-dark-800/90 backdrop-blur-sm">
+      <div className="w-full p-4 border-t border-dark-600/50 bg-dark-800/90 backdrop-blur-sm">
         {/* 已选文件标签 */}
         {selectedFileIds.length > 0 && (
           <div className="flex flex-wrap gap-1.5 mb-2">
@@ -1198,7 +1574,7 @@ const ChatPanel: React.FC<ChatPanelProps> = ({ nodeId }) => {
             onClick={() => fileInputRef.current?.click()}
             disabled={isLoading || isUploading}
             className="btn-icon disabled:opacity-50"
-            title="上传文件"
+            title={t('uploadFile')}
           >
             {isUploading ? <Loader2 className="w-4 h-4 animate-spin" /> : <Paperclip className="w-4 h-4" />}
           </button>
@@ -1207,7 +1583,7 @@ const ChatPanel: React.FC<ChatPanelProps> = ({ nodeId }) => {
             value={input}
             onChange={handleInputChange}
             onKeyDown={handleKeyDown}
-            placeholder={selectedFileIds.length > 0 ? `已引用${selectedFileIds.length}个文件，输入问题...` : "输入消息... (Enter发送，Shift+Enter换行)"}
+            placeholder={selectedFileIds.length > 0 ? t('inputWithFilesPlaceholder', { count: selectedFileIds.length }) : t('inputPlaceholder')}
             rows={1}
             disabled={isLoading}
             className="input-field flex-1 resize-none overflow-y-auto disabled:opacity-50"
@@ -1215,7 +1591,7 @@ const ChatPanel: React.FC<ChatPanelProps> = ({ nodeId }) => {
           <button
             onClick={() => setShowFilePanel(!showFilePanel)}
             className={showFilePanel ? 'btn-icon bg-primary-600/20 border-primary-500/50 text-primary-400' : 'btn-icon'}
-            title="工作区文件"
+            title={t('workspaceFiles')}
           >
             <FileText className="w-4 h-4" />
           </button>
@@ -1228,7 +1604,7 @@ const ChatPanel: React.FC<ChatPanelProps> = ({ nodeId }) => {
           </button>
         </div>
         <p className="text-xs mt-2 text-center text-dark-500">
-          对话上下文将自动包含父节点历史 · 支持文件上传与AI分析
+          {t('contextAutoInclude')}
         </p>
       </div>
 
@@ -1237,17 +1613,17 @@ const ChatPanel: React.FC<ChatPanelProps> = ({ nodeId }) => {
         <div className="border-t border-dark-600/50 max-h-60 overflow-y-auto bg-dark-800/90 backdrop-blur-sm">
           <div className="p-3">
             <div className="flex items-center justify-between mb-2">
-              <h4 className="text-xs font-medium text-dark-300">工作区文件</h4>
+              <h4 className="text-xs font-medium text-dark-300">{t('workspaceFiles')}</h4>
               <button
                 onClick={() => fileInputRef.current?.click()}
                 disabled={isUploading}
                 className="text-xs text-primary-400 hover:text-primary-300 transition-colors"
               >
-                {isUploading ? '上传中...' : '+ 上传'}
+                {isUploading ? t('uploading') : t('upload')}
               </button>
             </div>
             {workspaceFiles.length === 0 ? (
-              <p className="text-xs text-dark-500 text-center py-3">暂无文件，点击上传或📎按钮添加</p>
+              <p className="text-xs text-dark-500 text-center py-3">{t('noFiles')}</p>
             ) : (
               <div className="space-y-1">
                 {workspaceFiles.map(file => (
@@ -1266,7 +1642,7 @@ const ChatPanel: React.FC<ChatPanelProps> = ({ nodeId }) => {
                     <button
                       onClick={(e) => { e.stopPropagation(); handleDeleteFile(file.id); }}
                       className="p-0.5 text-dark-500 hover:text-red-400 transition-colors"
-                      title="删除文件"
+                      title={t('deleteBtn', { ns: 'common' })}
                     >
                       <Trash2 className="w-3 h-3" />
                     </button>
@@ -1281,10 +1657,10 @@ const ChatPanel: React.FC<ChatPanelProps> = ({ nodeId }) => {
       {/* 清空对话确认弹窗 */}
       <ConfirmDialog
         isOpen={confirmDialogOpen}
-        title="清空对话"
-        message="确定要清空此对话吗？此操作不可撤销。"
-        confirmText="清空"
-        cancelText="取消"
+        title={t('clearConversationTitle')}
+        message={t('clearConversationMessage')}
+        confirmText={t('confirm', { ns: 'common' })}
+        cancelText={t('cancel', { ns: 'common' })}
         onConfirm={handleConfirmClear}
         onCancel={handleCancelClear}
       />

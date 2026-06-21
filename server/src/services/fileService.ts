@@ -32,6 +32,102 @@ const MAX_TEXT_LENGTH = 200000;
 const COLLECTION_NAME = 'workspace_files';
 
 /**
+ * 文件头 magic bytes 校验映射表
+ * 每项包含 MIME 类型与对应的文件头字节序列
+ */
+interface MagicBytesRule {
+  /** MIME 类型 */
+  mime: string;
+  /** 文件头 magic bytes（十六进制字节序列） */
+  signature: number[];
+}
+
+/**
+ * 已知文件类型的 magic bytes 规则列表
+ * 覆盖 JPEG、PNG、GIF、PDF 等具有固定文件头的类型
+ */
+const MAGIC_BYTES_RULES: MagicBytesRule[] = [
+  { mime: 'image/jpeg', signature: [0xff, 0xd8, 0xff] },
+  { mime: 'image/png', signature: [0x89, 0x50, 0x4e, 0x47, 0x0d, 0x0a, 0x1a, 0x0a] },
+  { mime: 'image/gif', signature: [0x47, 0x49, 0x46, 0x38] },
+  { mime: 'application/pdf', signature: [0x25, 0x50, 0x44, 0x46] },
+];
+
+/**
+ * 文本类 MIME 类型集合
+ * 这些类型无固定文件头，通过可打印文本检查进行校验
+ */
+const TEXT_MIME_TYPES: ReadonlySet<string> = new Set([
+  'text/plain',
+  'text/markdown',
+  'text/csv',
+  'text/html',
+  'text/xml',
+  'application/json',
+  'application/xml',
+  'application/javascript',
+  'application/typescript',
+  'application/x-yaml',
+]);
+
+/**
+ * 校验缓冲区内容是否为可打印文本
+ * 通过检查前 16 字节是否包含空字节或非法控制字符来判断
+ * @param buffer - 文件头字节缓冲区
+ * @returns 是否为可打印文本（true=是，false=否）
+ */
+function isPrintableText(buffer: Buffer): boolean {
+  if (buffer.length === 0) return false;
+  for (let i = 0; i < buffer.length; i++) {
+    const byte = buffer[i];
+    // 允许制表符、换行符、回车符
+    if (byte === 0x09 || byte === 0x0a || byte === 0x0d) continue;
+    // 允许可打印 ASCII 字符（0x20 - 0x7E）
+    if (byte >= 0x20 && byte <= 0x7e) continue;
+    // 允许 UTF-8 多字节序列的高位字节
+    if (byte >= 0x80) continue;
+    // 空字节或其他控制字符 → 判定为二进制文件
+    return false;
+  }
+  return true;
+}
+
+/**
+ * 校验文件 magic bytes 是否与声明的 MIME 类型匹配
+ * 读取 buffer 前 16 字节进行文件头校验，覆盖项目允许的文件类型：
+ * - JPEG（FF D8 FF）、PNG（89 50 4E 47...）、GIF（47 49 46 38）、PDF（25 50 44 46）进行严格 magic bytes 匹配
+ * - 文本类文件（text/plain、text/markdown、application/json 等）检查是否为可打印文本
+ * - 其他类型（doc/docx/xls/xlsx 等）无简单可校验的文件头，允许通过
+ * @param buffer - 文件前 16 字节缓冲区
+ * @param declaredMime - 浏览器声明的 MIME 类型
+ * @returns 校验是否通过（true=通过，false=不通过）
+ */
+export function verifyFileSignature(buffer: Buffer, declaredMime: string): boolean {
+  // 空缓冲区直接拒绝
+  if (buffer.length === 0) return false;
+
+  // 检查是否有对应的 magic bytes 规则
+  const rule = MAGIC_BYTES_RULES.find((r) => r.mime === declaredMime);
+  if (rule) {
+    // 缓冲区长度不足，无法校验
+    if (buffer.length < rule.signature.length) return false;
+    // 逐字节比对文件头
+    for (let i = 0; i < rule.signature.length; i++) {
+      if (buffer[i] !== rule.signature[i]) return false;
+    }
+    return true;
+  }
+
+  // 文本类文件：检查是否为可打印文本
+  if (TEXT_MIME_TYPES.has(declaredMime)) {
+    return isPrintableText(buffer);
+  }
+
+  // 其他类型（doc/docx/xls/xlsx 等）无简单可校验的文件头，允许通过
+  return true;
+}
+
+/**
  * 文件服务类
  * 管理工作区文件的上传、存储、解析和检索
  */

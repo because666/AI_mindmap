@@ -1,5 +1,6 @@
 import { create } from 'zustand';
 import { persist } from 'zustand/middleware';
+import i18n from 'i18next';
 import type { IVisitor, IWorkspace, WorkspaceType } from '../types';
 import { visitorApi, workspaceApi } from '../services/api';
 import { useAppStore } from './appStore';
@@ -143,6 +144,18 @@ export const useVisitorWorkspaceStore = create<VisitorWorkspaceState>()(
             try {
               const result = await visitorApi.get(storedVisitorId) as unknown as { success: boolean; data: IVisitor };
               if (result.success && result.data) {
+                // 确保本地有 visitorSecret，没有则通过 register 接口获取
+                const storedSecret = localStorage.getItem('visitorSecret');
+                if (!storedSecret) {
+                  try {
+                    const regResult = await visitorApi.register(storedVisitorId) as unknown as { success: boolean; data: IVisitor };
+                    if (regResult.success && regResult.data?.visitorSecret) {
+                      localStorage.setItem('visitorSecret', regResult.data.visitorSecret);
+                    }
+                  } catch (regErr) {
+                    console.error('获取访客签名密钥失败:', regErr);
+                  }
+                }
                 set({ visitor: result.data, isInitialized: true });
                 await get().refreshWorkspaces();
 
@@ -158,16 +171,20 @@ export const useVisitorWorkspaceStore = create<VisitorWorkspaceState>()(
               }
             } catch {
               localStorage.removeItem('visitorId');
+              localStorage.removeItem('visitorSecret');
             }
           }
 
           const result = await visitorApi.register() as unknown as { success: boolean; data: IVisitor };
           if (result.success && result.data) {
             localStorage.setItem('visitorId', result.data.id);
+            if (result.data.visitorSecret) {
+              localStorage.setItem('visitorSecret', result.data.visitorSecret);
+            }
             set({ visitor: result.data, isInitialized: true, isLoading: false });
           }
         } catch (error: unknown) {
-          const message = error instanceof Error ? error.message : '初始化访客身份失败';
+          const message = error instanceof Error ? error.message : i18n.t('initVisitorFailed', { ns: 'workspace' });
           set({ error: message, isLoading: false });
         }
       },
@@ -179,10 +196,13 @@ export const useVisitorWorkspaceStore = create<VisitorWorkspaceState>()(
           const result = await visitorApi.register(storedVisitorId || undefined, nickname) as unknown as { success: boolean; data: IVisitor };
           if (result.success && result.data) {
             localStorage.setItem('visitorId', result.data.id);
+            if (result.data.visitorSecret) {
+              localStorage.setItem('visitorSecret', result.data.visitorSecret);
+            }
             set({ visitor: result.data, isLoading: false });
           }
         } catch (error: unknown) {
-          const message = error instanceof Error ? error.message : '注册访客失败';
+          const message = error instanceof Error ? error.message : i18n.t('registerVisitorFailed', { ns: 'workspace' });
           set({ error: message, isLoading: false });
         }
       },
@@ -194,10 +214,14 @@ export const useVisitorWorkspaceStore = create<VisitorWorkspaceState>()(
         try {
           const result = await visitorApi.register(visitor.id, nickname) as unknown as { success: boolean; data: IVisitor };
           if (result.success && result.data) {
+            // register 接口会返回 visitorSecret，同步更新本地存储
+            if (result.data.visitorSecret) {
+              localStorage.setItem('visitorSecret', result.data.visitorSecret);
+            }
             set({ visitor: result.data, isLoading: false });
           }
         } catch (error: unknown) {
-          const message = error instanceof Error ? error.message : '更新昵称失败';
+          const message = error instanceof Error ? error.message : i18n.t('updateNicknameFailed', { ns: 'workspace' });
           set({ error: message, isLoading: false });
         }
       },
@@ -219,7 +243,7 @@ export const useVisitorWorkspaceStore = create<VisitorWorkspaceState>()(
           set({ isLoading: false });
           return null;
         } catch (error: unknown) {
-          const message = error instanceof Error ? error.message : '创建工作区失败';
+          const message = error instanceof Error ? error.message : i18n.t('createWorkspaceFailed', { ns: 'workspace' });
           set({ error: message, isLoading: false });
           return null;
         }
@@ -234,10 +258,10 @@ export const useVisitorWorkspaceStore = create<VisitorWorkspaceState>()(
             set({ isLoading: false });
             return true;
           }
-          set({ error: result.error || '加入工作区失败', isLoading: false });
+          set({ error: result.error || i18n.t('joinWorkspaceFailed', { ns: 'workspace' }), isLoading: false });
           return false;
         } catch (error: unknown) {
-          const message = error instanceof Error ? error.message : '加入工作区失败';
+          const message = error instanceof Error ? error.message : i18n.t('joinWorkspaceFailed', { ns: 'workspace' });
           set({ error: message, isLoading: false });
           return false;
         }
@@ -256,10 +280,10 @@ export const useVisitorWorkspaceStore = create<VisitorWorkspaceState>()(
             set({ isLoading: false });
             return true;
           }
-          set({ error: result.error || '邀请码无效', isLoading: false });
+          set({ error: result.error || i18n.t('invalidInviteCode', { ns: 'workspace' }), isLoading: false });
           return false;
         } catch (error: unknown) {
-          const message = error instanceof Error ? error.message : '加入工作区失败';
+          const message = error instanceof Error ? error.message : i18n.t('joinWorkspaceFailed', { ns: 'workspace' });
           set({ error: message, isLoading: false });
           return false;
         }
@@ -295,10 +319,10 @@ export const useVisitorWorkspaceStore = create<VisitorWorkspaceState>()(
             }
             return true;
           }
-          set({ error: result.error || '离开工作区失败', isLoading: false });
+          set({ error: result.error || i18n.t('leaveWorkspaceFailed', { ns: 'workspace' }), isLoading: false });
           return false;
         } catch (error: unknown) {
-          const message = error instanceof Error ? error.message : '离开工作区失败';
+          const message = error instanceof Error ? error.message : i18n.t('leaveWorkspaceFailed', { ns: 'workspace' });
           set({ error: message, isLoading: false });
           return false;
         }
@@ -320,10 +344,10 @@ export const useVisitorWorkspaceStore = create<VisitorWorkspaceState>()(
             }
             return true;
           }
-          set({ error: result.error || '删除工作区失败', isLoading: false });
+          set({ error: result.error || i18n.t('deleteWorkspaceFailed', { ns: 'workspace' }), isLoading: false });
           return false;
         } catch (error: unknown) {
-          const message = error instanceof Error ? error.message : '删除工作区失败';
+          const message = error instanceof Error ? error.message : i18n.t('deleteWorkspaceFailed', { ns: 'workspace' });
           set({ error: message, isLoading: false });
           return false;
         }
@@ -349,10 +373,10 @@ export const useVisitorWorkspaceStore = create<VisitorWorkspaceState>()(
             set({ isLoading: false });
             return result.data.inviteCode;
           }
-          set({ error: result.error || '刷新邀请码失败', isLoading: false });
+          set({ error: result.error || i18n.t('refreshInviteCodeFailed', { ns: 'workspace' }), isLoading: false });
           return null;
         } catch (error: unknown) {
-          const message = error instanceof Error ? error.message : '刷新邀请码失败';
+          const message = error instanceof Error ? error.message : i18n.t('refreshInviteCodeFailed', { ns: 'workspace' });
           set({ error: message, isLoading: false });
           return null;
         }
@@ -394,10 +418,10 @@ export const useVisitorWorkspaceStore = create<VisitorWorkspaceState>()(
             set({ isLoading: false });
             return true;
           }
-          set({ error: result.error || '加入公开工作区失败', isLoading: false });
+          set({ error: result.error || i18n.t('joinPublicWorkspaceFailed', { ns: 'workspace' }), isLoading: false });
           return false;
         } catch (error: unknown) {
-          const message = error instanceof Error ? error.message : '加入公开工作区失败';
+          const message = error instanceof Error ? error.message : i18n.t('joinPublicWorkspaceFailed', { ns: 'workspace' });
           set({ error: message, isLoading: false });
           return false;
         }
@@ -419,10 +443,10 @@ export const useVisitorWorkspaceStore = create<VisitorWorkspaceState>()(
             set({ isLoading: false });
             return true;
           }
-          set({ error: result.error || '移除成员失败', isLoading: false });
+          set({ error: result.error || i18n.t('removeMemberFailed', { ns: 'workspace' }), isLoading: false });
           return false;
         } catch (error: unknown) {
-          const message = error instanceof Error ? error.message : '移除成员失败';
+          const message = error instanceof Error ? error.message : i18n.t('removeMemberFailed', { ns: 'workspace' });
           set({ error: message, isLoading: false });
           return false;
         }
@@ -444,10 +468,10 @@ export const useVisitorWorkspaceStore = create<VisitorWorkspaceState>()(
             set({ isLoading: false });
             return true;
           }
-          set({ error: result.error || '更新工作区失败', isLoading: false });
+          set({ error: result.error || i18n.t('updateWorkspaceFailed', { ns: 'workspace' }), isLoading: false });
           return false;
         } catch (error: unknown) {
-          const message = error instanceof Error ? error.message : '更新工作区失败';
+          const message = error instanceof Error ? error.message : i18n.t('updateWorkspaceFailed', { ns: 'workspace' });
           set({ error: message, isLoading: false });
           return false;
         }

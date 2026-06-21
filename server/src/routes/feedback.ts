@@ -180,7 +180,10 @@ router.post('/', async (req: Request, res: Response) => {
     const safeTitle = escapeHtml(title.trim());
     const safeDescription = escapeHtml(description.trim());
     const safeContact = contact ? escapeHtml(contact.trim()) : undefined;
-    const visitorId = (req.headers['x-visitor-id'] as string) || 'anonymous';
+    // 从请求头读取访客ID，原值用于日志追踪，入库前需转义防止存储型XSS
+    const rawVisitorId = (req.headers['x-visitor-id'] as string) || 'anonymous';
+    // 对 visitorId 进行HTML实体转义，防止存储型XSS攻击
+    const safeVisitorId = escapeHtml(rawVisitorId);
 
     const sent = await emailService.sendFeedbackEmail({
       title: safeTitle,
@@ -197,20 +200,20 @@ router.post('/', async (req: Request, res: Response) => {
     }
 
     try {
-      console.log('[Feedback] 准备写入反馈数据, isConnected:', mongoDBService.isConnected());
+      // 对 visitorIp 进行HTML实体转义，防止存储型XSS攻击
+      // 注意：clientIp 原值已用于限流判断，此处仅对入库值转义
+      const safeVisitorIp = escapeHtml(clientIp);
       const insertedId = await mongoDBService.insertOne('feedbacks', {
         title: safeTitle,
         description: safeDescription,
         type,
         contact: safeContact || '',
-        visitorIp: clientIp,
-        visitorId,
+        visitorIp: safeVisitorIp,
+        visitorId: safeVisitorId,
         status: 'pending',
         createdAt: new Date(),
       });
-      if (insertedId) {
-        console.log('[Feedback] 反馈数据已存储:', insertedId);
-      } else {
+      if (!insertedId) {
         console.error('[Feedback] 反馈数据存储失败: 数据库连接不可用, isConnected:', mongoDBService.isConnected());
       }
     } catch (dbError) {

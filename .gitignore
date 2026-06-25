@@ -44,3 +44,10 @@ coverage/
 
 # Local development
 *.local
+
+# Deployment secrets
+.secrets/
+.env.deploy
+
+# Deployment artifacts
+deploy.bundle

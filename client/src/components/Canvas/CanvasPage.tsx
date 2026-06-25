@@ -28,6 +28,8 @@ import { NodeContextMenu } from './NodeContextMenu';
 import useIsMobile from '../../hooks/useIsMobile';
 import { useLongPress } from '../../hooks/useLongPress';
 import useKeyboardShortcuts from '../../hooks/useKeyboardShortcuts';
+import { track, TRACK_EVENT_BRANCH_CREATED } from '../../services/tracker';
+import { getLocalWorkspaceId } from '../../services/api';
 
 /**
  * 关系类型颜色映射
@@ -527,13 +529,24 @@ const CanvasPageInner: React.FC = () => {
 
   /**
    * 创建子节点
+   * 点击工具栏"+ 分支"按钮触发，成功后上报分支创建事件
    */
   const handleCreateChildNode = useCallback(() => {
     if (!selectedNodeId) {
       return;
     }
-    
-    const id = createChildNode(selectedNodeId, t('newBranch'));
+
+    const branchTitle = t('newBranch');
+    const id = createChildNode(selectedNodeId, branchTitle);
+    if (id) {
+      // 上报手动创建分支事件
+      track(TRACK_EVENT_BRANCH_CREATED, {
+        nodeId: id,
+        parentId: selectedNodeId,
+        title: branchTitle,
+        workspaceId: getLocalWorkspaceId() || '',
+      });
+    }
     selectNode(id);
     requestOpenChat(id);
   }, [selectedNodeId, createChildNode, selectNode, requestOpenChat, t]);

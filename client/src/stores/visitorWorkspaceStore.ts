@@ -4,6 +4,7 @@ import i18n from 'i18next';
 import type { IVisitor, IWorkspace, WorkspaceType } from '../types';
 import { visitorApi, workspaceApi } from '../services/api';
 import { useAppStore } from './appStore';
+import { track, TRACK_EVENT_MAP_CREATED } from '../services/tracker';
 
 /**
  * 访客和工作区状态接口
@@ -237,6 +238,11 @@ export const useVisitorWorkspaceStore = create<VisitorWorkspaceState>()(
               workspaces: newWorkspaces,
               currentWorkspace: result.data,
               isLoading: false,
+            });
+            // 上报地图/工作区创建事件，当前业务中工作区即导图，mapId 复用 workspaceId
+            track(TRACK_EVENT_MAP_CREATED, {
+              workspaceId: result.data.id,
+              mapId: result.data.id,
             });
             return result.data;
           }

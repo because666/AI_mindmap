@@ -442,3 +442,69 @@ export interface AIProvider {
   /** 优先级，数值越小优先级越高 */
   priority: number;
 }
+
+/**
+ * 事件统计概览数据接口
+ */
+export interface EventOverviewData {
+  /** 事件总数量 */
+  total: number;
+  /** 今日事件数量 */
+  today: number;
+  /** 独立访客数量（按 visitorId 去重） */
+  uniqueVisitors: number;
+}
+
+/**
+ * 事件趋势数据接口
+ */
+export interface EventTrendData {
+  /** 日期字符串数组，格式 YYYY-MM-DD */
+  dates: string[];
+  /** 每日事件数量数组，与 dates 一一对应 */
+  values: number[];
+}
+
+/**
+ * 事件漏斗步骤接口
+ */
+export interface EventFunnelStep {
+  /** 步骤名称 */
+  name: string;
+  /** 该步骤触发的独立访客数 */
+  count: number;
+  /** 相对于第一步的转化率（百分比） */
+  rate: number;
+}
+
+/**
+ * 事件漏斗数据接口
+ */
+export interface EventFunnelData {
+  /** 漏斗步骤列表 */
+  steps: EventFunnelStep[];
+}
+
+/**
+ * 最近事件列表项接口
+ */
+export interface RecentEventItem {
+  /** 事件类型 */
+  eventType: string;
+  /** 访客唯一标识 */
+  visitorId?: string;
+  /** 工作区唯一标识 */
+  workspaceId?: string;
+  /** 节点唯一标识 */
+  nodeId?: string;
+  /** 脑图唯一标识 */
+  mapId?: string;
+  /** 事件附加载荷 */
+  payload?: Record<string, unknown>;
+  /** 事件发生时的页面 URL */
+  url?: string;
+  /** 客户端 User-Agent */
+  userAgent?: string;
+  /** 事件发生时间 */
+  timestamp: string;
+}

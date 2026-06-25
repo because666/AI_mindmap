@@ -10,8 +10,9 @@ import type { ConversationData } from './conversationStore';
 import type { AppState } from './appStore';
 import { useAppStore } from './appStore';
 import { generateId } from './storeUtils';
-import { nodeApi } from '../services/api';
+import { nodeApi, getLocalWorkspaceId } from '../services/api';
 import type { NodeData as ApiNodeData } from '../services/api';
+import { track, TRACK_EVENT_NODE_CREATED } from '../services/tracker';
 import i18n from 'i18next';
 
 /**
@@ -220,6 +221,13 @@ export const createNodeSlice = (set: SliceSet, get: SliceGet): NodeSlice => ({
       return { nodes: newNodes, selectedNodeId: id };
     });
 
+    // 上报节点创建事件（根节点）
+    track(TRACK_EVENT_NODE_CREATED, {
+      nodeId: id,
+      workspaceId: getLocalWorkspaceId() || '',
+      title: nodeTitle,
+    });
+
     nodeApi.create({
       id,
       title: nodeTitle,
@@ -350,6 +358,13 @@ export const createNodeSlice = (set: SliceSet, get: SliceGet): NodeSlice => ({
         relations: [...state.relations, newRelation],
         selectedNodeId: id
       };
+    });
+
+    // 上报节点创建事件（子节点/分支）
+    track(TRACK_EVENT_NODE_CREATED, {
+      nodeId: id,
+      workspaceId: getLocalWorkspaceId() || '',
+      title: nodeTitle,
     });
 
     nodeApi.createChild(parentId, nodeTitle, { id, position }).catch((error: unknown) => {
@@ -930,6 +945,13 @@ export const createNodeSlice = (set: SliceSet, get: SliceGet): NodeSlice => ({
       });
 
       return { nodes: newNodes };
+    });
+
+    // 上报节点创建事件（复合节点）
+    track(TRACK_EVENT_NODE_CREATED, {
+      nodeId: compositeId,
+      workspaceId: getLocalWorkspaceId() || '',
+      title,
     });
 
     nodeApi.create({

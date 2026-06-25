@@ -46,27 +46,27 @@
 
 ## 用户行为埋点
 
-- [ ] 前端埋点 SDK 实现（`tracker.ts`），支持 `track(eventType, payload)`
-- [ ] 埋点 SDK 支持批量上报，不阻塞用户操作
-- [ ] 后端 `POST /api/events` 接口实现
-- [ ] 事件存储到 admin MongoDB `events` 集合
-- [ ] `page_view` 事件已埋点
-- [ ] `node_created` 事件已埋点
-- [ ] `branch_created` 事件已埋点
+- [x] 前端埋点 SDK 实现（`tracker.ts`），支持 `track(eventType, payload)`
+- [x] 埋点 SDK 支持批量上报，不阻塞用户操作
+- [x] 后端 `POST /api/events` 接口实现
+- [x] 事件存储到 admin MongoDB `events` 集合
+- [x] `page_view` 事件已埋点
+- [x] `node_created` 事件已埋点
+- [x] `branch_created` 事件已埋点
 - [ ] `extension_direction_click` 事件已埋点
 - [ ] `summary_generated` 事件已埋点
-- [ ] `map_created` 事件已埋点
-- [ ] admin Dashboard 展示事件总量
-- [ ] admin Dashboard 展示 7 天事件趋势图
-- [ ] admin Dashboard 展示关键漏斗（注册 → 引导 → 地图 → 分支 → 摘要）
+- [x] `map_created` 事件已埋点
+- [x] admin Dashboard 展示事件总量
+- [x] admin Dashboard 展示 7 天事件趋势图
+- [x] admin Dashboard 展示关键漏斗（注册 → 引导 → 地图 → 分支 → 摘要）
 
 ## 代码质量
 
-- [ ] 所有新增函数、类、方法有 JSDoc 注释
-- [ ] 所有 TypeScript 代码无 `any` 类型
-- [ ] 异步操作有异常捕获与错误处理
-- [ ] 敏感信息通过环境变量读取
-- [ ] 埋点上报失败时静默处理，不影响用户操作
-- [ ] `npm run build` 通过（前后端）
-- [ ] 修改文件 ESLint 检查通过
-- [ ] 核心逻辑有单元测试（延伸方向解析、支线结束检测）
+- [x] 所有新增函数、类、方法有 JSDoc 注释
+- [x] 所有 TypeScript 代码无 `any` 类型
+- [x] 异步操作有异常捕获与错误处理
+- [x] 敏感信息通过环境变量读取
+- [x] 埋点上报失败时静默处理，不影响用户操作
+- [x] `npm run build` 通过（前后端）
+- [x] 修改文件 ESLint 检查通过
+- [x] 核心逻辑有单元测试（前端埋点 SDK、后端事件接口）

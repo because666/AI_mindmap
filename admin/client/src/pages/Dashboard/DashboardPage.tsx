@@ -1,7 +1,15 @@
 import React, { useState, useEffect } from 'react';
 import StatsCard from '../../components/StatsCard/StatsCard';
 import { dashboardApi } from '../../services/api';
-import type { DashboardStats, RetentionTrendData, ConversionFunnelData } from '../../types';
+import type {
+  DashboardStats,
+  RetentionTrendData,
+  ConversionFunnelData,
+  EventOverviewData,
+  EventTrendData,
+  EventFunnelData,
+  RecentEventItem,
+} from '../../types';
 import {
   LineChart, Line, XAxis, YAxis, CartesianGrid, Tooltip,
   ResponsiveContainer, Legend, BarChart, Bar, Cell,
@@ -55,24 +63,37 @@ const DashboardPage: React.FC = () => {
   const [trendData, setTrendData] = useState<Array<{ date: string; value: number }>>([]);
   const [retentionData, setRetentionData] = useState<RetentionTrendData | null>(null);
   const [funnelData, setFunnelData] = useState<ConversionFunnelData | null>(null);
+  const [eventOverview, setEventOverview] = useState<EventOverviewData | null>(null);
+  const [eventTrendData, setEventTrendData] = useState<Array<{ date: string; value: number }>>([]);
+  const [eventFunnelData, setEventFunnelData] = useState<EventFunnelData | null>(null);
+  const [recentEvents, setRecentEvents] = useState<RecentEventItem[]>([]);
+  const [eventType, setEventType] = useState<string>('');
   const [loading, setLoading] = useState(true);
 
   useEffect(() => {
     loadData();
   }, []);
 
+  useEffect(() => {
+    loadEventData();
+  }, [eventType]);
+
   /**
    * 加载大盘全部数据
-   * 并行请求统计指标、趋势数据、留存趋势、转化漏斗
+   * 并行请求统计指标、趋势数据、留存趋势、转化漏斗、事件概览、事件漏斗、最近事件
    */
   const loadData = async () => {
     try {
-      const [statsRes, trendRes, retentionRes, funnelRes] = await Promise.all([
-        dashboardApi.getStats(),
-        dashboardApi.getTrends('user_growth', 30),
-        dashboardApi.getRetentionTrends(30),
-        dashboardApi.getConversionFunnel(),
-      ]);
+      const [statsRes, trendRes, retentionRes, funnelRes, eventOverviewRes, eventFunnelRes, recentEventsRes] =
+        await Promise.all([
+          dashboardApi.getStats(),
+          dashboardApi.getTrends('user_growth', 30),
+          dashboardApi.getRetentionTrends(30),
+          dashboardApi.getConversionFunnel(),
+          dashboardApi.getEventOverview(),
+          dashboardApi.getEventFunnel(),
+          dashboardApi.getRecentEvents(20),
+        ]);
       setStats(statsRes.data.data as DashboardStats);
       const trend = trendRes.data.data as { dates: string[]; values: number[] };
       if (trend) {
@@ -89,11 +110,49 @@ const DashboardPage: React.FC = () => {
       if (funnelRes.data.data) {
         setFunnelData(funnelRes.data.data as ConversionFunnelData);
       }
+      if (eventOverviewRes.data.data) {
+        setEventOverview(eventOverviewRes.data.data as EventOverviewData);
+      }
+      if (eventFunnelRes.data.data) {
+        setEventFunnelData(eventFunnelRes.data.data as EventFunnelData);
+      }
+      if (recentEventsRes.data.data) {
+        setRecentEvents(recentEventsRes.data.data as RecentEventItem[]);
+      }
     } catch (error) {
       console.error('加载大盘数据失败:', error);
     } finally {
       setLoading(false);
     }
+  };
+
+  /**
+   * 加载事件趋势数据
+   * 根据当前选中的事件类型筛选，默认统计全部事件
+   */
+  const loadEventData = async () => {
+    try {
+      const trendRes = await dashboardApi.getEventTrend(7, eventType);
+      const trend = trendRes.data.data as EventTrendData;
+      if (trend) {
+        setEventTrendData(
+          trend.dates.map((date, i) => ({
+            date: date.substring(5),
+            value: trend.values[i],
+          }))
+        );
+      }
+    } catch (error) {
+      console.error('加载事件趋势数据失败:', error);
+    }
+  };
+
+  /**
+   * 处理事件类型筛选变化
+   * @param e - select 元素的 change 事件
+   */
+  const handleEventTypeChange = (e: React.ChangeEvent<HTMLSelectElement>) => {
+    setEventType(e.target.value);
   };
 
   if (loading) {
@@ -265,6 +324,127 @@ const DashboardPage: React.FC = () => {
               ))}
             </div>
           </div>
+        </div>
+      )}
+
+      {eventOverview && (
+        <div className="mt-6">
+          <h2 className="text-lg font-bold text-gray-800 mb-4">用户行为事件</h2>
+
+          <div className="grid grid-cols-2 md:grid-cols-3 gap-4 mb-6">
+            <StatsCard title="总事件数" value={eventOverview.total} icon="messages" color="blue" />
+            <StatsCard title="今日事件" value={eventOverview.today} icon="trend-up" color="green" />
+            <StatsCard title="独立访客" value={eventOverview.uniqueVisitors} icon="users" color="purple" />
+          </div>
+
+          <div className="grid grid-cols-1 lg:grid-cols-2 gap-6 mb-6">
+            <div className="bg-white rounded-xl p-5 shadow-sm border border-gray-100">
+              <div className="flex items-center justify-between mb-4">
+                <h3 className="text-base font-medium text-gray-700">事件趋势（近7天）</h3>
+                <select
+                  value={eventType}
+                  onChange={handleEventTypeChange}
+                  className="text-sm border border-gray-200 rounded-lg px-3 py-1.5 bg-white text-gray-700 focus:outline-none focus:ring-2 focus:ring-blue-500"
+                >
+                  <option value="">全部事件</option>
+                  <option value="page_view">页面浏览</option>
+                  <option value="node_created">节点创建</option>
+                  <option value="branch_created">分支创建</option>
+                  <option value="extension_direction_click">延伸方向点击</option>
+                  <option value="summary_generated">摘要生成</option>
+                  <option value="map_created">地图创建</option>
+                </select>
+              </div>
+              <ResponsiveContainer width="100%" height={280}>
+                <LineChart data={eventTrendData}>
+                  <CartesianGrid strokeDasharray="3 3" stroke="#f0f0f0" />
+                  <XAxis dataKey="date" tick={{ fontSize: 12 }} />
+                  <YAxis tick={{ fontSize: 12 }} />
+                  <Tooltip />
+                  <Line type="monotone" dataKey="value" stroke="#3b82f6" strokeWidth={2} dot={false} />
+                </LineChart>
+              </ResponsiveContainer>
+            </div>
+
+            {eventFunnelData && eventFunnelData.steps.length > 0 && (
+              <div className="bg-white rounded-xl p-5 shadow-sm border border-gray-100">
+                <h3 className="text-base font-medium text-gray-700 mb-4">关键事件漏斗</h3>
+                <ResponsiveContainer width="100%" height={280}>
+                  <BarChart
+                    data={eventFunnelData.steps}
+                    layout="vertical"
+                    margin={{ left: 80, right: 40 }}
+                  >
+                    <CartesianGrid strokeDasharray="3 3" stroke="#f0f0f0" />
+                    <XAxis type="number" tick={{ fontSize: 12 }} />
+                    <YAxis
+                      type="category"
+                      dataKey="name"
+                      tick={{ fontSize: 13 }}
+                      width={70}
+                    />
+                    <Tooltip content={<FunnelTooltip />} />
+                    <Bar dataKey="count" radius={[0, 4, 4, 0]} barSize={32}>
+                      {eventFunnelData.steps.map((_step, index) => (
+                        <Cell key={`event-cell-${index}`} fill={FUNNEL_COLORS[index % FUNNEL_COLORS.length]} />
+                      ))}
+                    </Bar>
+                  </BarChart>
+                </ResponsiveContainer>
+
+                <div className="grid grid-cols-5 gap-2 mt-4">
+                  {eventFunnelData.steps.map((step, index) => (
+                    <div
+                      key={step.name}
+                      className="text-center p-2 rounded-lg border border-gray-100"
+                    >
+                      <div
+                        className="w-3 h-3 rounded-full mx-auto mb-1"
+                        style={{ backgroundColor: FUNNEL_COLORS[index % FUNNEL_COLORS.length] }}
+                      />
+                      <div className="text-xs text-gray-500">{step.name}</div>
+                      <div className="text-base font-bold text-gray-800">{step.count}</div>
+                      <div className="text-xs text-gray-400">{step.rate.toFixed(1)}%</div>
+                    </div>
+                  ))}
+                </div>
+              </div>
+            )}
+          </div>
+
+          {recentEvents.length > 0 && (
+            <div className="bg-white rounded-xl p-5 shadow-sm border border-gray-100">
+              <h3 className="text-base font-medium text-gray-700 mb-4">最近事件流</h3>
+              <div className="overflow-x-auto">
+                <table className="w-full text-sm">
+                  <thead>
+                    <tr className="border-b border-gray-100">
+                      <th className="text-left py-2 px-3 text-gray-500 font-medium">事件类型</th>
+                      <th className="text-left py-2 px-3 text-gray-500 font-medium">访客ID</th>
+                      <th className="text-left py-2 px-3 text-gray-500 font-medium">工作区ID</th>
+                      <th className="text-left py-2 px-3 text-gray-500 font-medium">时间</th>
+                    </tr>
+                  </thead>
+                  <tbody>
+                    {recentEvents.map((event, index) => (
+                      <tr key={`event-${index}`} className="border-b border-gray-50 last:border-0">
+                        <td className="py-2 px-3 text-gray-800">{event.eventType}</td>
+                        <td className="py-2 px-3 text-gray-500 truncate max-w-[120px]">
+                          {event.visitorId || '-'}
+                        </td>
+                        <td className="py-2 px-3 text-gray-500 truncate max-w-[120px]">
+                          {event.workspaceId || '-'}
+                        </td>
+                        <td className="py-2 px-3 text-gray-500">
+                          {event.timestamp ? new Date(event.timestamp).toLocaleString('zh-CN') : '-'}
+                        </td>
+                      </tr>
+                    ))}
+                  </tbody>
+                </table>
+              </div>
+            </div>
+          )}
         </div>
       )}
     </div>

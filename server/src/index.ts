@@ -27,6 +27,7 @@ import workspacesRouter from './routes/workspaces';
 import pushRouter from './routes/push';
 import filesRouter from './routes/files';
 import featuresRouter from './routes/features';
+import eventsRouter from './routes/events';
 import { pushService } from './services/pushService';
 import { workspaceService } from './services/workspaceService';
 import { fileService } from './services/fileService';
@@ -113,6 +114,7 @@ app.get('/api', (req, res) => {
       conversations: '/api/conversations',
       search: '/api/search',
       ai: '/api/ai',
+      events: '/api/events',
     },
   });
 });
@@ -138,6 +140,7 @@ app.use('/api/ai', aiRouter);
 app.use('/api/feedback', feedbackRouter);
 app.use('/api/features', featuresRouter);
 app.use('/api/announcements', announcementsRouter);
+app.use('/api/events', eventsRouter);
 
 const internalApiToken = process.env.INTERNAL_API_TOKEN;
 

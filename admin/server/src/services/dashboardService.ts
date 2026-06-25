@@ -1,7 +1,16 @@
 import { Document } from 'mongodb';
 import { adminDB } from '../config/database';
 import { getRedisClient } from '../data/redis';
-import { DashboardStats, TrendData, RetentionTrendData, ConversionFunnelData } from '../types';
+import {
+  DashboardStats,
+  TrendData,
+  RetentionTrendData,
+  ConversionFunnelData,
+  EventOverviewData,
+  EventTrendData,
+  EventFunnelData,
+  RecentEventItem,
+} from '../types';
 
 /**
  * 聚合结果条目接口
@@ -27,6 +36,15 @@ interface AggregationDayUsersResult {
  */
 interface DistinctCountResult {
   _id: null;
+  count: number;
+}
+
+/**
+ * 事件按日聚合结果接口
+ * 表示单日内的事件数量
+ */
+interface EventAggregationDayResult {
+  _id: string;
   count: number;
 }
 
@@ -538,6 +556,187 @@ class DashboardService {
     ];
 
     return { steps };
+  }
+
+  /**
+   * 获取用户行为事件概览数据
+   * 统计事件总量、今日事件数及独立访客数
+   * 独立访客按 visitorId 去重统计，visitorId 为空时不计入
+   * @returns EventOverviewData 事件概览数据
+   */
+  async getEventOverview(): Promise<EventOverviewData> {
+    const today = new Date();
+    today.setHours(0, 0, 0, 0);
+
+    const total = await adminDB.countDocuments('events');
+    const todayCount = await adminDB.countDocuments('events', {
+      timestamp: { $gte: today },
+    } as never);
+
+    let uniqueVisitors = 0;
+    try {
+      const pipeline: Document[] = [
+        { $match: { visitorId: { $ne: null, $exists: true } } },
+        { $group: { _id: '$visitorId' } },
+        { $count: 'count' },
+      ];
+      const result = await adminDB.aggregate<DistinctCountResult>('events', pipeline);
+      uniqueVisitors = result.length > 0 ? result[0].count : 0;
+    } catch (error: unknown) {
+      const errorMsg = error instanceof Error ? error.message : String(error);
+      console.warn(`⚠️ 独立访客统计失败: ${errorMsg}`);
+    }
+
+    return {
+      total,
+      today: todayCount,
+      uniqueVisitors,
+    };
+  }
+
+  /**
+   * 获取用户行为事件趋势数据
+   * 按日期聚合事件数量，支持按事件类型筛选
+   * @param days - 统计天数，默认7天
+   * @param eventType - 事件类型筛选，为空时统计全部事件
+   * @returns EventTrendData 事件趋势数据
+   */
+  async getEventTrend(days: number = 7, eventType?: string): Promise<EventTrendData> {
+    const startDate = new Date();
+    startDate.setDate(startDate.getDate() - days + 1);
+    startDate.setHours(0, 0, 0, 0);
+
+    const dates = this.generateDateRange(days);
+
+    const match: Record<string, unknown> = {
+      timestamp: { $gte: startDate },
+    };
+    if (eventType && eventType.trim().length > 0) {
+      match.eventType = eventType.trim();
+    }
+
+    let eventMap: Record<string, number> = {};
+    try {
+      const pipeline: Document[] = [
+        { $match: match },
+        {
+          $group: {
+            _id: { $dateToString: { format: '%Y-%m-%d', date: '$timestamp' } },
+            count: { $sum: 1 },
+          },
+        },
+        { $sort: { _id: 1 } },
+      ];
+      const results = await adminDB.aggregate<EventAggregationDayResult>('events', pipeline);
+      eventMap = {};
+      for (const result of results) {
+        eventMap[result._id] = result.count;
+      }
+    } catch (error: unknown) {
+      const errorMsg = error instanceof Error ? error.message : String(error);
+      console.warn(`⚠️ 事件趋势查询失败: ${errorMsg}`);
+    }
+
+    return {
+      dates,
+      values: dates.map((date) => eventMap[date] || 0),
+    };
+  }
+
+  /**
+   * 获取关键事件漏斗数据
+   * 漏斗步骤：注册（page_view）→ 完成引导（node_created）→ 创建地图（map_created）→ 创建分支（branch_created）→ 生成摘要（summary_generated）
+   * 每一步统计触发过该事件类型的独立访客数（按 visitorId 去重）
+   * 转化率 = 各步骤用户数 / 第一步用户数 * 100
+   * @returns EventFunnelData 事件漏斗数据
+   */
+  async getEventFunnel(): Promise<EventFunnelData> {
+    const funnelSteps: Array<{ name: string; eventType: string }> = [
+      { name: '注册', eventType: 'page_view' },
+      { name: '完成引导', eventType: 'node_created' },
+      { name: '创建地图', eventType: 'map_created' },
+      { name: '创建分支', eventType: 'branch_created' },
+      { name: '生成摘要', eventType: 'summary_generated' },
+    ];
+
+    const counts: number[] = [];
+    for (const step of funnelSteps) {
+      let count = 0;
+      try {
+        const pipeline: Document[] = [
+          {
+            $match: {
+              eventType: step.eventType,
+              visitorId: { $ne: null, $exists: true },
+            },
+          },
+          { $group: { _id: '$visitorId' } },
+          { $count: 'count' },
+        ];
+        const result = await adminDB.aggregate<DistinctCountResult>('events', pipeline);
+        count = result.length > 0 ? result[0].count : 0;
+      } catch (error: unknown) {
+        const errorMsg = error instanceof Error ? error.message : String(error);
+        console.warn(`⚠️ 漏斗步骤 "${step.name}" 统计失败: ${errorMsg}`);
+      }
+      counts.push(count);
+    }
+
+    const baseCount = counts[0] || 1;
+    const steps = funnelSteps.map((step, index) => ({
+      name: step.name,
+      count: counts[index],
+      rate: Math.round((counts[index] / baseCount) * 10000) / 100,
+    }));
+
+    return { steps };
+  }
+
+  /**
+   * 获取最近事件列表
+   * 按事件发生时间倒序排列，返回指定数量的事件
+   * @param limit - 返回数量，默认20条
+   * @returns RecentEventItem[] 最近事件列表
+   */
+  async getRecentEvents(limit: number = 20): Promise<RecentEventItem[]> {
+    /**
+     * 事件集合原始文档接口
+     * 用于最近事件查询，timestamp 为 Date 类型
+     */
+    interface RawRecentEvent {
+      eventType: string;
+      visitorId?: string;
+      workspaceId?: string;
+      nodeId?: string;
+      mapId?: string;
+      payload?: Record<string, unknown>;
+      url?: string;
+      userAgent?: string;
+      timestamp: Date;
+    }
+
+    try {
+      const events = await adminDB.find<RawRecentEvent>('events', {}, {
+        sort: { timestamp: -1 },
+        limit,
+      } as never);
+
+      return events.map((event) => ({
+        eventType: event.eventType,
+        visitorId: event.visitorId,
+        workspaceId: event.workspaceId,
+        nodeId: event.nodeId,
+        mapId: event.mapId,
+        payload: event.payload,
+        url: event.url,
+        userAgent: event.userAgent,
+        timestamp: event.timestamp instanceof Date ? event.timestamp.toISOString() : String(event.timestamp),
+      }));
+    } catch (error: unknown) {
+      const errorMsg = error instanceof Error ? error.message : String(error);
+      console.warn(`⚠️ 最近事件查询失败: ${errorMsg}`);
+      return [];
+    }
   }
 }
 

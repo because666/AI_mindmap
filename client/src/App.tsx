@@ -14,6 +14,7 @@ import { nodeApi, conversationApi } from './services/api';
 import { pushClientService } from './services/pushService';
 import { isOnboardingCompleted } from './utils/onboardingStorage';
 import useMobile from './hooks/useMobile';
+import { track, TRACK_EVENT_PAGE_VIEW } from './services/tracker';
 import useBackButton, { useDoublePressExit } from './hooks/useBackButton';
 import './index.css';
 
@@ -37,6 +38,14 @@ function App() {
   useEffect(() => {
     initialize();
   }, [initialize]);
+
+  /**
+   * 应用挂载时上报一次页面浏览事件
+   * 仅记录初始页面URL，不监听后续路由变化
+   */
+  useEffect(() => {
+    track(TRACK_EVENT_PAGE_VIEW, { url: window.location.href });
+  }, []);
 
   /**
    * 检测是否需要展示新手引导

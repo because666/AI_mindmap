@@ -1,5 +1,13 @@
 import axios from 'axios';
-import type { SegmentRule, GrayRule, AIProvider } from '../types';
+import type {
+  SegmentRule,
+  GrayRule,
+  AIProvider,
+  EventOverviewData,
+  EventTrendData,
+  EventFunnelData,
+  RecentEventItem,
+} from '../types';
 
 const API_BASE_URL = import.meta.env.VITE_API_URL || '/api';
 
@@ -116,6 +124,31 @@ export const dashboardApi = {
     typedGet<{
       steps: Array<{ name: string; count: number; rate: number }>;
     }>('/dashboard/funnel'),
+  /**
+   * 获取用户行为事件概览
+   * @returns 事件总量、今日事件数、独立访客数
+   */
+  getEventOverview: () => typedGet<EventOverviewData>('/dashboard/events/overview'),
+  /**
+   * 获取用户行为事件趋势
+   * @param days - 统计天数，默认7天
+   * @param eventType - 事件类型筛选，为空时统计全部事件
+   * @returns 按日聚合的事件趋势数据
+   */
+  getEventTrend: (days: number = 7, eventType: string = '') =>
+    typedGet<EventTrendData>('/dashboard/events/trend', { params: { days, eventType } }),
+  /**
+   * 获取关键事件漏斗
+   * @returns 注册→完成引导→创建地图→创建分支→生成摘要的转化数据
+   */
+  getEventFunnel: () => typedGet<EventFunnelData>('/dashboard/events/funnel'),
+  /**
+   * 获取最近事件列表
+   * @param limit - 返回数量，默认20条
+   * @returns 最近事件列表
+   */
+  getRecentEvents: (limit: number = 20) =>
+    typedGet<RecentEventItem[]>('/dashboard/events/recent', { params: { limit } }),
 };
 
 export const usersApi = {

@@ -5,11 +5,11 @@
 
 ---
 
-- [ ] Task 1: 用户行为埋点基础设施
-  - [ ] SubTask 1.1: 创建前端埋点 SDK（`client/src/services/tracker.ts`），支持 `track(eventType, payload)` 与批量上报
-  - [ ] SubTask 1.2: 创建后端事件接收接口（`server/src/routes/events.ts`），`POST /api/events` 写入 admin MongoDB `events` 集合
-  - [ ] SubTask 1.3: 在 admin Dashboard 新增"用户行为事件"模块，展示事件总量、7 天趋势图、关键漏斗
-  - [ ] SubTask 1.4: 在前端关键位置接入埋点（页面访问、节点创建、分支创建、地图创建）
+- [x] Task 1: 用户行为埋点基础设施
+  - [x] SubTask 1.1: 创建前端埋点 SDK（`client/src/services/tracker.ts`），支持 `track(eventType, payload)` 与批量上报
+  - [x] SubTask 1.2: 创建后端事件接收接口（`server/src/routes/events.ts`），`POST /api/events` 写入 admin MongoDB `events` 集合
+  - [x] SubTask 1.3: 在 admin Dashboard 新增"用户行为事件"模块，展示事件总量、7 天趋势图、关键漏斗
+  - [x] SubTask 1.4: 在前端关键位置接入埋点（页面访问、节点创建、分支创建、地图创建）
 
 - [ ] Task 2: 延伸方向按钮
   - [ ] SubTask 2.1: 稳定化 `server/src/config/prompts.ts` 中延伸方向输出格式，确保 AI 稳定输出 `🌱 延伸方向：① xxx ② yyy ③ zzz`

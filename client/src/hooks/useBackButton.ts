@@ -1,5 +1,17 @@
-import { useEffect, useCallback } from 'react';
+import { useEffect, useState, useRef, useCallback } from 'react';
 import mobileService from '../services/mobileService';
+
+/**
+ * 返回键处理函数类型
+ * 返回 true 表示已消费事件，阻止后续处理；返回 false 表示继续传递
+ */
+export type BackButtonHandler = () => boolean | Promise<boolean>;
+
+/**
+ * 返回键处理器优先级类型
+ * 数值越大优先级越高，相同优先级遵循后注册先执行的栈式语义
+ */
+export type BackButtonPriority = number;
 
 /**
  * 返回键处理 Hook
@@ -22,26 +34,37 @@ import mobileService from '../services/mobileService';
  *   isPanelOpen
  * );
  *
- * // 双击退出：第一次按返回显示提示，第二次才退出
- * const { showExitHint } = useBackButton();
+ * // 带优先级用法：数值越大越优先执行
+ * useBackButton(() => {
+ *   closeHighPriorityPanel();
+ *   return true;
+ * }, active, 100);
  * ```
  */
 
 /**
  * 基础 Hook：注册返回键处理器
- * @param handler - 处理函数，返回 true 表示已消费事件
+ *
+ * @param handler - 处理函数，返回 true 表示已消费事件，返回 false 表示继续传递
  * @param active - 是否激活处理器，默认为 true
+ * @param priority - 处理器优先级，数值越大优先级越高，相同优先级后注册的先执行
  */
-export function useBackButton(handler?: (() => boolean | Promise<boolean>) | undefined, active: boolean = true): void {
+export function useBackButton(
+  handler?: BackButtonHandler,
+  active: boolean = true,
+  priority: BackButtonPriority = 0
+): void {
   useEffect(() => {
-    if (!active || !handler) return;
+    if (!active || !handler) {
+      return;
+    }
 
-    const unregister = mobileService.registerBackButtonHandler(handler);
+    const unregister = mobileService.registerBackButtonHandler(handler, priority);
 
     return () => {
       unregister();
     };
-  }, [handler, active]);
+  }, [handler, active, priority]);
 }
 
 /**
@@ -54,23 +77,32 @@ export function useBackButtonAdvanced() {
 
   /**
    * 注册返回键处理器
+   *
    * @param handler - 处理函数，返回 true 表示已消费事件
    * @param active - 是否激活处理器
+   * @param priority - 处理器优先级，数值越大优先级越高
+   * @returns 取消注册函数，调用后移除此处理器
    */
-  const registerHandler = useCallback((handler: () => boolean | Promise<boolean>, active = true) => {
-    if (!active) return;
+  const registerHandler = useCallback(
+    (handler: BackButtonHandler, active = true, priority: BackButtonPriority = 0) => {
+      if (!active) {
+        return () => {};
+      }
 
-    return mobileService.registerBackButtonHandler(handler);
-  }, []);
+      return mobileService.registerBackButtonHandler(handler, priority);
+    },
+    []
+  );
 
   /**
-   * 注册默认的"再按一次退出"行为
-   * 第一次按返回显示提示，2秒内再按才真正退出
+   * 注册默认的“再按一次退出”行为
+   * 第一次按返回显示提示，2 秒内再按才真正退出
    */
   const registerDefaultExit = useCallback(() => {
     return mobileService.registerBackButtonHandler(async () => {
       if (showExitHint) {
-        return false; // 第二次按返回，不消费事件，执行默认退出
+        // 第二次按返回，不消费事件，执行默认退出
+        return false;
       }
 
       setShowExitHint(true);
@@ -84,8 +116,9 @@ export function useBackButtonAdvanced() {
         setShowExitHint(false);
       }, 2000);
 
-      return true; // 消费事件
-    });
+      // 消费事件，避免触发默认退出
+      return true;
+    }, 0);
   }, [showExitHint]);
 
   useEffect(() => {
@@ -104,15 +137,24 @@ export function useBackButtonAdvanced() {
 
 /**
  * 简化版 Hook：只提供双击退出提示功能
- * 适用于只需要"再按一次退出"行为的场景
+ * 适用于只需要“再按一次退出”行为的场景
+ *
+ * @param active - 是否激活处理器，默认为 true
+ * @param priority - 处理器优先级，数值越大优先级越高
+ * @returns 当前是否正在显示退出提示
  */
-export function useDoublePressExit() {
+export function useDoublePressExit(active: boolean = true, priority: BackButtonPriority = 0) {
   const [showExitHint, setShowExitHint] = useState(false);
   const exitTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
 
   useEffect(() => {
+    if (!active) {
+      return () => {};
+    }
+
     const unregister = mobileService.registerBackButtonHandler(async () => {
       if (showExitHint) {
+        // 第二次按返回，不消费事件，执行默认退出
         return false;
       }
 
@@ -127,8 +169,9 @@ export function useDoublePressExit() {
         setShowExitHint(false);
       }, 2000);
 
+      // 消费事件，避免触发默认退出
       return true;
-    });
+    }, priority);
 
     return () => {
       unregister();
@@ -136,11 +179,9 @@ export function useDoublePressExit() {
         clearTimeout(exitTimerRef.current);
       }
     };
-  }, [showExitHint]);
+  }, [active, priority, showExitHint]);
 
   return showExitHint;
 }
-
-import { useState, useRef } from 'react';
 
 export default useBackButton;

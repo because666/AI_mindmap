@@ -1,25 +1,19 @@
-import type { APIConfig, ChatMessage, StreamEvent, StreamCallback } from '../types';
+import type {
+  APIConfig,
+  ConversationMessage,
+  StreamCallback,
+  StreamEvent,
+  ToolCall,
+} from '../types';
 import { useAPIConfigStore } from '../stores/apiConfigStore';
+import { getServerBaseUrl, buildAuthHeaders } from './api';
+import i18n from 'i18next';
 
 /**
- * 获取 API 基础 URL
- * chatService 的路径已经包含 /api 前缀，所以 baseURL 不应重复添加 /api
+ * 服务端基础URL（不含 /api 前缀）
+ * 复用 api.ts 中的 getServerBaseUrl，避免重复维护 baseURL 计算逻辑
  */
-const getApiBaseUrl = () => {
-  if (import.meta.env.VITE_API_URL) {
-    const url = import.meta.env.VITE_API_URL;
-    if (url.endsWith('/api')) {
-      return url.slice(0, -4);
-    }
-    return url;
-  }
-  if (import.meta.env.PROD) {
-    return '';
-  }
-  return 'http://localhost:3001';
-};
-
-const API_BASE_URL = getApiBaseUrl();
+const API_BASE_URL = getServerBaseUrl();
 
 /**
  * 解析 JSON 响应
@@ -54,19 +48,11 @@ async function parseJsonResponse(response: Response): Promise<Record<string, unk
 }
 
 /**
- * 获取本地存储的访客ID
- * @returns 访客ID或null
- */
-const getLocalVisitorId = (): string | null => {
-  return localStorage.getItem('visitorId');
-};
-
-/**
  * 构建用户API配置对象
  * 从全局状态获取当前激活的API配置，返回服务端所需的config格式
  * @returns 用户API配置对象，使用内置服务时返回null
  */
-function buildUserConfig(): { provider: string; model: string; apiKey: string; baseUrl: string; temperature: number } | null {
+function buildUserConfig(): { provider: string; model: string; apiKey: string; baseUrl?: string; temperature: number } | null {
   const apiConfig = useAPIConfigStore.getState().getAPIConfigFromActive();
   if (!apiConfig) return null;
   return {
@@ -79,26 +65,6 @@ function buildUserConfig(): { provider: string; model: string; apiKey: string; b
 }
 
 /**
- * 构建请求头
- * 包含Content-Type和访客ID（如果存在）
- * @param acceptSSE - 是否添加SSE Accept头
- * @returns 请求头对象
- */
-function buildHeaders(acceptSSE: boolean = false): Record<string, string> {
-  const headers: Record<string, string> = {
-    'Content-Type': 'application/json',
-  };
-  if (acceptSSE) {
-    headers['Accept'] = 'text/event-stream';
-  }
-  const visitorId = getLocalVisitorId();
-  if (visitorId) {
-    headers['X-Visitor-Id'] = visitorId;
-  }
-  return headers;
-}
-
-/**
  * 解析SSE流并收集完整文本内容
  * 通用SSE流解析器，支持content/thinking/done/error事件类型
  * @param response - fetch Response 对象
@@ -108,10 +74,10 @@ function buildHeaders(acceptSSE: boolean = false): Record<string, string> {
 async function parseSSEStream(
   response: Response,
   onStream?: StreamCallback
-): Promise<{ fullContent: string; fullThinkingContent: string; doneData: Record<string, unknown> | null }> {
+): Promise<{ fullContent: string; fullThinkingContent: string; doneData: Record<string, unknown> | null; collectedToolCalls: ToolCall[]; toolCallPending: boolean }> {
   const reader = response.body?.getReader();
   if (!reader) {
-    throw new Error('无法获取响应流');
+    throw new Error(i18n.t('cannotGetResponseStream', { ns: 'chat' }));
   }
 
   const decoder = new TextDecoder();
@@ -119,6 +85,8 @@ async function parseSSEStream(
   let fullContent = '';
   let fullThinkingContent = '';
   let doneData: Record<string, unknown> | null = null;
+  let collectedToolCalls: ToolCall[] = [];
+  let toolCallPending: boolean = false;
 
   while (true) {
     const { done, value } = await reader.read();
@@ -162,15 +130,34 @@ async function parseSSEStream(
               fullContent
             });
           } else if (data.type === 'done') {
+            // 提取 toolCallPending 标记
+            if (data.toolCallPending) {
+              toolCallPending = true;
+            }
             onStream?.({
               type: 'done',
               fullContent,
-              fullThinkingContent
+              fullThinkingContent,
+              toolCallPending: data.toolCallPending || undefined,
             });
           } else if (data.type === 'error') {
             onStream?.({
               type: 'error',
               error: data.error
+            });
+          } else if (data.type === 'tool_call' && data.tool_calls) {
+            // 收集工具调用信息（追加模式，支持多次工具调用）
+            collectedToolCalls = [...collectedToolCalls, ...data.tool_calls];
+            // 同步通知客户端（不再等待工具执行，由客户端驱动循环控制）
+            onStream?.({
+              type: 'tool_call',
+              tool_calls: data.tool_calls,
+            });
+          } else if (data.type === 'tool_result' && data.tool_results) {
+            // 处理工具结果事件
+            onStream?.({
+              type: 'tool_result',
+              tool_results: data.tool_results,
             });
           }
         } catch (e) {
@@ -191,18 +178,86 @@ async function parseSSEStream(
     }
   }
 
-  return { fullContent, fullThinkingContent, doneData };
+  return { fullContent, fullThinkingContent, doneData, collectedToolCalls, toolCallPending };
+}
+
+interface ParsedSSEData<T extends Record<string, unknown>> {
+  result: T | null;
+  fullContent: string;
+}
+
+interface GenerateTitleResult {
+  title: string;
+  rateLimited: boolean;
+  error?: string;
+}
+
+interface ExtractConclusionResult {
+  success: boolean;
+  conclusion: string;
+  rateLimited: boolean;
+  error?: string;
+}
+
+/**
+ * 判断对象是否为可读取字段的记录
+ * @param value - 待判断的未知值
+ * @returns 传入值为非空对象时返回 true，否则返回 false
+ * @throws 不抛出异常，仅做类型收窄
+ * @remarks 用于避免直接访问 unknown 值导致类型不安全
+ */
+function isRecord(value: unknown): value is Record<string, unknown> {
+  return typeof value === 'object' && value !== null;
+}
+
+/**
+ * 从响应体中提取中文错误信息
+ * @param status - HTTP 状态码
+ * @param text - 响应文本内容
+ * @returns 可展示给用户的中文错误信息
+ * @throws 不抛出异常，JSON 解析失败时返回兜底提示
+ * @remarks 优先使用服务端 error/message 字段，缺失时按状态码返回中文提示
+ */
+function parseResponseError(status: number, text: string): string {
+  if (text) {
+    try {
+      const data = JSON.parse(text) as unknown;
+      if (isRecord(data)) {
+        if (typeof data.error === 'string' && data.error.trim()) {
+          return data.error.trim();
+        }
+        if (typeof data.message === 'string' && data.message.trim()) {
+          return data.message.trim();
+        }
+      }
+    } catch {
+      return text;
+    }
+  }
+
+  if (status === 400) {
+    return '对话内容不足，请先完成至少一轮有效问答';
+  }
+  if (status === 429) {
+    return '当前请求较频繁，请稍后重试';
+  }
+  if (status >= 500) {
+    return '服务暂时不可用，请稍后重试';
+  }
+  return `请求失败，状态码：${status}`;
 }
 
 /**
  * 从SSE响应中提取done事件的data
- * 重新解析整个buffer以提取event:done对应的data行
+ * 解析 event: done/error 与普通 data 内容，兼容 done 数据和内容数据跨块返回
  * @param response - fetch Response 对象
- * @returns done事件携带的数据对象，未找到时返回null
+ * @returns done事件携带的数据对象和累计文本内容
+ * @throws 响应流不可读或服务端返回 error 事件时抛出异常
+ * @remarks 服务端 done 事件的 data 必须承载最终结构化字段，例如 title 或 conclusion
  */
-async function parseSSEStreamForDoneData<T extends Record<string, unknown>>(
+export async function parseSSEStreamForDoneData<T extends Record<string, unknown>>(
   response: Response
-): Promise<{ result: T | null; fullContent: string }> {
+): Promise<ParsedSSEData<T>> {
   const reader = response.body?.getReader();
   if (!reader) {
     throw new Error('无法获取响应流');
@@ -212,55 +267,73 @@ async function parseSSEStreamForDoneData<T extends Record<string, unknown>>(
   let buffer = '';
   let fullContent = '';
   let doneResult: T | null = null;
+  let currentEvent = 'message';
+
+  const processLine = (line: string): void => {
+    if (!line) {
+      return;
+    }
+
+    if (line.startsWith('event:')) {
+      currentEvent = line.slice(6).trim();
+      return;
+    }
+
+    if (!line.startsWith('data: ')) {
+      return;
+    }
+
+    const dataText = line.slice(6);
+    let data: unknown;
+    try {
+      data = JSON.parse(dataText);
+    } catch {
+      if (currentEvent === 'error') {
+        throw new Error('请求失败，服务端返回了无效错误信息');
+      }
+      currentEvent = 'message';
+      return;
+    }
+
+    if (currentEvent === 'done') {
+      doneResult = isRecord(data) ? data as T : null;
+      currentEvent = 'message';
+      return;
+    }
+
+    if (currentEvent === 'error') {
+      if (isRecord(data)) {
+        const errorMessage = typeof data.message === 'string'
+          ? data.message
+          : typeof data.error === 'string'
+            ? data.error
+            : '请求失败';
+        throw new Error(errorMessage);
+      }
+      throw new Error('请求失败');
+    }
+
+    if (isRecord(data) && data.type === 'content' && typeof data.content === 'string') {
+      fullContent += data.content;
+    }
+    currentEvent = 'message';
+  };
 
   while (true) {
     const { done, value } = await reader.read();
-    if (done) break;
+    if (done) {
+      if (buffer) {
+        processLine(buffer);
+      }
+      break;
+    }
 
     buffer += decoder.decode(value, { stream: true });
     const lines = buffer.split('\n');
     buffer = lines.pop() || '';
 
-    for (let i = 0; i < lines.length; i++) {
-      const line = lines[i];
-
-      if (line.startsWith('data: ')) {
-        try {
-          const data = JSON.parse(line.slice(6)) as Record<string, unknown>;
-          if (data.type === 'content' && typeof data.content === 'string') {
-            fullContent += data.content;
-          }
-        } catch {
-          // 忽略解析失败
-        }
-      }
-
-      if (line === 'event: done') {
-        for (let j = i + 1; j < lines.length; j++) {
-          if (lines[j].startsWith('data: ')) {
-            try {
-              doneResult = JSON.parse(lines[j].slice(6)) as T;
-            } catch {
-              // 忽略解析失败
-            }
-            break;
-          }
-        }
-      }
-
-      if (line === 'event: error') {
-        for (let j = i + 1; j < lines.length; j++) {
-          if (lines[j].startsWith('data: ')) {
-            try {
-              const errorData = JSON.parse(lines[j].slice(6)) as Record<string, unknown>;
-              throw new Error(typeof errorData.message === 'string' ? errorData.message : '请求失败');
-            } catch (e) {
-              if (e instanceof Error && e.message !== '请求失败') throw e;
-              throw new Error('请求失败');
-            }
-          }
-        }
-      }
+    for (const line of lines) {
+      processLine(line);
     }
   }
 
@@ -289,17 +362,22 @@ export const chatService = {
    * @returns 最终结果，包含成功/失败状态、内容、思考内容、错误信息、敏感词
    */
   async sendMessageStream(
-    messages: ChatMessage[],
+    messages: ConversationMessage[],
     onStream: StreamCallback,
     fileIds?: string[],
-    options?: SendMessageStreamOptions
-  ): Promise<{ success: boolean; content?: string; thinkingContent?: string; error?: string; sensitiveWords?: string[] }> {
+    options?: SendMessageStreamOptions,
+    currentNodeId?: string
+  ): Promise<{ success: boolean; content?: string; thinkingContent?: string; error?: string; sensitiveWords?: string[]; toolCalls?: ToolCall[]; toolCallPending?: boolean }> {
     try {
       const userConfig = buildUserConfig();
 
-      const headers = buildHeaders(true);
+      const headers = await buildAuthHeaders(true);
 
-      const requestBody: Record<string, unknown> = { messages, fileIds };
+      const currentLanguage = i18n.language?.startsWith('en') ? 'en' : 'zh';
+      const requestBody: Record<string, unknown> = { messages, fileIds, language: currentLanguage };
+      if (currentNodeId) {
+        requestBody.currentNodeId = currentNodeId;
+      }
       if (userConfig) {
         requestBody.config = userConfig;
       }
@@ -332,6 +410,7 @@ export const chatService = {
             const errorData = JSON.parse(errorText) as Record<string, unknown>;
             if (errorData.code === 'BANNED') {
               localStorage.removeItem('visitorId');
+              localStorage.removeItem('visitorSecret');
               window.dispatchEvent(new CustomEvent('auth:banned', {
                 detail: { error: errorData.error, code: errorData.code }
               }));
@@ -371,12 +450,14 @@ export const chatService = {
         };
       }
 
-      const { fullContent, fullThinkingContent } = await parseSSEStream(response, onStream);
+      const { fullContent, fullThinkingContent, collectedToolCalls, toolCallPending } = await parseSSEStream(response, onStream);
 
       return {
         success: true,
         content: fullContent,
-        thinkingContent: fullThinkingContent
+        thinkingContent: fullThinkingContent,
+        toolCalls: collectedToolCalls.length > 0 ? collectedToolCalls : undefined,
+        toolCallPending: toolCallPending || undefined,
       };
     } catch (error) {
       const errorMessage = error instanceof Error ? error.message : '网络错误';
@@ -401,13 +482,15 @@ export const chatService = {
    */
   async generateTitleStream(
     messages: Array<{ role: string; content: string }>,
-    parentNodeTitle?: string
-  ): Promise<{ title: string; rateLimited: boolean }> {
+    parentNodeTitle?: string,
+    language?: string
+  ): Promise<GenerateTitleResult> {
     try {
       const userConfig = buildUserConfig();
-      const headers = buildHeaders(true);
+      const headers = await buildAuthHeaders(true);
 
-      const requestBody: Record<string, unknown> = { messages, parentNodeTitle };
+      const currentLanguage = language || (i18n.language?.startsWith('en') ? 'en' : 'zh');
+      const requestBody: Record<string, unknown> = { messages, parentNodeTitle, language: currentLanguage };
       if (userConfig) {
         requestBody.config = {
           apiKey: userConfig.apiKey,
@@ -424,16 +507,22 @@ export const chatService = {
       });
 
       if (!response.ok) {
+        const errorText = await response.text();
         if (response.status === 429) {
-          return { title: '新对话', rateLimited: true };
+          return { title: '', rateLimited: true, error: parseResponseError(response.status, errorText) };
         }
-        return { title: '新对话', rateLimited: false };
+        return { title: '', rateLimited: false, error: parseResponseError(response.status, errorText) };
       }
 
       const { result } = await parseSSEStreamForDoneData<{ title: string }>(response);
-      return { title: result?.title || '新对话', rateLimited: false };
-    } catch {
-      return { title: '新对话', rateLimited: false };
+      const title = typeof result?.title === 'string' ? result.title.trim() : '';
+      if (!title) {
+        return { title: '', rateLimited: false, error: 'AI 未生成有效标题，请稍后重试' };
+      }
+      return { title, rateLimited: false };
+    } catch (error: unknown) {
+      const errorMessage = error instanceof Error ? error.message : '标题生成失败，请稍后重试';
+      return { title: '', rateLimited: false, error: errorMessage };
     }
   },
 
@@ -445,13 +534,16 @@ export const chatService = {
    * @returns 提炼结果，包含成功标志、结论文本和是否被限流的标志
    */
   async extractConclusionStream(
-    nodeId: string
-  ): Promise<{ success: boolean; conclusion: string; rateLimited: boolean }> {
+    nodeId: string,
+    messages?: Array<{ role: string; content: string }>,
+    language?: string
+  ): Promise<ExtractConclusionResult> {
     try {
       const userConfig = buildUserConfig();
-      const headers = buildHeaders(true);
+      const headers = await buildAuthHeaders(true);
 
-      const requestBody: Record<string, unknown> = { nodeId };
+      const currentLanguage = language || (i18n.language?.startsWith('en') ? 'en' : 'zh');
+      const requestBody: Record<string, unknown> = { nodeId, messages, language: currentLanguage };
       if (userConfig) {
         requestBody.config = {
           apiKey: userConfig.apiKey,
@@ -468,17 +560,22 @@ export const chatService = {
       });
 
       if (!response.ok) {
+        const errorText = await response.text();
         if (response.status === 429) {
-          return { success: false, conclusion: '', rateLimited: true };
+          return { success: false, conclusion: '', rateLimited: true, error: parseResponseError(response.status, errorText) };
         }
-        return { success: false, conclusion: '', rateLimited: false };
+        return { success: false, conclusion: '', rateLimited: false, error: parseResponseError(response.status, errorText) };
       }
 
       const { result } = await parseSSEStreamForDoneData<{ conclusion: string }>(response);
-      const conclusion = result?.conclusion || '';
-      return { success: conclusion.length > 0, conclusion, rateLimited: false };
-    } catch {
-      return { success: false, conclusion: '', rateLimited: false };
+      const conclusion = typeof result?.conclusion === 'string' ? result.conclusion.trim() : '';
+      if (!conclusion) {
+        return { success: false, conclusion: '', rateLimited: false, error: 'AI 未提炼出有效结论，请稍后重试' };
+      }
+      return { success: true, conclusion, rateLimited: false };
+    } catch (error: unknown) {
+      const errorMessage = error instanceof Error ? error.message : '结论提炼失败，请稍后重试';
+      return { success: false, conclusion: '', rateLimited: false, error: errorMessage };
     }
   },
 

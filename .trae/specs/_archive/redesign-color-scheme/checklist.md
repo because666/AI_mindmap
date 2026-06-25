@@ -1,0 +1,20 @@
+- [x] 新配色体系的主色不是 Sky Blue (#0ea5e9)、Blue (#3b82f6) 等典型AI产品色
+- [x] 新配色的 Primary 色板从50到900完整定义
+- [x] 新配色的 Dark 色板从50到950完整定义
+- [x] CSS 变量 --accent-glow 和 --accent-glow-strong 已更新为新色系
+- [x] 粒子背景颜色已从蓝紫系切换到新色系
+- [x] 关系颜色已重新设计且更易辨识
+- [x] HTML预览页面展示了完整色板
+- [x] HTML预览页面展示了典型UI组件效果
+- [x] HTML预览页面展示了新旧配色对比
+- [x] HTML预览页面展示了粒子背景效果
+- [x] HTML预览页面展示了思维导图节点和关系线效果
+- [x] 用户已确认新配色满意
+- [x] tailwind.config.js 色板定义已更新
+- [x] index.css CSS变量和工具类已更新
+- [x] DreamyUniverseBackground.tsx 粒子颜色已更新
+- [x] CanvasPage.tsx 关系颜色和节点颜色已更新
+- [x] appStore.ts 关系颜色定义已更新
+- [x] 全局搜索确认无旧配色值残留
+- [x] 项目编译无报错
+- [x] 各页面视觉验证配色正确

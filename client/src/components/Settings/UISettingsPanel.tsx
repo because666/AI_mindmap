@@ -1,5 +1,6 @@
 import React from 'react';
-import { MessageSquare, RotateCcw, PanelRight, Zap } from 'lucide-react';
+import { useTranslation } from 'react-i18next';
+import { MessageSquare, RotateCcw, PanelRight, Zap, Languages } from 'lucide-react';
 import { useUISettingsStore } from '../../stores/uiSettingsStore';
 
 /**
@@ -7,25 +8,63 @@ import { useUISettingsStore } from '../../stores/uiSettingsStore';
  * 提供用户界面相关的配置选项
  */
 const UISettingsPanel: React.FC = () => {
-  const { 
-    autoOpenChatOnLoad, 
-    chatPanelWidth, 
+  const { t, i18n } = useTranslation('settings');
+  const {
+    autoOpenChatOnLoad,
+    chatPanelWidth,
     showWelcomeMessage,
     performanceMode,
-    setAutoOpenChatOnLoad, 
-    setChatPanelWidth, 
+    setAutoOpenChatOnLoad,
+    setChatPanelWidth,
     setShowWelcomeMessage,
     setPerformanceMode,
-    resetSettings 
+    resetSettings
   } = useUISettingsStore();
+
+  /**
+   * 切换界面语言
+   * @param lng - 目标语言代码（'zh' 或 'en'）
+   */
+  const handleLanguageChange = (lng: string) => {
+    i18n.changeLanguage(lng);
+  };
 
   return (
     <div className="space-y-6">
+      {/* 语言设置 */}
+      <div className="space-y-4">
+        <h3 className="text-sm font-medium text-dark-300 uppercase tracking-wider flex items-center gap-2">
+          <Languages className="w-4 h-4 text-primary-400" />
+          {t('language')}
+        </h3>
+
+        <div className="bg-dark-800 rounded-lg p-4 space-y-4">
+          <div className="flex items-center justify-between">
+            <div className="flex-1">
+              <label className="text-white font-medium text-sm">
+                {t('language')}
+              </label>
+              <p className="text-dark-400 text-xs mt-1">
+                {t('languageDesc')}
+              </p>
+            </div>
+            <select
+              value={i18n.language?.startsWith('zh') ? 'zh' : i18n.language?.startsWith('en') ? 'en' : 'zh'}
+              onChange={(e) => handleLanguageChange(e.target.value)}
+              className="bg-dark-700 text-white text-sm rounded-lg px-3 py-2 border border-dark-600 focus:border-primary-500 focus:outline-none transition-colors cursor-pointer"
+            >
+              <option value="zh">中文</option>
+              <option value="en">English</option>
+            </select>
+          </div>
+        </div>
+      </div>
+
       {/* 对话窗口设置 */}
       <div className="space-y-4">
         <h3 className="text-sm font-medium text-dark-300 uppercase tracking-wider flex items-center gap-2">
           <MessageSquare className="w-4 h-4 text-primary-400" />
-          对话窗口
+          {t('chatPanel')}
         </h3>
         
         <div className="bg-dark-800 rounded-lg p-4 space-y-4">
@@ -33,10 +72,10 @@ const UISettingsPanel: React.FC = () => {
           <div className="flex items-center justify-between">
             <div className="flex-1">
               <label className="text-white font-medium text-sm">
-                页面加载时自动打开对话窗口
+                {t('autoOpenChatOnLoad')}
               </label>
               <p className="text-dark-400 text-xs mt-1">
-                进入页面后自动显示AI对话界面，突出项目的核心价值
+                {t('autoOpenChatDesc')}
               </p>
             </div>
             <button
@@ -57,10 +96,10 @@ const UISettingsPanel: React.FC = () => {
           <div className="flex items-center justify-between">
             <div className="flex-1">
               <label className="text-white font-medium text-sm">
-                显示欢迎消息
+                {t('showWelcomeMessage')}
               </label>
               <p className="text-dark-400 text-xs mt-1">
-                在对话窗口中显示引导性的欢迎消息
+                {t('showWelcomeMessageDesc')}
               </p>
             </div>
             <button
@@ -83,7 +122,7 @@ const UISettingsPanel: React.FC = () => {
       <div className="space-y-4">
         <h3 className="text-sm font-medium text-dark-300 uppercase tracking-wider flex items-center gap-2">
           <PanelRight className="w-4 h-4 text-primary-400" />
-          面板布局
+          {t('panelLayout')}
         </h3>
         
         <div className="bg-dark-800 rounded-lg p-4 space-y-4">
@@ -91,7 +130,7 @@ const UISettingsPanel: React.FC = () => {
           <div className="space-y-2">
             <div className="flex items-center justify-between">
               <label className="text-white font-medium text-sm">
-                对话面板宽度
+                {t('chatPanelWidth')}
               </label>
               <span className="text-primary-400 text-sm font-mono">
                 {chatPanelWidth}px
@@ -107,8 +146,8 @@ const UISettingsPanel: React.FC = () => {
               className="w-full h-2 bg-dark-600 rounded-lg appearance-none cursor-pointer accent-primary-500"
             />
             <div className="flex justify-between text-xs text-dark-400">
-              <span>紧凑 (280px)</span>
-              <span>宽敞 (600px)</span>
+              <span>{t('compact')}</span>
+              <span>{t('spacious')}</span>
             </div>
           </div>
         </div>
@@ -118,7 +157,7 @@ const UISettingsPanel: React.FC = () => {
       <div className="space-y-4">
         <h3 className="text-sm font-medium text-dark-300 uppercase tracking-wider flex items-center gap-2">
           <Zap className="w-4 h-4 text-primary-400" />
-          性能优化
+          {t('performanceOptimization')}
         </h3>
 
         <div className="bg-dark-800 rounded-lg p-4 space-y-4">
@@ -126,10 +165,10 @@ const UISettingsPanel: React.FC = () => {
           <div className="flex items-center justify-between">
             <div className="flex-1">
               <label className="text-white font-medium text-sm">
-                性能模式
+                {t('performanceMode')}
               </label>
               <p className="text-dark-400 text-xs mt-1">
-                降低视觉效果以提升性能（低帧率时自动启用）
+                {t('performanceModeDesc')}
               </p>
             </div>
             <button
@@ -155,7 +194,7 @@ const UISettingsPanel: React.FC = () => {
           className="flex items-center gap-2 px-4 py-2 text-dark-400 hover:text-white hover:bg-dark-700 rounded-lg transition-colors text-sm"
         >
           <RotateCcw className="w-4 h-4" />
-          重置为默认设置
+          {t('resetToDefault')}
         </button>
       </div>
     </div>

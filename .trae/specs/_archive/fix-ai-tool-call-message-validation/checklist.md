@@ -1,0 +1,7 @@
+- [x] chatStream 方法消息验证逻辑已区分不同角色消息的格式要求
+- [x] assistant+tool_calls 消息（content为空）可通过验证
+- [x] tool 消息（含 tool_call_id）可通过验证
+- [x] TypeScript 编译无报错
+- [x] 服务端部署成功，PM2 重启正常
+- [x] 端到端测试：AI工具调用流程完整执行，不再出现 Invalid message content 错误
+- [x] 端到端测试：AI创建节点后画布上可见新节点

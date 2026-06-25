@@ -55,7 +55,9 @@ class EmailService {
     });
 
     this.initialized = true;
-    console.log('[EmailService] SMTP传输器初始化完成');
+    if (process.env.NODE_ENV !== 'production') {
+      console.log('[EmailService] SMTP传输器初始化完成');
+    }
   }
 
   /**
@@ -91,7 +93,9 @@ class EmailService {
         subject,
         html: htmlBody,
       });
-      console.log('[EmailService] 反馈邮件发送成功');
+      if (process.env.NODE_ENV !== 'production') {
+        console.log('[EmailService] 反馈邮件发送成功');
+      }
       return true;
     } catch (error) {
       const message = error instanceof Error ? error.message : String(error);

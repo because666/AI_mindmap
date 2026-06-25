@@ -1,5 +1,6 @@
 import React, { useState, useCallback, useEffect, useRef } from 'react';
 import { MessageCircle, X, Loader2, CheckCircle, Send } from 'lucide-react';
+import { useTranslation } from 'react-i18next';
 import useIsMobile from '../../hooks/useIsMobile';
 import api from '../../services/api';
 
@@ -61,6 +62,7 @@ const AUTO_CLOSE_DELAY_MS = 2000;
  * 包含表单验证、提交状态管理、成功/失败提示等功能
  */
 const FeedbackModal: React.FC<FeedbackModalProps> = ({ isOpen, onClose }) => {
+  const { t } = useTranslation('feedback');
   const isMobile = useIsMobile();
   const autoCloseTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
 
@@ -194,8 +196,8 @@ const FeedbackModal: React.FC<FeedbackModalProps> = ({ isOpen, onClose }) => {
   const renderSuccessContent = () => (
     <div className="flex flex-col items-center justify-center py-16 px-6">
       <CheckCircle className="w-16 h-16 text-green-400 mb-4" />
-      <h3 className="text-xl font-semibold text-white mb-2">感谢您的反馈！</h3>
-      <p className="text-dark-400 text-sm">我们会认真处理您的反馈，持续改进产品体验</p>
+      <h3 className="text-xl font-semibold text-white mb-2">{t('thankYou')}</h3>
+      <p className="text-dark-400 text-sm">{t('feedbackProcessingDesc')}</p>
     </div>
   );
 
@@ -208,7 +210,7 @@ const FeedbackModal: React.FC<FeedbackModalProps> = ({ isOpen, onClose }) => {
       {/* 问题标题 */}
       <div>
         <label className="block text-sm text-dark-300 mb-1">
-          问题标题 <span className="text-red-400">*</span>
+          {t('issueTitleRequired')}
         </label>
         <input
           type="text"
@@ -223,7 +225,7 @@ const FeedbackModal: React.FC<FeedbackModalProps> = ({ isOpen, onClose }) => {
               });
             }
           }}
-          placeholder="请简要描述问题"
+          placeholder={t('enterIssueTitle')}
           className="input-field w-full"
           maxLength={100}
           disabled={isSubmitting}
@@ -236,7 +238,7 @@ const FeedbackModal: React.FC<FeedbackModalProps> = ({ isOpen, onClose }) => {
       {/* 问题详细描述 */}
       <div>
         <label className="block text-sm text-dark-300 mb-1">
-          问题详细描述 <span className="text-red-400">*</span>
+          {t('issueDescriptionRequired')}
         </label>
         <textarea
           value={description}
@@ -250,7 +252,7 @@ const FeedbackModal: React.FC<FeedbackModalProps> = ({ isOpen, onClose }) => {
               });
             }
           }}
-          placeholder="请详细描述您遇到的问题或建议..."
+          placeholder={t('enterIssueDescription')}
           className="input-field w-full resize-none"
           rows={4}
           maxLength={1000}
@@ -263,7 +265,7 @@ const FeedbackModal: React.FC<FeedbackModalProps> = ({ isOpen, onClose }) => {
 
       {/* 问题类型 */}
       <div>
-        <label className="block text-sm text-dark-300 mb-1">问题类型</label>
+        <label className="block text-sm text-dark-300 mb-1">{t('issueType')}</label>
         <select
           value={type}
           onChange={(e) => setType(e.target.value as FeedbackType)}
@@ -280,12 +282,12 @@ const FeedbackModal: React.FC<FeedbackModalProps> = ({ isOpen, onClose }) => {
 
       {/* 联系方式 */}
       <div>
-        <label className="block text-sm text-dark-300 mb-1">联系方式</label>
+        <label className="block text-sm text-dark-300 mb-1">{t('contactInfo')}</label>
         <input
           type="text"
           value={contact}
           onChange={(e) => setContact(e.target.value)}
-          placeholder="选填，方便我们联系您"
+          placeholder={t('contactInfoPlaceholder')}
           className="input-field w-full"
           maxLength={100}
           disabled={isSubmitting}
@@ -310,12 +312,12 @@ const FeedbackModal: React.FC<FeedbackModalProps> = ({ isOpen, onClose }) => {
           {isSubmitting ? (
             <>
               <Loader2 className="w-4 h-4 animate-spin" />
-              提交中...
+              {t('submitting')}
             </>
           ) : (
             <>
               <Send className="w-4 h-4" />
-              提交反馈
+              {t('submitFeedback')}
             </>
           )}
         </button>
@@ -325,7 +327,7 @@ const FeedbackModal: React.FC<FeedbackModalProps> = ({ isOpen, onClose }) => {
           disabled={isSubmitting}
           className="btn-ghost w-full"
         >
-          取消
+          {t('cancelBtn', { ns: 'common' })}
         </button>
       </div>
     </div>
@@ -340,7 +342,7 @@ const FeedbackModal: React.FC<FeedbackModalProps> = ({ isOpen, onClose }) => {
       <div className={`flex items-center justify-between px-6 py-4 border-b border-dark-700 ${isMobile ? 'h-14' : ''}`}>
         <div className="flex items-center gap-3">
           <MessageCircle className="w-5 h-5 text-primary-400" />
-          <h2 className="text-lg font-semibold text-white">反馈</h2>
+          <h2 className="text-lg font-semibold text-white">{t('feedback')}</h2>
         </div>
         <button
           onClick={handleClose}

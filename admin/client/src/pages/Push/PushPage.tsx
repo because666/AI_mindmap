@@ -10,6 +10,7 @@ const PushPage: React.FC = () => {
   const [content, setContent] = useState('');
   const [targetType, setTargetType] = useState('all');
   const [forceRead, setForceRead] = useState(true);
+  const [displayType, setDisplayType] = useState<'banner' | 'dot'>('dot');
   const [sending, setSending] = useState(false);
 
   useEffect(() => { loadMessages(); }, []);
@@ -31,7 +32,7 @@ const PushPage: React.FC = () => {
     if (!title || !content) return;
     setSending(true);
     try {
-      await pushApi.broadcast({ title, content, targetType, forceRead });
+      await pushApi.broadcast({ title, content, targetType, forceRead, displayType });
       setTitle('');
       setContent('');
       setShowForm(false);
@@ -69,6 +70,10 @@ const PushPage: React.FC = () => {
                 <input type="checkbox" checked={forceRead} onChange={(e) => setForceRead(e.target.checked)} />
                 强制阅读
               </label>
+              <select value={displayType} onChange={(e) => setDisplayType(e.target.value as 'banner' | 'dot')} className="px-3 py-2 border rounded-lg text-sm">
+                <option value="dot">小红点提醒</option>
+                <option value="banner">公告弹窗</option>
+              </select>
             </div>
             <div className="flex gap-3 justify-end">
               <button type="button" onClick={() => setShowForm(false)} className="px-4 py-2 text-sm text-gray-600 border rounded-lg">取消</button>
@@ -102,6 +107,7 @@ const PushPage: React.FC = () => {
                   <span>类型：{(msg.type as string) === 'broadcast' ? '广播' : '工作区'}</span>
                   <span>发送者：{msg.senderName as string}</span>
                   {msg.forceRead ? <span className="text-orange-500">强制阅读</span> : null}
+                  {(msg.displayType as string) === 'banner' ? <span className="text-blue-500">公告弹窗</span> : null}
                 </div>
               </div>
             ))}

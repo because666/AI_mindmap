@@ -1,5 +1,6 @@
 import React, { useState, useRef } from 'react';
 import { X, Download, Upload, FileJson, FileText, AlertCircle, CheckCircle, Loader2 } from 'lucide-react';
+import { useTranslation } from 'react-i18next';
 import { nodeApi } from '../../services/api';
 import { useAppStore } from '../../stores/appStore';
 import useIsMobile from '../../hooks/useIsMobile';
@@ -21,6 +22,7 @@ interface ImportResult {
  * 桌面端居中弹窗，移动端全屏显示
  */
 const FilePanel: React.FC<FilePanelProps> = ({ isOpen, onClose }) => {
+  const { t } = useTranslation('file');
   const [isExporting, setIsExporting] = useState(false);
   const [isImporting, setIsImporting] = useState(false);
   const [importFormat, setImportFormat] = useState<'json' | 'markdown'>('json');
@@ -43,7 +45,7 @@ const FilePanel: React.FC<FilePanelProps> = ({ isOpen, onClose }) => {
       const response = await nodeApi.exportData('json');
       const blob = new Blob([JSON.stringify(response, null, 2)], { type: 'application/json' });
       downloadBlob(blob, `deepmindmap-export-${formatDate()}.json`);
-      setStatusMessage({ type: 'success', text: 'JSON导出成功' });
+      setStatusMessage({ type: 'success', text: t('jsonExportSuccess') });
     } catch (error: unknown) {
       const msg = error instanceof Error ? error.message : '导出失败，请重试';
       setStatusMessage({ type: 'error', text: msg });
@@ -64,7 +66,7 @@ const FilePanel: React.FC<FilePanelProps> = ({ isOpen, onClose }) => {
       const content = typeof response === 'string' ? response : String(response);
       const blob = new Blob([content], { type: 'text/markdown' });
       downloadBlob(blob, `deepmindmap-export-${formatDate()}.md`);
-      setStatusMessage({ type: 'success', text: 'Markdown导出成功' });
+      setStatusMessage({ type: 'success', text: t('markdownExportSuccess') });
     } catch (error: unknown) {
       const msg = error instanceof Error ? error.message : '导出失败，请重试';
       setStatusMessage({ type: 'error', text: msg });
@@ -116,7 +118,7 @@ const FilePanel: React.FC<FilePanelProps> = ({ isOpen, onClose }) => {
       const response = await nodeApi.importData(format, data);
       const result = (response as unknown as { success: boolean; data: ImportResult }).data;
       setImportResult(result);
-      setStatusMessage({ type: 'success', text: '导入成功' });
+      setStatusMessage({ type: 'success', text: t('importSuccess') });
       await reloadWorkspaceData();
     } catch (error: unknown) {
       const msg = error instanceof Error ? error.message : '导入失败，请检查文件格式';
@@ -166,8 +168,8 @@ const FilePanel: React.FC<FilePanelProps> = ({ isOpen, onClose }) => {
             <Download className="w-5 h-5 text-primary-400" />
           </div>
           <div>
-            <h2 className="text-white font-semibold text-lg">文件管理</h2>
-            <p className="text-dark-400 text-xs">导入导出思维导图数据</p>
+            <h2 className="text-white font-semibold text-lg">{t('fileManager')}</h2>
+            <p className="text-dark-400 text-xs">{t('importExportData')}</p>
           </div>
         </div>
         <button
@@ -310,7 +312,7 @@ const FilePanel: React.FC<FilePanelProps> = ({ isOpen, onClose }) => {
             ) : (
               <>
                 <Upload className="w-4 h-4" />
-                <span className="text-sm">选择文件导入</span>
+                <span className="text-sm">{t('selectFileToImport')}</span>
               </>
             )}
           </button>

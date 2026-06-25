@@ -9,6 +9,100 @@ import { auditLog } from '../middleware/auditLog';
 const router = Router();
 
 /**
+ * 获取导出任务列表
+ * 支持 status 筛选和分页查询
+ * @query status - 按状态筛选（processing/completed/failed）
+ * @query page - 页码，默认1
+ * @query limit - 每页条数，默认20
+ */
+router.get('/', requireAuth, async (req: Request, res: Response) => {
+  try {
+    const status = req.query.status as string | undefined;
+    const page = Math.max(1, Number(req.query.page) || 1);
+    const limit = Math.min(100, Math.max(1, Number(req.query.limit) || 20));
+
+    const filter: Record<string, unknown> = {};
+    if (status && ['processing', 'completed', 'failed'].includes(status)) {
+      filter.status = status;
+    }
+
+    const total = await adminDB.countDocuments('export_tasks', filter as never);
+    const items = await adminDB.find('export_tasks', filter as never, {
+      sort: { createdAt: -1 },
+      skip: (page - 1) * limit,
+      limit,
+    });
+
+    res.json({
+      success: true,
+      data: {
+        items,
+        total,
+        page,
+        limit,
+        totalPages: Math.ceil(total / limit),
+      },
+    });
+  } catch (error) {
+    console.error('获取导出任务列表失败:', error);
+    res.status(500).json({ success: false, error: '获取导出任务列表失败' });
+  }
+});
+
+/**
+ * 重试失败的导出任务
+ * 将失败任务状态重置为 processing 并重新执行 processExportTask
+ * @param id - 导出任务ID
+ */
+router.post('/:id/retry', requireAuth, auditLog('RETRY_EXPORT', 'export'), async (req: Request, res: Response) => {
+  try {
+    const { id } = req.params;
+    const task = await adminDB.findOne<ExportTask>('export_tasks', { id } as never);
+
+    if (!task) {
+      res.status(404).json({ success: false, error: '导出任务不存在' });
+      return;
+    }
+
+    if (task.status !== 'failed') {
+      res.status(400).json({ success: false, error: '仅失败任务可重试' });
+      return;
+    }
+
+    const processingTask = await adminDB.findOne<ExportTask>('export_tasks', {
+      status: 'processing',
+    } as never);
+
+    if (processingTask) {
+      res.status(400).json({ success: false, error: '已有导出任务进行中，请等待完成' });
+      return;
+    }
+
+    await adminDB.updateOne('export_tasks', { id } as never, {
+      $set: {
+        status: 'processing',
+        progress: 0,
+      },
+    });
+
+    processExportTask(id, task.type, task.format, task.filter).catch((err) => {
+      console.error('重试导出任务处理失败:', err);
+    });
+
+    res.json({
+      success: true,
+      data: {
+        exportId: id,
+        status: 'processing',
+      },
+    });
+  } catch (error) {
+    console.error('重试导出任务失败:', error);
+    res.status(500).json({ success: false, error: '重试导出任务失败' });
+  }
+});
+
+/**
  * 创建导出任务
  */
 router.post('/', requireAuth, auditLog('CREATE_EXPORT', 'export'), async (req: Request, res: Response) => {

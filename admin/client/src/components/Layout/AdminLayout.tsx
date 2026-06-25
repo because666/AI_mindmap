@@ -7,25 +7,36 @@ import {
   MessageSquare,
   MessageCircle,
   Megaphone,
+  Bell,
   Settings,
   Menu,
   X,
   LogOut,
   ShieldBan,
   Activity,
+  FileText,
+  Download,
+  UserCog,
+  UserCheck,
 } from 'lucide-react';
 import { useAuthStore } from '../../stores/authStore';
+import GlobalSearch from '../Common/GlobalSearch';
 
 const navItems = [
   { path: '/', label: '数据大盘', icon: LayoutDashboard },
   { path: '/ai-usage', label: 'AI 用量', icon: Activity },
   { path: '/users', label: '用户管理', icon: Users },
+  { path: '/user-segments', label: '用户分群', icon: UserCheck },
   { path: '/workspaces', label: '工作区管理', icon: Briefcase },
   { path: '/chat-audit', label: '对话审计', icon: MessageSquare },
   { path: '/ip-bans', label: 'IP封禁', icon: ShieldBan },
   { path: '/feedbacks', label: '反馈管理', icon: MessageCircle },
+  { path: '/audit-logs', label: '审计日志', icon: FileText },
+  { path: '/export-center', label: '导出中心', icon: Download },
   { path: '/push', label: '消息推送', icon: Megaphone },
+  { path: '/announcements', label: '公告管理', icon: Bell },
   { path: '/settings', label: '系统设置', icon: Settings },
+  { path: '/admin-accounts', label: '管理员', icon: UserCog },
 ];
 
 /**
@@ -50,6 +61,7 @@ const AdminLayout: React.FC<{ children: React.ReactNode }> = ({ children }) => {
 
   return (
     <div className="min-h-screen bg-gray-50">
+      <GlobalSearch />
       {/* 桌面端侧边栏 */}
       <aside className="hidden md:flex md:flex-col md:w-52 md:fixed md:inset-y-0 bg-white border-r border-gray-200">
         <div className="h-16 flex items-center px-4 border-b border-gray-200">

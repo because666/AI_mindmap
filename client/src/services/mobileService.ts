@@ -1,8 +1,11 @@
+import { Capacitor } from '@capacitor/core';
 import { Haptics, ImpactStyle, NotificationType } from '@capacitor/haptics';
-import { Network } from '@capacitor/network';
+import { Network, type NetworkStatus } from '@capacitor/network';
 import { KeepAwake } from '@capacitor-community/keep-awake';
 import { App as AppPlugin } from '@capacitor/app';
 import { StatusBar, Style } from '@capacitor/status-bar';
+
+export type { NetworkStatus };
 
 /**
  * 移动端原生功能服务
@@ -12,12 +15,6 @@ import { StatusBar, Style } from '@capacitor/status-bar';
 
 /** 触觉反馈强度类型 */
 export type HapticImpact = 'light' | 'medium' | 'heavy';
-
-/** 网络连接状态 */
-export type NetworkStatus = {
-  connected: boolean;
-  connectionType: string;
-};
 
 /** 网络状态变化回调类型 */
 type NetworkStatusCallback = (status: NetworkStatus) => void;
@@ -29,8 +26,12 @@ class MobileService {
   private isNative: boolean = false;
   private networkListeners: NetworkStatusCallback[] = [];
   private isKeepAwake: boolean = false;
-  private backButtonHandlers: BackButtonHandler[] = [];
+  private backButtonHandlers: Array<{ handler: BackButtonHandler; priority: number }> = [];
 
+  /**
+   * 创建 MobileService 实例
+   * 自动检测运行平台并初始化网络、返回键等原生监听器
+   */
   constructor() {
     this.detectPlatform();
     this.initNetworkListener();
@@ -39,24 +40,22 @@ class MobileService {
 
   /**
    * 检测当前运行平台
+   * 使用 Capacitor.isNativePlatform() 判断是否在原生 App 环境中运行
    * @private
    */
   private detectPlatform(): void {
-    this.isNative = !!(window as any).Capacitor?.isNativePlatform?.();
+    this.isNative = Capacitor.isNativePlatform();
   }
 
   /**
-   * 初始化网络监听器
+   * 初始化网络状态监听器
+   * 订阅 Capacitor Network 插件的网络变化事件，并分发给所有注册回调
    * @private
    */
   private async initNetworkListener(): Promise<void> {
     try {
-      await Network.addListener('networkStatusChange', (status: any) => {
-        const normalizedStatus: NetworkStatus = {
-          connected: status.connected,
-          connectionType: status.connectionType,
-        };
-        this.networkListeners.forEach((cb) => cb(normalizedStatus));
+      await Network.addListener('networkStatusChange', (status: NetworkStatus) => {
+        this.networkListeners.forEach((cb) => cb(status));
       });
     } catch (error) {
       console.warn('[MobileService] 网络监听器初始化失败:', error);
@@ -194,7 +193,6 @@ class MobileService {
     try {
       await KeepAwake.keepAwake();
       this.isKeepAwake = true;
-      console.log('[MobileService] 屏幕常亮已开启');
     } catch (error) {
       console.warn('[MobileService] 开启屏幕常亮失败:', error);
     }
@@ -209,7 +207,6 @@ class MobileService {
     try {
       await KeepAwake.allowSleep();
       this.isKeepAwake = false;
-      console.log('[MobileService] 屏幕常亮已关闭');
     } catch (error) {
       console.warn('[MobileService] 关闭屏幕常亮失败:', error);
     }
@@ -237,7 +234,6 @@ class MobileService {
       await AppPlugin.addListener('backButton', () => {
         this.handleBackButton();
       });
-      console.log('[MobileService] 返回键监听器已初始化');
     } catch (error) {
       console.warn('[MobileService] 返回键监听器初始化失败:', error);
     }
@@ -245,13 +241,13 @@ class MobileService {
 
   /**
    * 处理返回键事件
-   * 按照注册顺序的逆序（后注册的先执行）调用处理器
-   * 如果有处理器返回 true，则停止后续处理
+   * 按照优先级降序调用处理器，相同优先级遵循后注册先执行的栈式语义
+   * 如果有处理器返回 true，则停止后续处理并阻止默认退出
    * @private
    */
   private async handleBackButton(): Promise<void> {
     for (let i = this.backButtonHandlers.length - 1; i >= 0; i--) {
-      const handler = this.backButtonHandlers[i];
+      const { handler } = this.backButtonHandlers[i];
       try {
         const consumed = await handler();
         if (consumed) return;
@@ -266,15 +262,28 @@ class MobileService {
 
   /**
    * 注册返回键处理器
-   * 后注册的处理器会先执行（栈式结构）
+   * 后注册的处理器会先执行（栈式结构），支持通过 priority 显式指定优先级
+   *
    * @param handler - 处理函数，返回 true 表示已消费事件
+   * @param priority - 处理器优先级，数值越大优先级越高，默认为 0
    * @returns 取消注册函数
    */
-  registerBackButtonHandler(handler: BackButtonHandler): () => void {
-    this.backButtonHandlers.push(handler);
+  registerBackButtonHandler(handler: BackButtonHandler, priority: number = 0): () => void {
+    const entry = { handler, priority };
+
+    // 按优先级升序插入，相同优先级放在队列末尾
+    // 配合 handleBackButton 的逆序遍历，可实现高优先级先执行、相同优先级后注册先执行
+    let insertIndex = this.backButtonHandlers.length;
+    for (let i = 0; i < this.backButtonHandlers.length; i++) {
+      if (this.backButtonHandlers[i].priority > priority) {
+        insertIndex = i;
+        break;
+      }
+    }
+    this.backButtonHandlers.splice(insertIndex, 0, entry);
 
     return () => {
-      this.backButtonHandlers = this.backButtonHandlers.filter((h) => h !== handler);
+      this.backButtonHandlers = this.backButtonHandlers.filter((item) => item.handler !== handler);
     };
   }
 
@@ -290,15 +299,14 @@ class MobileService {
   /**
    * 设置状态栏为深色主题（白色文字 + 深色背景）
    * 适用于深色主题应用
-   * @param color - 状态栏背景颜色，默认为 #0a0a12
+   * @param color - 状态栏背景颜色，默认为 #0c0a09
    */
-  async setStatusBarDark(color: string = '#0a0a12'): Promise<void> {
+  async setStatusBarDark(color: string = '#0c0a09'): Promise<void> {
     if (!this.isNative) return;
 
     try {
       await StatusBar.setStyle({ style: Style.Dark });
       await StatusBar.setBackgroundColor({ color });
-      console.log('[MobileService] 状态栏已设置为深色主题');
     } catch (error) {
       console.warn('[MobileService] 设置状态栏失败:', error);
     }
@@ -315,7 +323,6 @@ class MobileService {
     try {
       await StatusBar.setStyle({ style: Style.Light });
       await StatusBar.setBackgroundColor({ color });
-      console.log('[MobileService] 状态栏已设置为浅色主题');
     } catch (error) {
       console.warn('[MobileService] 设置状态栏失败:', error);
     }
@@ -329,7 +336,6 @@ class MobileService {
 
     try {
       await StatusBar.hide();
-      console.log('[MobileService] 状态栏已隐藏');
     } catch (error) {
       console.warn('[MobileService] 隐藏状态栏失败:', error);
     }
@@ -343,7 +349,6 @@ class MobileService {
 
     try {
       await StatusBar.show();
-      console.log('[MobileService] 状态栏已显示');
     } catch (error) {
       console.warn('[MobileService] 显示状态栏失败:', error);
     }

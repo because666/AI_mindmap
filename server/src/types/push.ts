@@ -54,6 +54,11 @@ export interface MessageStats {
 }
 
 /**
+ * 消息展示类型
+ */
+export type DisplayType = 'banner' | 'dot';
+
+/**
  * 推送消息接口
  * 核心数据模型，存储所有推送消息的完整信息
  */
@@ -77,6 +82,7 @@ export interface PushMessage {
   stats: MessageStats;
   forceRead: boolean;
   forceReadDeadline?: Date;
+  displayType?: DisplayType;
 }
 
 /**
@@ -155,6 +161,7 @@ export interface BroadcastOptions {
   scheduledAt?: Date;
   forceRead?: boolean;
   forceReadDeadline?: Date;
+  displayType?: DisplayType;
 }
 
 /**

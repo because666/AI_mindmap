@@ -1,12 +1,12 @@
 import { Router, Request, Response } from 'express';
-import { aiService } from '../services/aiService';
+import { aiService, AI_TOOLS, ToolCallChunk } from '../services/aiService';
 import type { AIUsageRecord } from '../services/aiService';
 import { fileService } from '../services/fileService';
 import { optionalVisitorAuth, visitorAuth } from '../middleware';
 import { createAIRateLimit } from '../middleware/aiRateLimit';
 import { sensitiveWordService } from '../services/sensitiveWordService';
 import { config as appConfig } from '../config/index.js';
-import { DEFAULT_SYSTEM_PROMPT } from '../config/prompts.js';
+import { DEFAULT_SYSTEM_PROMPT, getLanguageInstruction } from '../config/prompts.js';
 import { truncateContextByNode } from '../utils/contextUtils.js';
 import { aiQueue, AIPriority } from '../services/aiQueue';
 
@@ -27,12 +27,16 @@ function extractUserText(messages: Array<{ role: string; content: string }>): st
 const aiChatRateLimit = createAIRateLimit({ windowMs: 60 * 1000, maxRequests: 20 });
 
 /**
- * 流式聊天接口（SSE）
+ * 流式聊天接口（SSE）- 客户端驱动模式
  * 使用 visitorAuth 确保封禁用户无法调用
  * 支持Provider降级通知、超时通知和用量记录
  * 限流：每用户每分钟20次
  * 通过优先级队列调度，对话请求使用P0最高优先级
- * 队列等待期间SSE连接已建立，客户端显示"正在思考..."
+ *
+ * 客户端驱动模式：
+ * - 当 AI 返回 tool_call 时，通过 SSE 推送给客户端后发送 done（含 toolCallPending 标记）结束流
+ * - 客户端执行工具后，将 assistant 消息（含 tool_calls）和 tool 结果加入消息历史
+ * - 客户端主动发起新的 SSE 流式请求，服务端无需等待工具结果
  */
 router.post('/chat/stream', visitorAuth, aiChatRateLimit, async (req: Request, res: Response) => {
   const startTime = Date.now();
@@ -43,7 +47,7 @@ router.post('/chat/stream', visitorAuth, aiChatRateLimit, async (req: Request, r
   let fullThinkingContent = '';
 
   try {
-    const { messages, config, model, temperature, maxTokens, fileIds, workspaceId } = req.body;
+    const { messages, config, model, temperature, maxTokens, fileIds, workspaceId, currentNodeId } = req.body;
 
     if (!messages || !Array.isArray(messages)) {
       return res.status(400).json({
@@ -77,8 +81,20 @@ router.post('/chat/stream', visitorAuth, aiChatRateLimit, async (req: Request, r
       }
     }
 
-    const systemPrompt = appConfig.ai.systemPrompt || DEFAULT_SYSTEM_PROMPT;
+    const language = req.body.language as string | undefined;
+    const providerId = req.body.providerId as string | undefined;
+    const basePrompt = appConfig.ai.systemPrompt || DEFAULT_SYSTEM_PROMPT;
+    const languageInstruction = getLanguageInstruction(language);
+    const systemPrompt = basePrompt + languageInstruction;
     messages.unshift({ role: 'system', content: systemPrompt });
+
+    // 注入当前节点上下文，让AI知道当前对话所在的节点ID
+    if (currentNodeId && typeof currentNodeId === 'string') {
+      messages.splice(1, 0, {
+        role: 'system',
+        content: `当前对话所在的节点ID为: ${currentNodeId}。当用户要求创建子节点时，请使用此ID作为 parent_node_id。`,
+      });
+    }
 
     const chatModel = config?.model || model;
     const { messages: truncatedMessages, contextInfo } = truncateContextByNode(messages, chatModel);
@@ -102,7 +118,12 @@ router.post('/chat/stream', visitorAuth, aiChatRateLimit, async (req: Request, r
     currentProvider = chatProvider || appConfig.ai.defaultProvider;
     currentModel = chatModel || appConfig.ai.defaultModel;
 
+    /** 是否收集到工具调用 */
+    let hasToolCall = false;
+    let collectedToolCalls: Array<{ id: string; name: string; arguments: string }> = [];
+
     await aiQueue.enqueue(AIPriority.P0_DIALOG, async () => {
+      // 调用 AI 流式生成（不再循环，单次流式输出）
       const stream = aiService.chatStream({
         messages,
         model: chatModel,
@@ -111,6 +132,8 @@ router.post('/chat/stream', visitorAuth, aiChatRateLimit, async (req: Request, r
         provider: chatProvider,
         apiKey,
         baseUrl,
+        providerId,
+        tools: AI_TOOLS,
       });
 
       for await (const chunk of stream) {
@@ -150,10 +173,31 @@ router.post('/chat/stream', visitorAuth, aiChatRateLimit, async (req: Request, r
           case 'timeout':
             res.write(`event: timeout\ndata: ${JSON.stringify({ message: 'AI响应超时，请稍后重试' })}\n\n`);
             break;
+
+          case 'tool_call': {
+            // 收集工具调用信息
+            const toolCallChunk = chunk as ToolCallChunk;
+            collectedToolCalls = toolCallChunk.tool_calls;
+            hasToolCall = true;
+
+            // 通过 SSE 推送工具调用事件到客户端
+            const toolCallsData = JSON.stringify({
+              type: 'tool_call',
+              tool_calls: collectedToolCalls,
+            });
+            res.write(`data: ${toolCallsData}\n\n`);
+            break;
+          }
         }
       }
 
-      res.write(`data: ${JSON.stringify({ type: 'done', fullContent, fullThinkingContent })}\n\n`);
+      // 发送 done 事件，如果有工具调用则标记 toolCallPending
+      res.write(`data: ${JSON.stringify({
+        type: 'done',
+        fullContent,
+        fullThinkingContent,
+        toolCallPending: hasToolCall || undefined,
+      })}\n\n`);
     }, '对话请求');
 
     res.end();
@@ -173,6 +217,7 @@ router.post('/chat/stream', visitorAuth, aiChatRateLimit, async (req: Request, r
     aiService.recordUsage(record).catch(() => {});
   } catch (error: unknown) {
     const message = error instanceof Error ? error.message : String(error);
+    console.error('[AI Chat Stream] 流式对话失败:', message);
     const errorData = JSON.stringify({
       type: 'error',
       error: message || '流式响应过程中发生错误'

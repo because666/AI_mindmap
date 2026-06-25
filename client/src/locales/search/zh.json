@@ -1,0 +1,11 @@
+{
+  "searchPlaceholder": "搜索节点标题、摘要、对话内容...",
+  "searchHistory": "搜索历史",
+  "enterKeywordsToSearch": "输入关键词开始搜索",
+  "searchSupportHint": "支持搜索节点标题、摘要和对话内容",
+  "noResultsFound": "未找到匹配的结果",
+  "tryDifferentKeywords": "尝试使用不同的关键词",
+  "resultsFound": "找到 {{count}} 个结果",
+  "locate": "定位",
+  "pressEscToClose": "按 ESC 关闭"
+}

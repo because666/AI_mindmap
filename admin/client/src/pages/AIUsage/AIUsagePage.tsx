@@ -95,28 +95,32 @@ const AIUsagePage: React.FC = () => {
   const getDateRange = useCallback((): { startDate: string; endDate: string } => {
     const now = new Date();
     const fmt = 'yyyy-MM-dd';
+    const endOfDay = 'T23:59:59';
     switch (timeRange) {
       case 'today':
-        return { startDate: format(now, fmt), endDate: format(now, fmt) };
+        return { startDate: format(now, fmt), endDate: format(now, fmt) + endOfDay };
       case 'yesterday': {
         const yesterday = new Date(now);
         yesterday.setDate(yesterday.getDate() - 1);
-        return { startDate: format(yesterday, fmt), endDate: format(yesterday, fmt) };
+        return { startDate: format(yesterday, fmt), endDate: format(yesterday, fmt) + endOfDay };
       }
       case '7d': {
         const start = new Date(now);
         start.setDate(start.getDate() - 6);
-        return { startDate: format(start, fmt), endDate: format(now, fmt) };
+        return { startDate: format(start, fmt), endDate: format(now, fmt) + endOfDay };
       }
       case '30d': {
         const start = new Date(now);
         start.setDate(start.getDate() - 29);
-        return { startDate: format(start, fmt), endDate: format(now, fmt) };
+        return { startDate: format(start, fmt), endDate: format(now, fmt) + endOfDay };
       }
       case 'custom':
-        return { startDate: customStartDate, endDate: customEndDate };
+        return {
+          startDate: customStartDate,
+          endDate: customEndDate ? customEndDate + endOfDay : customEndDate,
+        };
       default:
-        return { startDate: format(now, fmt), endDate: format(now, fmt) };
+        return { startDate: format(now, fmt), endDate: format(now, fmt) + endOfDay };
     }
   }, [timeRange, customStartDate, customEndDate]);
 
@@ -153,12 +157,12 @@ const AIUsagePage: React.FC = () => {
         setStats(statsRes.data.data as AIUsageStats);
       }
       if (trendsRes.data?.data) {
-        const trends = trendsRes.data.data as { items: TrendItem[] };
-        setTrendData(trends.items || []);
+        const trends = trendsRes.data.data;
+        setTrendData(Array.isArray(trends) ? (trends as TrendItem[]) : []);
       }
       if (modelRes.data?.data) {
-        const dist = modelRes.data.data as { items: ModelDistributionItem[] };
-        setModelDistribution(dist.items || []);
+        const dist = modelRes.data.data;
+        setModelDistribution(Array.isArray(dist) ? (dist as ModelDistributionItem[]) : []);
       }
       if (queueRes.data?.data) {
         setQueueStatus(queueRes.data.data as QueueStatusData);
@@ -370,7 +374,7 @@ const AIUsagePage: React.FC = () => {
         <MetricCard
           title="总 Token 消耗"
           value={stats ? formatNumber(stats.totalTokens) : '-'}
-          change={stats?.changes.totalTokens}
+          change={stats?.changes?.totalTokens}
           icon={<Zap className="w-4 h-4" />}
           color="blue"
           refreshing={refreshing}
@@ -378,7 +382,7 @@ const AIUsagePage: React.FC = () => {
         <MetricCard
           title="总调用次数"
           value={stats ? formatNumber(stats.totalCalls) : '-'}
-          change={stats?.changes.totalCalls}
+          change={stats?.changes?.totalCalls}
           icon={<Activity className="w-4 h-4" />}
           color="green"
           refreshing={refreshing}
@@ -386,7 +390,7 @@ const AIUsagePage: React.FC = () => {
         <MetricCard
           title="平均响应时间"
           value={stats ? `${stats.avgResponseTime}ms` : '-'}
-          change={stats?.changes.avgResponseTime}
+          change={stats?.changes?.avgResponseTime}
           icon={<Clock className="w-4 h-4" />}
           color="purple"
           refreshing={refreshing}
@@ -394,7 +398,7 @@ const AIUsagePage: React.FC = () => {
         <MetricCard
           title="成功率"
           value={stats ? `${stats.successRate}%` : '-'}
-          change={stats?.changes.successRate}
+          change={stats?.changes?.successRate}
           icon={<CheckCircle className="w-4 h-4" />}
           color="orange"
           refreshing={refreshing}

@@ -3,6 +3,14 @@ apply plugin: 'com.android.application'
 android {
     namespace = "com.deepmindmap.app"
     compileSdk = rootProject.ext.compileSdkVersion
+
+    // 读取本地配置文件（注意：local.properties 不应提交到版本库）
+    def localProperties = new Properties()
+    def localPropertiesFile = rootProject.file('local.properties')
+    if (localPropertiesFile.exists()) {
+        localPropertiesFile.withInputStream { localProperties.load(it) }
+    }
+
     defaultConfig {
         applicationId "com.deepmindmap.app"
         minSdkVersion rootProject.ext.minSdkVersion
@@ -10,28 +18,55 @@ android {
         versionCode 1
         versionName "1.0"
         testInstrumentationRunner "androidx.test.runner.AndroidJUnitRunner"
-        
+
+        // 极光推送占位符从环境变量或 local.properties 读取，避免在构建配置中硬编码 AppKey
         manifestPlaceholders = [
             JPUSH_PKGNAME: applicationId,
-            JPUSH_APPKEY : "cbba9b691fdd44462072311d",
-            JPUSH_CHANNEL : "developer-default",
+            JPUSH_APPKEY : System.getenv('JPUSH_APPKEY') ?: localProperties.getProperty('JPUSH_APPKEY', ''),
+            JPUSH_CHANNEL : System.getenv('JPUSH_CHANNEL') ?: localProperties.getProperty('JPUSH_CHANNEL', 'default'),
         ]
-        
+
         ndk {
             abiFilters 'armeabi-v7a', 'arm64-v8a'
         }
-        
+
         aaptOptions {
              ignoreAssetsPattern = '!.svn:!.git:!.ds_store:!*.scc:.*:!CVS:!thumbs.db:!picasa.ini:!*~'
         }
     }
+
+    // 发布签名配置占位；真实 keystore 信息需通过环境变量或 CI Secret 注入。
+    // keystore 文件（*.jks / *.keystore）属于敏感资源，严禁提交到版本库。
+    def keystorePath = System.getenv('KEYSTORE_PATH') ?: localProperties.getProperty('KEYSTORE_PATH', '')
+    def keystoreAlias = System.getenv('KEYSTORE_ALIAS') ?: localProperties.getProperty('KEYSTORE_ALIAS', '')
+    def keystorePassword = System.getenv('KEYSTORE_PASSWORD') ?: localProperties.getProperty('KEYSTORE_PASSWORD', '')
+    def keystoreAliasPassword = System.getenv('KEYSTORE_ALIAS_PASSWORD') ?: localProperties.getProperty('KEYSTORE_ALIAS_PASSWORD', '')
+    def hasReleaseSigning = keystorePath && keystoreAlias && keystorePassword && keystoreAliasPassword
+
+    signingConfigs {
+        // 仅在完整签名信息可用时才声明 release 签名配置，防止空配置导致构建失败
+        if (hasReleaseSigning) {
+            release {
+                storeFile file(keystorePath)
+                keyAlias keystoreAlias
+                storePassword keystorePassword
+                keyPassword keystoreAliasPassword
+            }
+        }
+    }
+
     buildTypes {
         release {
             minifyEnabled false
             proguardFiles getDefaultProguardFile('proguard-android.txt'), 'proguard-rules.pro'
+            // 未配置 Release 签名时回退到 debug 签名，保证本地开发构建不中断；正式包必须配置 release 签名。
+            signingConfig hasReleaseSigning ? signingConfigs.release : signingConfigs.debug
+            if (!hasReleaseSigning) {
+                logger.warn("未配置 Release 签名信息，当前 release 构建将使用 debug 签名。正式发版前请通过环境变量或 local.properties 配置 keystore。")
+            }
         }
     }
-    
+
     compileOptions {
         sourceCompatibility JavaVersion.VERSION_21
         targetCompatibility JavaVersion.VERSION_21

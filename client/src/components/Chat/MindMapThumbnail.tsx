@@ -1,5 +1,6 @@
 import React, { useMemo, useCallback, useState, useEffect, useRef } from 'react';
 import { MapPin, GripVertical, Minimize2, Maximize2 } from 'lucide-react';
+import { useTranslation } from 'react-i18next';
 import type { NodeData, RelationData } from '../../stores/appStore';
 
 /**
@@ -70,6 +71,7 @@ const MindMapThumbnail: React.FC<MindMapThumbnailProps> = ({
   activeNodeId,
   onNodeClick,
 }) => {
+  const { t } = useTranslation('chat');
   const [position, setPosition] = useState(loadPosition);
   const [isCollapsed, setIsCollapsed] = useState(false);
   const [isDragging, setIsDragging] = useState(false);
@@ -95,7 +97,7 @@ const MindMapThumbnail: React.FC<MindMapThumbnailProps> = ({
       const parentId = childParentMap.get(node.id) || null;
       nodeMap.set(node.id, {
         id: node.id,
-        title: node.title || '未命名',
+        title: node.title || t('unnamed'),
         isRoot: node.isRoot,
         depth: 0,
         childIds: [],
@@ -127,7 +129,7 @@ const MindMapThumbnail: React.FC<MindMapThumbnailProps> = ({
     });
 
     return nodeMap;
-  }, [nodes, relations]);
+  }, [nodes, relations, t]);
 
   /**
    * 生成扁平化的渲染列表（按深度优先遍历排序）
@@ -265,8 +267,8 @@ const MindMapThumbnail: React.FC<MindMapThumbnailProps> = ({
       <div className="flex items-center gap-1.5 px-2.5 py-1.5 border-b border-dark-700 bg-dark-800 rounded-t-lg">
         <GripVertical className="w-3 h-3 text-dark-500" />
         <MapPin className="w-3 h-3 text-primary-400" />
-        <span className="text-[10px] font-medium text-dark-300">思维导图</span>
-        <span className="text-[10px] text-dark-500 ml-auto mr-1">{renderList.length} 节点</span>
+        <span className="text-[10px] font-medium text-dark-300">{t('mindMap')}</span>
+        <span className="text-[10px] text-dark-500 ml-auto mr-1">{t('thumbnailNodeCount', { count: renderList.length })}</span>
         <button
           data-no-drag
           onClick={() => setIsCollapsed(!isCollapsed)}
@@ -317,4 +319,4 @@ const MindMapThumbnail: React.FC<MindMapThumbnailProps> = ({
   );
 };
 
-export default MindMapThumbnail;
+export default React.memo(MindMapThumbnail);

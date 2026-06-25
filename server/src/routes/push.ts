@@ -31,8 +31,9 @@ router.post('/register', async (req, res) => {
     await pushService.registerDevice(userId, registrationId, platform, deviceModel, appVersion);
 
     res.json({ success: true });
-  } catch (error: any) {
-    console.error('[Push] 设备注册失败:', error.message);
+  } catch (error: unknown) {
+    const errorMsg = error instanceof Error ? error.message : String(error);
+    console.error('[Push] 设备注册失败:', errorMsg);
     res.status(500).json({
       success: false,
       error: '设备注册失败',
@@ -65,8 +66,9 @@ router.get('/messages', async (req, res) => {
       success: true,
       data: result,
     });
-  } catch (error: any) {
-    console.error('[Push] 获取消息列表失败:', error.message);
+  } catch (error: unknown) {
+    const errorMsg = error instanceof Error ? error.message : String(error);
+    console.error('[Push] 获取消息列表失败:', errorMsg);
     res.status(500).json({
       success: false,
       error: '获取消息列表失败',
@@ -90,8 +92,9 @@ router.get('/messages/unread-count', async (req, res) => {
       success: true,
       data: unreadCount,
     });
-  } catch (error: any) {
-    console.error('[Push] 获取未读数量失败:', error.message);
+  } catch (error: unknown) {
+    const errorMsg = error instanceof Error ? error.message : String(error);
+    console.error('[Push] 获取未读数量失败:', errorMsg);
     res.status(500).json({
       success: false,
       error: '获取未读数量失败',
@@ -114,8 +117,9 @@ router.post('/messages/read-all', async (req, res) => {
       success: true,
       data: { markedCount },
     });
-  } catch (error: any) {
-    console.error('[Push] 全部标记已读失败:', error.message);
+  } catch (error: unknown) {
+    const errorMsg = error instanceof Error ? error.message : String(error);
+    console.error('[Push] 全部标记已读失败:', errorMsg);
     res.status(500).json({
       success: false,
       error: '全部标记已读失败',
@@ -146,8 +150,9 @@ router.get('/messages/:id', async (req, res) => {
       success: true,
       data: detail,
     });
-  } catch (error: any) {
-    console.error('[Push] 获取消息详情失败:', error.message);
+  } catch (error: unknown) {
+    const errorMsg = error instanceof Error ? error.message : String(error);
+    console.error('[Push] 获取消息详情失败:', errorMsg);
     res.status(500).json({
       success: false,
       error: '获取消息详情失败',
@@ -174,8 +179,9 @@ router.post('/messages/:id/read', async (req, res) => {
     }
 
     res.json({ success: true });
-  } catch (error: any) {
-    console.error('[Push] 标记已读失败:', error.message);
+  } catch (error: unknown) {
+    const errorMsg = error instanceof Error ? error.message : String(error);
+    console.error('[Push] 标记已读失败:', errorMsg);
     res.status(500).json({
       success: false,
       error: '标记已读失败',
@@ -202,8 +208,9 @@ router.post('/callback/delivery', async (req, res) => {
     await pushService.handleDeliveryReceipt(messageId, registrationId);
 
     res.json({ success: true });
-  } catch (error: any) {
-    console.error('[Push] 处理送达回执失败:', error.message);
+  } catch (error: unknown) {
+    const errorMsg = error instanceof Error ? error.message : String(error);
+    console.error('[Push] 处理送达回执失败:', errorMsg);
     res.status(500).json({
       success: false,
       error: '处理送达回执失败',
@@ -261,11 +268,12 @@ router.post('/broadcast', async (req, res) => {
         status: scheduledAt ? 'scheduled' : 'sent',
       },
     });
-  } catch (error: any) {
-    console.error('[Push] 发送广播消息失败:', error.message);
+  } catch (error: unknown) {
+    const errorMsg = error instanceof Error ? error.message : String(error);
+    console.error('[Push] 发送广播消息失败:', errorMsg);
     res.status(500).json({
       success: false,
-      error: '发送广播消息失败: ' + error.message,
+      error: '发送广播消息失败: ' + errorMsg,
     });
   }
 });
@@ -291,8 +299,9 @@ router.get('/messages/:id/stats', async (req, res) => {
       success: true,
       data: stats,
     });
-  } catch (error: any) {
-    console.error('[Push] 获取已读统计失败:', error.message);
+  } catch (error: unknown) {
+    const errorMsg = error instanceof Error ? error.message : String(error);
+    console.error('[Push] 获取已读统计失败:', errorMsg);
     res.status(500).json({
       success: false,
       error: '获取已读统计失败',
@@ -316,8 +325,9 @@ router.get('/messages/admin/list', async (req, res) => {
         pagination: { page, limit, total: 0, hasMore: false },
       },
     });
-  } catch (error: any) {
-    console.error('[Push] 获取推送记录列表失败:', error.message);
+  } catch (error: unknown) {
+    const errorMsg = error instanceof Error ? error.message : String(error);
+    console.error('[Push] 获取推送记录列表失败:', errorMsg);
     res.status(500).json({
       success: false,
       error: '获取推送记录列表失败',

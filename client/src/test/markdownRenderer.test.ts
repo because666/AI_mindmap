@@ -40,8 +40,8 @@ describe('Markdown Preprocessing', () => {
   describe('Basic Text', () => {
     it('should handle empty content', () => {
       expect(preprocessMarkdown('')).toBe('');
-      expect(preprocessMarkdown(null as any)).toBe('');
-      expect(preprocessMarkdown(undefined as any)).toBe('');
+      expect(preprocessMarkdown(null as unknown as string)).toBe('');
+      expect(preprocessMarkdown(undefined as unknown as string)).toBe('');
     });
 
     it('should preserve plain text', () => {

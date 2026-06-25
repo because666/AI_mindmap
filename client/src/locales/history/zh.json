@@ -1,0 +1,14 @@
+{
+  "actionHistory": "操作历史",
+  "undo": "撤销",
+  "redo": "重做",
+  "noActionHistory": "暂无操作历史",
+  "undoSteps": "可撤销 {{count}} 步",
+  "redoSteps": "可重做 {{count}} 步",
+  "current": "当前",
+  "undoneOperations": "已撤销的操作",
+  "noHistory": "暂无操作历史",
+  "createNodeAction": "创建节点: {{title}}",
+  "updateNodeAction": "更新节点: {{title}}",
+  "deleteNodeAction": "删除节点: {{title}}"
+}

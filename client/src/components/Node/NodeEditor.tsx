@@ -1,5 +1,6 @@
-import React, { useState, useEffect } from 'react';
+import React, { useState } from 'react';
 import { X, Save, Plus, Trash2, GitBranch } from 'lucide-react';
+import { useTranslation } from 'react-i18next';
 import { useAppStore, type NodeData } from '../../stores/appStore';
 import ConfirmDialog from '../Common/ConfirmDialog';
 import useIsMobile from '../../hooks/useIsMobile';
@@ -12,30 +13,27 @@ interface NodeEditorProps {
 }
 
 /**
- * 节点编辑器组件
+ * 节点编辑器内容组件
+ * 负责实际的表单渲染与编辑逻辑
+ * 通过外层 NodeEditor 传入 key={nodeId}，在节点切换时自动重置内部状态
  * 支持桌面端居中弹窗和移动端全屏显示
  */
-const NodeEditor: React.FC<NodeEditorProps> = ({ nodeId, isOpen, onClose, allNodes }) => {
+const NodeEditorContent: React.FC<NodeEditorProps> = ({ nodeId, isOpen, onClose, allNodes }) => {
+  const { t } = useTranslation('canvas');
   const { updateNode, deleteNode, markNodeManuallyTitled } = useAppStore();
-  const [title, setTitle] = useState('');
-  const [summary, setSummary] = useState('');
-  const [tags, setTags] = useState<string[]>([]);
+
+  /**
+   * 根据当前节点数据初始化表单状态
+   * 由于组件通过 key={nodeId} 重置，初始值只在挂载时计算一次
+   */
+  const initialNode = nodeId ? allNodes.get(nodeId) : undefined;
+  const [title, setTitle] = useState(initialNode?.title ?? '');
+  const [summary, setSummary] = useState(initialNode?.summary ?? '');
+  const [tags, setTags] = useState<string[]>(initialNode?.tags ?? []);
   const [newTag, setNewTag] = useState('');
-  const [parentIds, setParentIds] = useState<string[]>([]);
+  const [parentIds, setParentIds] = useState<string[]>(initialNode?.parentIds ?? []);
   const [deleteConfirmOpen, setDeleteConfirmOpen] = useState(false);
   const isMobile = useIsMobile();
-
-  useEffect(() => {
-    if (nodeId) {
-      const node = allNodes.get(nodeId);
-      if (node) {
-        setTitle(node.title);
-        setSummary(node.summary);
-        setTags(node.tags || []);
-        setParentIds(node.parentIds || []);
-      }
-    }
-  }, [nodeId, allNodes]);
 
   const handleSave = () => {
     if (nodeId && title.trim()) {
@@ -128,7 +126,7 @@ const NodeEditor: React.FC<NodeEditorProps> = ({ nodeId, isOpen, onClose, allNod
             <div className="w-5 h-5 rounded-full bg-dark-600" />
           )}
           <h2 className="text-lg font-semibold text-white">
-            {node.isRoot ? '编辑根节点' : '编辑节点'}
+            {node.isRoot ? t('editNode') : t('editNode')}
           </h2>
         </div>
         <button
@@ -141,7 +139,7 @@ const NodeEditor: React.FC<NodeEditorProps> = ({ nodeId, isOpen, onClose, allNod
 
       <div className={`p-6 space-y-5 overflow-y-auto ${isMobile ? 'flex-1' : 'max-h-[60vh]'}`}>
         <div className="space-y-2">
-          <label className="text-sm font-medium text-dark-300">节点标题</label>
+          <label className="text-sm font-medium text-dark-300">{t('nodeTitle')}</label>
           <input
             type="text"
             value={title}
@@ -152,7 +150,7 @@ const NodeEditor: React.FC<NodeEditorProps> = ({ nodeId, isOpen, onClose, allNod
         </div>
 
         <div className="space-y-2">
-          <label className="text-sm font-medium text-dark-300">节点摘要（可选）</label>
+          <label className="text-sm font-medium text-dark-300">{t('nodeSummary')}</label>
           <textarea
             value={summary}
             onChange={(e) => setSummary(e.target.value)}
@@ -254,7 +252,7 @@ const NodeEditor: React.FC<NodeEditorProps> = ({ nodeId, isOpen, onClose, allNod
           className="flex items-center gap-2 px-4 py-2.5 text-red-400 hover:bg-red-900/30 rounded-xl transition-colors min-h-[44px]"
         >
           <Trash2 className="w-4 h-4" />
-          删除节点
+          {t('deleteNode')}
         </button>
         <div className="flex gap-3">
           <button
@@ -294,15 +292,32 @@ const NodeEditor: React.FC<NodeEditorProps> = ({ nodeId, isOpen, onClose, allNod
 
       <ConfirmDialog
         isOpen={deleteConfirmOpen}
-        title="删除节点"
-        message="确定要删除此节点及其所有子节点吗？此操作不可撤销。"
-        confirmText="删除"
-        cancelText="取消"
+        title={t('deleteNodeTitle')}
+        message={t('confirmDeleteNode')}
+        confirmText={t('delete', { ns: 'canvas' })}
+        cancelText={t('cancel', { ns: 'canvas' })}
         onConfirm={handleConfirmDelete}
         onCancel={handleCancelDelete}
       />
     </div>
   );
+};
+
+/**
+ * 节点编辑器外层组件
+ * 通过 key={nodeId} 控制 NodeEditorContent 的挂载与重置
+ * 当 nodeId 变化时，子组件会重新挂载，表单状态自动同步为当前节点数据
+ * @param props - 节点编辑器属性
+ * @returns 节点编辑器组件或 null（无节点时）
+ */
+const NodeEditor: React.FC<NodeEditorProps> = (props) => {
+  const { nodeId } = props;
+
+  if (!nodeId) {
+    return null;
+  }
+
+  return <NodeEditorContent key={nodeId} {...props} />;
 };
 
 export default NodeEditor;

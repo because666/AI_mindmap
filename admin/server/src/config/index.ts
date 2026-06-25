@@ -1,4 +1,5 @@
 import dotenv from 'dotenv';
+import crypto from 'crypto';
 
 dotenv.config();
 
@@ -19,7 +20,7 @@ export const config = {
   },
 
   session: {
-    secret: process.env.SESSION_SECRET || 'deepmindmap-admin-session-secret',
+    secret: process.env.SESSION_SECRET || crypto.randomUUID(),
     maxAge: parseInt(process.env.SESSION_MAX_AGE || '86400000', 10),
   },
 
@@ -28,6 +29,12 @@ export const config = {
     loginAttemptsWindow: parseInt(process.env.LOGIN_ATTEMPTS_WINDOW || '300000', 10),
     loginAttemptsMax: parseInt(process.env.LOGIN_ATTEMPTS_MAX || '5', 10),
     loginLockDuration: parseInt(process.env.LOGIN_LOCK_DURATION || '900000', 10),
+  },
+
+  redis: {
+    host: process.env.REDIS_HOST || 'localhost',
+    port: parseInt(process.env.REDIS_PORT || '6379', 10),
+    password: process.env.REDIS_PASSWORD || '',
   },
 
   cors: {

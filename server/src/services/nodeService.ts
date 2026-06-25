@@ -2,9 +2,12 @@ import { v4 as uuidv4 } from 'uuid';
 import { neo4jService } from '../data/neo4j/connection';
 import { mongoDBService } from '../data/mongodb/connection';
 import { vectorDBService } from '../data/vector/connection';
-import { Node, Relation } from '../types';
+import { redisService } from '../data/redis/connection';
+import { Node, Relation, NodeType, RelationType } from '../types';
 
 const DEFAULT_POSITION = { x: 100, y: 100 };
+const REDIS_CACHE_KEY_PREFIX = 'workspace_cache:';
+const REDIS_CACHE_TTL = 3600;
 
 /**
  * 工作区缓存接口
@@ -14,6 +17,19 @@ interface WorkspaceCache {
   /** 工作区内的节点映射 */
   nodes: Map<string, Node>;
   /** 工作区内的关系列表 */
+  relations: Relation[];
+  /** 最后访问时间戳（毫秒） */
+  lastAccessTime: number;
+}
+
+/**
+ * Redis缓存序列化格式接口
+ * 将Map结构转换为可JSON序列化的普通对象，用于Redis存储
+ */
+interface SerializableWorkspaceCache {
+  /** 节点普通对象映射（由Map转换而来） */
+  nodes: Record<string, Node>;
+  /** 关系列表 */
   relations: Relation[];
   /** 最后访问时间戳（毫秒） */
   lastAccessTime: number;
@@ -35,9 +51,75 @@ export interface CacheStats {
 }
 
 /**
+ * MongoDB节点元数据文档接口
+ * 用于在MongoDB nodes集合中存储节点的关键元数据，支持快速查询和统计
+ */
+interface NodeDocument {
+  /** 节点唯一标识 */
+  id: string;
+  /** 所属工作区ID */
+  workspaceId: string;
+  /** 节点标题 */
+  title: string;
+  /** 节点类型 */
+  type: string;
+  /** 创建者访客ID */
+  createdBy?: string;
+  /** 创建时间 */
+  createdAt: Date;
+  /** 更新时间 */
+  updatedAt: Date;
+}
+
+/**
+ * Neo4j兼容的节点属性接口
+ * 将Node中的嵌套对象和Date转换为Neo4j支持的基本类型
+ * - position对象序列化为positionJson字符串
+ * - Date对象转换为ISO字符串
+ * - 移除所有undefined值
+ */
+interface Neo4jNodeProps {
+  id: string;
+  workspaceId: string;
+  title: string;
+  summary: string;
+  type: string;
+  isRoot: boolean;
+  isComposite: boolean;
+  compositeChildren?: string[];
+  compositeParent?: string;
+  hidden: boolean;
+  expanded: boolean;
+  conversationId?: string;
+  positionJson: string;
+  tags: string[];
+  parentIds: string[];
+  childrenIds: string[];
+  createdBy?: string;
+  createdAt: string;
+  updatedAt: string;
+}
+
+/**
+ * Neo4j兼容的关系属性接口
+ * 将Relation中的Date转换为ISO字符串，移除undefined值
+ */
+interface Neo4jRelationProps {
+  id: string;
+  workspaceId: string;
+  sourceId: string;
+  targetId: string;
+  type: string;
+  description?: string;
+  createdBy?: string;
+  createdAt: string;
+}
+
+/**
  * 节点服务类
  * 提供节点的CRUD操作和关系管理
  * 所有数据按工作区隔离，使用LRU缓存淘汰策略
+ * Redis作为二级缓存，内存Map作为一级缓存和降级方案
  */
 class NodeService {
   private workspaceCaches: Map<string, WorkspaceCache> = new Map();
@@ -48,17 +130,331 @@ class NodeService {
   private static readonly MAX_TOTAL_NODES: number = 10000;
 
   /**
+   * 构建Redis缓存键
+   * @param workspaceId - 工作区ID
+   * @returns Redis键名，格式为 workspace_cache:{workspaceId}
+   */
+  private buildRedisKey(workspaceId: string): string {
+    return `${REDIS_CACHE_KEY_PREFIX}${workspaceId}`;
+  }
+
+  /**
+   * 将Node对象转换为Neo4j兼容的属性对象
+   * Neo4j只接受string/number/boolean及其数组作为属性值
+   * 处理策略：position序列化为JSON字符串，Date转换为ISO字符串，移除undefined值
+   * @param node - 原始Node对象
+   * @returns Neo4j兼容的扁平属性对象
+   */
+  private toNeo4jNodeProps(node: Node): Neo4jNodeProps {
+    const props: Neo4jNodeProps = {
+      id: node.id,
+      workspaceId: node.workspaceId,
+      title: node.title,
+      summary: node.summary,
+      type: node.type,
+      isRoot: node.isRoot,
+      isComposite: node.isComposite,
+      hidden: node.hidden,
+      expanded: node.expanded,
+      positionJson: JSON.stringify(node.position),
+      tags: node.tags,
+      parentIds: node.parentIds,
+      childrenIds: node.childrenIds,
+      createdAt: node.createdAt.toISOString(),
+      updatedAt: node.updatedAt.toISOString(),
+    };
+    if (node.compositeChildren !== undefined) {
+      props.compositeChildren = node.compositeChildren;
+    }
+    if (node.compositeParent !== undefined) {
+      props.compositeParent = node.compositeParent;
+    }
+    if (node.conversationId !== undefined) {
+      props.conversationId = node.conversationId;
+    }
+    if (node.createdBy !== undefined) {
+      props.createdBy = node.createdBy;
+    }
+    return props;
+  }
+
+  /**
+   * 将Neo4j返回的节点属性还原为Node对象
+   * 将positionJson解析为position对象，ISO字符串还原为Date对象
+   * @param props - Neo4j返回的原始属性对象
+   * @returns 还原后的Node对象
+   */
+  private fromNeo4jNodeProps(props: Record<string, unknown>): Node {
+    let position = DEFAULT_POSITION;
+    if (typeof props.positionJson === 'string') {
+      try {
+        const parsed = JSON.parse(props.positionJson);
+        if (typeof parsed.x === 'number' && typeof parsed.y === 'number') {
+          position = { x: parsed.x, y: parsed.y };
+        }
+      } catch {
+        console.warn('Neo4j节点positionJson解析失败，使用默认位置:', props.positionJson);
+      }
+    }
+
+    return {
+      id: props.id as string,
+      workspaceId: props.workspaceId as string,
+      title: (props.title as string) || '新节点',
+      summary: (props.summary as string) || '',
+      type: (props.type as NodeType) || 'default',
+      isRoot: props.isRoot as boolean,
+      isComposite: props.isComposite as boolean,
+      compositeChildren: props.compositeChildren as string[] | undefined,
+      compositeParent: props.compositeParent as string | undefined,
+      hidden: props.hidden as boolean,
+      expanded: props.expanded as boolean,
+      conversationId: props.conversationId as string | undefined,
+      position,
+      tags: (props.tags as string[]) || [],
+      parentIds: (props.parentIds as string[]) || [],
+      childrenIds: (props.childrenIds as string[]) || [],
+      createdBy: props.createdBy as string | undefined,
+      createdAt: new Date(props.createdAt as string),
+      updatedAt: new Date(props.updatedAt as string),
+    };
+  }
+
+  /**
+   * 将Relation对象转换为Neo4j兼容的属性对象
+   * Date转换为ISO字符串，移除undefined值
+   * @param relation - 原始Relation对象
+   * @returns Neo4j兼容的属性对象
+   */
+  private toNeo4jRelationProps(relation: Relation): Neo4jRelationProps {
+    const props: Neo4jRelationProps = {
+      id: relation.id,
+      workspaceId: relation.workspaceId,
+      sourceId: relation.sourceId,
+      targetId: relation.targetId,
+      type: relation.type,
+      createdAt: relation.createdAt.toISOString(),
+    };
+    if (relation.description !== undefined) {
+      props.description = relation.description;
+    }
+    if (relation.createdBy !== undefined) {
+      props.createdBy = relation.createdBy;
+    }
+    return props;
+  }
+
+  /**
+   * 将Neo4j返回的关系属性还原为Relation对象
+   * ISO字符串还原为Date对象
+   * @param props - Neo4j返回的原始属性对象
+   * @returns 还原后的Relation对象
+   */
+  private fromNeo4jRelationProps(props: Record<string, unknown>): Relation {
+    return {
+      id: props.id as string,
+      workspaceId: props.workspaceId as string,
+      sourceId: props.sourceId as string,
+      targetId: props.targetId as string,
+      type: props.type as RelationType,
+      description: props.description as string | undefined,
+      createdBy: props.createdBy as string | undefined,
+      createdAt: new Date(props.createdAt as string),
+    };
+  }
+
+  /**
+   * 将节点元数据同步写入MongoDB
+   * 使用upsert模式，存在则更新，不存在则插入
+   * 写入失败仅打印警告，不影响主流程
+   * @param node - 节点数据
+   */
+  private async syncNodeToMongoDB(node: Node): Promise<void> {
+    try {
+      const col = mongoDBService.getCollection('nodes');
+      if (!col) return;
+
+      const doc: NodeDocument = {
+        id: node.id,
+        workspaceId: node.workspaceId,
+        title: node.title,
+        type: node.type,
+        createdBy: node.createdBy,
+        createdAt: node.createdAt,
+        updatedAt: node.updatedAt,
+      };
+      await col.updateOne(
+        { id: node.id },
+        { $set: doc },
+        { upsert: true }
+      );
+    } catch (error) {
+      console.warn('MongoDB同步节点元数据失败:', error instanceof Error ? error.message : String(error));
+    }
+  }
+
+  /**
+   * 从MongoDB删除节点元数据记录
+   * 删除失败仅打印警告，不影响主流程
+   * @param nodeId - 节点ID
+   */
+  private async deleteNodeFromMongoDB(nodeId: string): Promise<void> {
+    try {
+      await mongoDBService.deleteOne('nodes', { id: nodeId });
+    } catch (error) {
+      console.warn('MongoDB删除节点元数据失败:', error instanceof Error ? error.message : String(error));
+    }
+  }
+
+  /**
+   * 从Redis读取工作区缓存
+   * 反序列化时将普通对象还原为Map，并将日期字符串还原为Date对象
+   * @param workspaceId - 工作区ID
+   * @returns 工作区缓存实例，Redis不可用或读取失败时返回null
+   */
+  private async getFromRedis(workspaceId: string): Promise<WorkspaceCache | null> {
+    const client = redisService.getClient();
+    if (!client) return null;
+
+    try {
+      const data = await client.get(this.buildRedisKey(workspaceId));
+      if (!data) return null;
+
+      const parsed: SerializableWorkspaceCache = JSON.parse(data);
+      const nodes = new Map<string, Node>();
+      for (const [nodeId, nodeData] of Object.entries(parsed.nodes)) {
+        nodes.set(nodeId, {
+          ...nodeData,
+          createdAt: new Date(nodeData.createdAt),
+          updatedAt: new Date(nodeData.updatedAt),
+        });
+      }
+
+      const relations = parsed.relations.map((r: Relation) => ({
+        ...r,
+        createdAt: new Date(r.createdAt),
+      }));
+
+      return {
+        nodes,
+        relations,
+        lastAccessTime: parsed.lastAccessTime,
+      };
+    } catch (error) {
+      console.error('Redis读取工作区缓存失败:', error);
+      return null;
+    }
+  }
+
+  /**
+   * 保存工作区缓存到Redis
+   * 序列化时将Map转换为普通对象，设置TTL为1小时
+   * @param workspaceId - 工作区ID
+   * @param cache - 工作区缓存实例
+   */
+  private async saveToRedis(workspaceId: string, cache: WorkspaceCache): Promise<void> {
+    const client = redisService.getClient();
+    if (!client) return;
+
+    try {
+      const serializable: SerializableWorkspaceCache = {
+        nodes: Object.fromEntries(cache.nodes.entries()),
+        relations: cache.relations,
+        lastAccessTime: cache.lastAccessTime,
+      };
+      await client.setex(
+        this.buildRedisKey(workspaceId),
+        REDIS_CACHE_TTL,
+        JSON.stringify(serializable)
+      );
+    } catch (error) {
+      console.error('Redis保存工作区缓存失败:', error);
+    }
+  }
+
+  /**
+   * 从Redis删除工作区缓存
+   * @param workspaceId - 工作区ID
+   */
+  private async removeFromRedis(workspaceId: string): Promise<void> {
+    const client = redisService.getClient();
+    if (!client) return;
+
+    try {
+      await client.del(this.buildRedisKey(workspaceId));
+    } catch (error) {
+      console.error('Redis删除工作区缓存失败:', error);
+    }
+  }
+
+  /**
+   * 清除所有工作区Redis缓存
+   * 使用SCAN+DEL模式匹配 workspace_cache:* 前缀的键，逐批扫描删除
+   */
+  async clearAllRedisCache(): Promise<void> {
+    const client = redisService.getClient();
+    if (!client) return;
+
+    try {
+      let cursor = '0';
+      do {
+        const [nextCursor, keys] = await client.scan(
+          cursor,
+          'MATCH',
+          `${REDIS_CACHE_KEY_PREFIX}*`,
+          'COUNT',
+          100
+        );
+        if (keys.length > 0) {
+          await client.del(...keys);
+        }
+        cursor = nextCursor;
+      } while (cursor !== '0');
+    } catch (error) {
+      console.error('Redis清除所有缓存失败:', error);
+    }
+  }
+
+  /**
+   * 异步同步工作区缓存到Redis（fire-and-forget模式）
+   * 不阻塞主流程，失败时仅打印错误日志
+   * @param workspaceId - 工作区ID
+   */
+  private syncToRedis(workspaceId: string): void {
+    const cache = this.workspaceCaches.get(workspaceId);
+    if (cache) {
+      this.saveToRedis(workspaceId, cache).catch((error: unknown) => {
+        console.error('异步同步缓存到Redis失败:', error);
+      });
+    }
+  }
+
+  /**
    * 获取或创建工作区缓存
-   * 如果超过最大工作区数量限制，先执行LRU淘汰再创建新缓存
+   * 查找顺序：内存Map → Redis → 创建空缓存
+   * Redis命中时同时写入内存Map并重建nodeToWorkspace索引
    * @param workspaceId - 工作区ID
    * @returns 工作区缓存实例
    */
-  private getOrCreateWorkspaceCache(workspaceId: string): WorkspaceCache {
+  private async getOrCreateWorkspaceCache(workspaceId: string): Promise<WorkspaceCache> {
     const existing = this.workspaceCaches.get(workspaceId);
     if (existing) {
       existing.lastAccessTime = Date.now();
       this.touchWorkspace(workspaceId);
       return existing;
+    }
+
+    const redisCache = await this.getFromRedis(workspaceId);
+    if (redisCache) {
+      while (this.workspaceCaches.size >= NodeService.MAX_WORKSPACES) {
+        this.evictLRUWorkspace();
+      }
+      this.workspaceCaches.set(workspaceId, redisCache);
+      for (const nodeId of redisCache.nodes.keys()) {
+        this.nodeToWorkspace.set(nodeId, workspaceId);
+      }
+      this.enforceNodeLimit();
+      return redisCache;
     }
 
     while (this.workspaceCaches.size >= NodeService.MAX_WORKSPACES) {
@@ -90,6 +486,7 @@ class NodeService {
   /**
    * 淘汰最久未访问的工作区缓存
    * 基于Map的insert-order特性，第一个条目即为最久未访问的工作区
+   * 仅清除内存缓存，保留Redis缓存作为降级数据源
    */
   private evictLRUWorkspace(): void {
     const oldestKey = this.workspaceCaches.keys().next().value;
@@ -150,23 +547,24 @@ class NodeService {
 
   /**
    * 将节点添加到对应工作区的缓存中
-   * 同时更新nodeToWorkspace索引，并检查节点总数限制
+   * 同时更新nodeToWorkspace索引，检查节点总数限制，并异步同步到Redis
    * @param node - 节点数据
    */
-  private addNodeToCache(node: Node): void {
+  private async addNodeToCache(node: Node): Promise<void> {
     const normalizedNode: Node = {
       ...node,
       type: node.type || 'default',
     };
-    const cache = this.getOrCreateWorkspaceCache(normalizedNode.workspaceId);
+    const cache = await this.getOrCreateWorkspaceCache(normalizedNode.workspaceId);
     cache.nodes.set(normalizedNode.id, normalizedNode);
     this.nodeToWorkspace.set(normalizedNode.id, normalizedNode.workspaceId);
     this.enforceNodeLimit();
+    this.syncToRedis(normalizedNode.workspaceId);
   }
 
   /**
    * 从缓存中移除指定节点
-   * 同时清理nodeToWorkspace索引
+   * 同时清理nodeToWorkspace索引，并异步同步到Redis
    * @param id - 节点ID
    */
   private removeNodeFromCache(id: string): void {
@@ -178,6 +576,7 @@ class NodeService {
       cache.nodes.delete(id);
     }
     this.nodeToWorkspace.delete(id);
+    this.syncToRedis(workspaceId);
   }
 
   /**
@@ -219,20 +618,21 @@ class NodeService {
       try {
         await neo4jService.runQuery(
           `CREATE (n:Node $props)`,
-          { props: node }
+          { props: this.toNeo4jNodeProps(node) }
         );
       } catch (error) {
         console.error('Neo4j创建节点失败:', error);
       }
     }
 
-    this.addNodeToCache(node);
+    await this.addNodeToCache(node);
+    await this.syncNodeToMongoDB(node);
     return node;
   }
 
   /**
    * 获取节点
-   * 优先从缓存获取，未命中则从Neo4j加载并写入缓存
+   * 优先从内存缓存获取，未命中则从Neo4j加载并写入缓存
    * @param id - 节点ID
    * @returns 节点数据或null
    */
@@ -249,13 +649,13 @@ class NodeService {
 
     if (neo4jService.isConnected()) {
       try {
-        const results = await neo4jService.runQuery<{ n: Node }>(
+        const results = await neo4jService.runQuery<{ n: Record<string, unknown> }>(
           `MATCH (n:Node {id: $id}) RETURN n`,
           { id }
         );
         if (results.length > 0) {
-          const node = results[0].n;
-          this.addNodeToCache(node);
+          const node = this.fromNeo4jNodeProps(results[0].n);
+          await this.addNodeToCache(node);
           this.missCount++;
           return node;
         }
@@ -302,14 +702,15 @@ class NodeService {
       try {
         await neo4jService.runQuery(
           `MATCH (n:Node {id: $id}) SET n += $props`,
-          { id, props: updated }
+          { id, props: this.toNeo4jNodeProps(updated) }
         );
       } catch (error) {
         console.error('Neo4j更新节点失败:', error);
       }
     }
 
-    this.addNodeToCache(updated);
+    await this.addNodeToCache(updated);
+    await this.syncNodeToMongoDB(updated);
     return updated;
   }
 
@@ -348,12 +749,14 @@ class NodeService {
 
     for (const nodeId of allIds) {
       this.removeNodeFromCache(nodeId);
+      await this.deleteNodeFromMongoDB(nodeId);
     }
 
     if (cache) {
       cache.relations = cache.relations.filter(
         r => !allIds.includes(r.sourceId) && !allIds.includes(r.targetId)
       );
+      this.syncToRedis(workspaceId);
     }
 
     for (const parentId of node.parentIds) {
@@ -370,33 +773,39 @@ class NodeService {
 
   /**
    * 获取工作区内的所有节点
-   * 优先从缓存获取，未命中则从Neo4j加载并批量写入缓存
+   * 查找顺序：内存Map → Redis → Neo4j，加载后同时写入内存Map和Redis
    * @param workspaceId - 工作区ID
    * @returns 节点列表
    */
   async getAllNodes(workspaceId: string): Promise<Node[]> {
-    const cache = this.workspaceCaches.get(workspaceId);
-    if (cache && cache.nodes.size > 0) {
-      cache.lastAccessTime = Date.now();
+    const memoryCache = this.workspaceCaches.get(workspaceId);
+    if (memoryCache && memoryCache.nodes.size > 0) {
+      memoryCache.lastAccessTime = Date.now();
       this.touchWorkspace(workspaceId);
+      this.hitCount++;
+      return Array.from(memoryCache.nodes.values());
+    }
+
+    const cache = await this.getOrCreateWorkspaceCache(workspaceId);
+    if (cache.nodes.size > 0) {
       this.hitCount++;
       return Array.from(cache.nodes.values());
     }
 
     if (neo4jService.isConnected()) {
       try {
-        const results = await neo4jService.runQuery<{ n: Node }>(
+        const results = await neo4jService.runQuery<{ n: Record<string, unknown> }>(
           `MATCH (n:Node {workspaceId: $workspaceId}) RETURN n`,
           { workspaceId }
         );
         if (results.length > 0) {
-          const nodes = results.map(r => r.n);
-          const targetCache = this.getOrCreateWorkspaceCache(workspaceId);
+          const nodes = results.map(r => this.fromNeo4jNodeProps(r.n));
           for (const node of nodes) {
-            targetCache.nodes.set(node.id, node);
+            cache.nodes.set(node.id, node);
             this.nodeToWorkspace.set(node.id, node.workspaceId);
           }
           this.enforceNodeLimit();
+          this.syncToRedis(workspaceId);
           this.missCount++;
           return nodes;
         }
@@ -454,6 +863,7 @@ class NodeService {
    * @param title - 节点标题
    * @param workspaceId - 工作区ID
    * @param createdBy - 创建者访客ID
+   * @param childData - 子节点额外数据
    * @returns 创建的子节点
    * @throws 当父节点不存在时抛出错误
    */
@@ -509,7 +919,7 @@ class NodeService {
       throw new Error('源节点或目标节点不存在');
     }
 
-    const cache = this.getOrCreateWorkspaceCache(workspaceId);
+    const cache = await this.getOrCreateWorkspaceCache(workspaceId);
     const existingRelation = cache.relations.find(
       r => r.sourceId === relationData.sourceId &&
            r.targetId === relationData.targetId &&
@@ -535,7 +945,7 @@ class NodeService {
         await neo4jService.runQuery(
           `MATCH (s:Node {id: $sourceId}), (t:Node {id: $targetId})
            CREATE (s)-[r:RELATES_TO $props]->(t)`,
-          { sourceId: relation.sourceId, targetId: relation.targetId, props: relation }
+          { sourceId: relation.sourceId, targetId: relation.targetId, props: this.toNeo4jRelationProps(relation) }
         );
       } catch (error) {
         console.error('Neo4j创建关系失败:', error);
@@ -543,39 +953,46 @@ class NodeService {
     }
 
     cache.relations.push(relation);
+    this.syncToRedis(workspaceId);
     return relation;
   }
 
   /**
    * 获取工作区内的所有关系
-   * 优先从缓存获取，未命中则从Neo4j加载并写入缓存
+   * 查找顺序：内存Map → Redis → Neo4j，加载后同时写入内存Map和Redis
    * @param workspaceId - 工作区ID
    * @returns 关系列表
    */
   async getRelations(workspaceId: string): Promise<Relation[]> {
-    const cache = this.workspaceCaches.get(workspaceId);
-    if (cache && cache.relations.length > 0) {
-      cache.lastAccessTime = Date.now();
+    const memoryCache = this.workspaceCaches.get(workspaceId);
+    if (memoryCache && memoryCache.relations.length > 0) {
+      memoryCache.lastAccessTime = Date.now();
       this.touchWorkspace(workspaceId);
+      this.hitCount++;
+      return memoryCache.relations;
+    }
+
+    const cache = await this.getOrCreateWorkspaceCache(workspaceId);
+    if (cache.relations.length > 0) {
       this.hitCount++;
       return cache.relations;
     }
 
     if (neo4jService.isConnected()) {
       try {
-        const results = await neo4jService.runQuery<{ r: Relation }>(
+        const results = await neo4jService.runQuery<{ r: Record<string, unknown> }>(
           `MATCH ()-[r:RELATES_TO {workspaceId: $workspaceId}]->() RETURN r`,
           { workspaceId }
         );
         if (results.length > 0) {
-          const relations = results.map(r => r.r);
-          const targetCache = this.getOrCreateWorkspaceCache(workspaceId);
+          const relations = results.map(r => this.fromNeo4jRelationProps(r.r));
           for (const relation of relations) {
-            if (!targetCache.relations.find(mr => mr.id === relation.id)) {
-              targetCache.relations.push(relation);
+            if (!cache.relations.find(mr => mr.id === relation.id)) {
+              cache.relations.push(relation);
             }
           }
           this.enforceNodeLimit();
+          this.syncToRedis(workspaceId);
           this.missCount++;
           return relations;
         }
@@ -657,6 +1074,7 @@ class NodeService {
     const cache = this.workspaceCaches.get(foundWorkspaceId);
     if (cache) {
       cache.relations.splice(foundIndex, 1);
+      this.syncToRedis(foundWorkspaceId);
     }
     return true;
   }
@@ -754,16 +1172,97 @@ class NodeService {
   }
 
   /**
-   * 清空工作区的所有内存数据
+   * 从Neo4j全量同步节点元数据到MongoDB
+   * 用于服务启动时的一次性数据迁移，确保MongoDB中包含所有已有节点的元数据
+   * 同步过程使用upsert模式，不会覆盖已存在的记录
+   * 同步失败仅打印警告，不影响服务启动
+   */
+  async syncNodesToMongoDB(): Promise<void> {
+    if (!neo4jService.isConnected()) {
+      console.warn('Neo4j未连接，跳过节点元数据同步到MongoDB');
+      return;
+    }
+
+    if (!mongoDBService.isConnected()) {
+      console.warn('MongoDB未连接，跳过节点元数据同步');
+      return;
+    }
+
+    try {
+      const results = await neo4jService.runQuery<{ n: Record<string, unknown> }>(
+        `MATCH (n:Node) RETURN n`,
+        {}
+      );
+
+      if (results.length === 0) {
+        if (process.env.NODE_ENV !== 'production') {
+          console.log('Neo4j中无节点数据，无需同步到MongoDB');
+        }
+        return;
+      }
+
+      let syncCount = 0;
+      let failCount = 0;
+
+      for (const result of results) {
+        try {
+          const node = this.fromNeo4jNodeProps(result.n);
+          await this.syncNodeToMongoDB(node);
+          syncCount++;
+        } catch (error) {
+          failCount++;
+          console.warn(
+            '同步节点到MongoDB失败，节点ID:',
+            (result.n as Record<string, unknown>).id,
+            '错误:',
+            error instanceof Error ? error.message : String(error)
+          );
+        }
+      }
+
+      if (process.env.NODE_ENV !== 'production') {
+        console.log(`节点元数据同步完成: 成功 ${syncCount} 条, 失败 ${failCount} 条`);
+      }
+    } catch (error) {
+      console.warn('从Neo4j全量同步节点到MongoDB失败:', error instanceof Error ? error.message : String(error));
+    }
+  }
+
+  /**
+   * 清空工作区的所有数据
+   * 同时清除内存缓存和Redis缓存
    * @param workspaceId - 工作区ID
    */
-  clearWorkspaceData(workspaceId: string): void {
+  async clearWorkspaceData(workspaceId: string): Promise<void> {
+    await this.invalidateWorkspaceCache(workspaceId);
+  }
+
+  /**
+   * 使指定工作区的缓存失效
+   * 同时清除内存Map和Redis中的缓存
+   * @param workspaceId - 工作区ID
+   */
+  async invalidateWorkspaceCache(workspaceId: string): Promise<void> {
     this.clearWorkspaceCache(workspaceId);
+    await this.removeFromRedis(workspaceId);
+  }
+
+  /**
+   * 清除所有缓存
+   * 同时清除内存Map和Redis中的所有工作区缓存
+   */
+  async clearAllCache(): Promise<void> {
+    this.workspaceCaches.clear();
+    this.nodeToWorkspace.clear();
+    this.hitCount = 0;
+    this.missCount = 0;
+    await this.clearAllRedisCache();
   }
 
   /**
    * 清空所有内存数据
    * 重置所有工作区缓存、节点索引和统计计数器
+   * 仅清除内存，不同步清除Redis
    */
   clearMemoryData(): void {
     this.workspaceCaches.clear();
@@ -773,11 +1272,12 @@ class NodeService {
   }
 
   /**
-   * 清除指定工作区的缓存
-   * 用于工作区切换时释放缓存，同时清理节点到工作区的索引映射
+   * 清除指定工作区的内存缓存
+   * 用于LRU淘汰时释放内存，同时清理节点到工作区的索引映射
+   * 仅清除内存，不清除Redis（Redis缓存作为降级数据源保留）
    * @param workspaceId - 工作区ID
    */
-  clearWorkspaceCache(workspaceId: string): void {
+  private clearWorkspaceCache(workspaceId: string): void {
     const cache = this.workspaceCaches.get(workspaceId);
     if (cache) {
       for (const nodeId of cache.nodes.keys()) {

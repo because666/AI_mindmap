@@ -1,23 +1,49 @@
 import cron from 'node-cron';
+import { Document } from 'mongodb';
 import { pushService } from '../services/pushService';
 import { mongoDBService } from '../data/mongodb/connection';
 
 const ENABLE_WORKSPACE_STATS_JOB = process.env.ENABLE_WORKSPACE_STATS_JOB === 'true';
 const ENABLE_CLEANUP_JOB = process.env.ENABLE_CLEANUP_JOB === 'true';
 
+/**
+ * 工作区成员文档接口（用于运营数据推送任务）
+ */
+interface WorkspaceMemberDocument extends Document {
+  workspaceId?: string;
+  visitorId?: string;
+  userId?: string;
+  role?: string;
+  lastActiveAt?: Date;
+}
+
+/**
+ * 工作区文档接口（用于运营数据推送任务）
+ */
+interface WorkspaceStatsDocument extends Document {
+  id?: string;
+  _id?: { toString(): string };
+  name?: string;
+  status?: string;
+}
+
 function startWorkspaceStatsJob(): void {
   if (!ENABLE_WORKSPACE_STATS_JOB) {
-    console.log('[Cron] 工作区运营数据推送任务已禁用');
+    if (process.env.NODE_ENV !== 'production') {
+      console.log('[Cron] 工作区运营数据推送任务已禁用');
+    }
     return;
   }
 
   const job = cron.schedule(
     '0 9 * * *',
     async () => {
-      console.log('[Cron] 开始生成工作区运营数据推送...');
+      if (process.env.NODE_ENV !== 'production') {
+        console.log('[Cron] 开始生成工作区运营数据推送...');
+      }
 
       try {
-        const workspaceCollection = mongoDBService.getCollection<any>('workspaces');
+        const workspaceCollection = mongoDBService.getCollection<WorkspaceStatsDocument>('workspaces');
         if (!workspaceCollection) {
           console.warn('[Cron] 工作区集合不可用，跳过');
           return;
@@ -34,31 +60,33 @@ function startWorkspaceStatsJob(): void {
             const today = new Date(yesterday);
             today.setDate(today.getDate() + 1);
 
-            const nodeCollection = mongoDBService.getCollection<any>('nodes');
-            const messageCollection = mongoDBService.getCollection<any>('messages');
-            const memberCollection = mongoDBService.getCollection<any>('workspace_members');
+            const nodeCollection = mongoDBService.getCollection<Document>('nodes');
+            const messageCollection = mongoDBService.getCollection<Document>('messages');
+            const memberCollection = mongoDBService.getCollection<WorkspaceMemberDocument>('workspace_members');
 
             let newNodes = 0;
             let newMessages = 0;
             let activeMembers = 0;
 
-            if (nodeCollection) {
+            const workspaceId = workspace.id || workspace._id?.toString();
+
+            if (nodeCollection && workspaceId) {
               newNodes = await nodeCollection.countDocuments({
-                workspaceId: workspace.id || workspace._id?.toString(),
+                workspaceId,
                 createdAt: { $gte: yesterday, $lt: today },
               });
             }
 
-            if (messageCollection) {
+            if (messageCollection && workspaceId) {
               newMessages = await messageCollection.countDocuments({
-                workspaceId: workspace.id || workspace._id?.toString(),
+                workspaceId,
                 timestamp: { $gte: yesterday, $lt: today },
               });
             }
 
-            if (memberCollection) {
+            if (memberCollection && workspaceId) {
               activeMembers = await memberCollection.countDocuments({
-                workspaceId: workspace.id || workspace._id?.toString(),
+                workspaceId,
                 lastActiveAt: { $gte: yesterday },
               });
             }
@@ -67,23 +95,26 @@ function startWorkspaceStatsJob(): void {
               continue;
             }
 
-            let admins: any[] = [];
-            if (memberCollection) {
+            let admins: WorkspaceMemberDocument[] = [];
+            if (memberCollection && workspaceId) {
               admins = await memberCollection
                 .find({
-                  workspaceId: workspace.id || workspace._id?.toString(),
+                  workspaceId,
                   role: { $in: ['owner', 'creator', 'admin'] },
                 })
                 .toArray();
             }
 
-            const adminIds = admins.map((a) => a.visitorId || a.userId).filter(Boolean);
+            const adminIds = admins
+              .map((a) => a.visitorId || a.userId)
+              .filter((id): id is string => Boolean(id));
 
             if (adminIds.length === 0) {
               continue;
             }
 
-            const title = `工作区"${workspace.name}"昨日动态`;
+            const workspaceName = workspace.name || '未命名工作区';
+            const title = `工作区"${workspaceName}"昨日动态`;
             const content = `## 昨日数据概览
 
 - **新增节点**：${newNodes} 个
@@ -92,7 +123,9 @@ function startWorkspaceStatsJob(): void {
 
 继续加油，让思维流动起来！ 💪`;
 
-            const workspaceId = workspace.id || workspace._id?.toString();
+            if (!workspaceId) {
+              continue;
+            }
 
             await pushService.sendWorkspaceAutoNotification(
               workspaceId,
@@ -101,15 +134,21 @@ function startWorkspaceStatsJob(): void {
               adminIds
             );
 
-            console.log(`[Cron] 工作区 "${workspace.name}" 运营数据推送成功`);
-          } catch (error: any) {
-            console.error(`[Cron] 处理工作区 ${workspace.name} 失败:`, error.message);
+            if (process.env.NODE_ENV !== 'production') {
+              console.log(`[Cron] 工作区 "${workspaceName}" 运营数据推送成功`);
+            }
+          } catch (error: unknown) {
+            const errorMsg = error instanceof Error ? error.message : String(error);
+            console.error(`[Cron] 处理工作区 ${workspace.name || ''} 失败:`, errorMsg);
           }
         }
 
-        console.log('[Cron] 工作区运营数据推送完成');
-      } catch (error: any) {
-        console.error('[Cron] 工作区运营数据推送任务异常:', error.message);
+        if (process.env.NODE_ENV !== 'production') {
+          console.log('[Cron] 工作区运营数据推送完成');
+        }
+      } catch (error: unknown) {
+        const errorMsg = error instanceof Error ? error.message : String(error);
+        console.error('[Cron] 工作区运营数据推送任务异常:', errorMsg);
       }
     },
     {
@@ -118,28 +157,37 @@ function startWorkspaceStatsJob(): void {
   );
 
   job.start();
-  console.log('[Cron] 工作区运营数据推送任务已启动（每天9点执行）');
+  if (process.env.NODE_ENV !== 'production') {
+    console.log('[Cron] 工作区运营数据推送任务已启动（每天9点执行）');
+  }
 }
 
 function startCleanupJob(): void {
   if (!ENABLE_CLEANUP_JOB) {
-    console.log('[Cron] 数据清理任务已禁用');
+    if (process.env.NODE_ENV !== 'production') {
+      console.log('[Cron] 数据清理任务已禁用');
+    }
     return;
   }
 
   const job = cron.schedule(
     '0 3 * * *',
     async () => {
-      console.log('[Cron] 开始清理过期数据...');
+      if (process.env.NODE_ENV !== 'production') {
+        console.log('[Cron] 开始清理过期数据...');
+      }
 
       try {
         const result = await pushService.cleanupExpiredData();
 
-        console.log(`[Cron] 过期数据清理完成:`);
-        console.log(`  - 清理过期消息: ${result.cleanedMessages} 条`);
-        console.log(`  - 停用无效设备: ${result.deactivatedDevices} 个`);
-      } catch (error: any) {
-        console.error('[Cron] 数据清理任务异常:', error.message);
+        if (process.env.NODE_ENV !== 'production') {
+          console.log(`[Cron] 过期数据清理完成:`);
+          console.log(`  - 清理过期消息: ${result.cleanedMessages} 条`);
+          console.log(`  - 停用无效设备: ${result.deactivatedDevices} 个`);
+        }
+      } catch (error: unknown) {
+        const errorMsg = error instanceof Error ? error.message : String(error);
+        console.error('[Cron] 数据清理任务异常:', errorMsg);
       }
     },
     {
@@ -148,18 +196,24 @@ function startCleanupJob(): void {
   );
 
   job.start();
-  console.log('[Cron] 数据清理任务已启动（每天凌晨3点执行）');
+  if (process.env.NODE_ENV !== 'production') {
+    console.log('[Cron] 数据清理任务已启动（每天凌晨3点执行）');
+  }
 }
 
 export function initScheduledJobs(): void {
-  console.log('');
-  console.log('='.repeat(40));
-  console.log('📅 初始化定时任务...');
-  console.log('='.repeat(40));
+  if (process.env.NODE_ENV !== 'production') {
+    console.log('');
+    console.log('='.repeat(40));
+    console.log('📅 初始化定时任务...');
+    console.log('='.repeat(40));
+  }
 
   startWorkspaceStatsJob();
   startCleanupJob();
 
-  console.log('✅ 定时任务初始化完成');
-  console.log('');
+  if (process.env.NODE_ENV !== 'production') {
+    console.log('✅ 定时任务初始化完成');
+    console.log('');
+  }
 }

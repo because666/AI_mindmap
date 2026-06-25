@@ -1,6 +1,7 @@
 import { useState, useEffect, useCallback } from 'react';
 import { pushClientService, type PushMessage } from '../../services/pushService';
 import { Bell, CheckCheck, AlertCircle } from 'lucide-react';
+import { useTranslation } from 'react-i18next';
 
 interface MessageListProps {
   onMessageClick: (messageId: string) => void;
@@ -8,6 +9,7 @@ interface MessageListProps {
 }
 
 export function MessageList({ onMessageClick, onUnreadCountChange }: MessageListProps) {
+  const { t } = useTranslation('message');
   const [messages, setMessages] = useState<PushMessage[]>([]);
   const [loading, setLoading] = useState(true);
   const [activeTab, setActiveTab] = useState<'all' | 'broadcast' | 'workspace'>('all');
@@ -86,14 +88,14 @@ export function MessageList({ onMessageClick, onUnreadCountChange }: MessageList
     <div className="flex flex-col h-full bg-dark-950">
       <div className="sticky top-0 z-10 bg-dark-800 border-b border-dark-700 px-4 py-3">
         <div className="flex items-center justify-between mb-3">
-          <h2 className="text-lg font-semibold text-white">消息中心</h2>
+          <h2 className="text-lg font-semibold text-white">{t('messageCenter')}</h2>
           {unreadCount > 0 && (
             <button
               onClick={handleMarkAllRead}
               className="flex items-center gap-1 text-sm text-primary-400 hover:text-primary-300 transition-colors"
             >
               <CheckCheck size={16} />
-              全部已读
+              {t('markAllRead')}
             </button>
           )}
         </div>
@@ -128,7 +130,7 @@ export function MessageList({ onMessageClick, onUnreadCountChange }: MessageList
         ) : messages.length === 0 ? (
           <div className="flex flex-col items-center justify-center py-12 text-dark-400">
             <Bell size={48} strokeWidth={1} className="mb-2 opacity-30" />
-            <p>暂无消息</p>
+            <p>{t('noMessages')}</p>
           </div>
         ) : (
           <ul className="divide-y divide-dark-800">
@@ -187,7 +189,7 @@ export function MessageList({ onMessageClick, onUnreadCountChange }: MessageList
               onClick={() => setPage((prev) => prev + 1)}
               className="text-sm text-primary-400 hover:underline"
             >
-              加载更多
+              {t('loadMore')}
             </button>
           </div>
         )}
@@ -195,7 +197,7 @@ export function MessageList({ onMessageClick, onUnreadCountChange }: MessageList
 
       {total > 0 && (
         <div className="px-4 py-2 bg-dark-800 text-xs text-dark-400 text-center border-t border-dark-700">
-          共 {total} 条消息，{unreadCount > 0 ? `${unreadCount} 条未读` : '全部已读'}
+          {t('totalMessages', { count: total })}，{unreadCount > 0 ? t('unreadCount', { count: unreadCount }) : t('allRead')}
         </div>
       )}
     </div>

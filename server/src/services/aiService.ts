@@ -1,5 +1,5 @@
 import OpenAI from 'openai';
-import { config } from '../config';
+import { config, AIProvider } from '../config';
 import { AIResponse, EmbeddingRequest, EmbeddingResponse } from '../types';
 import { vectorDBService } from '../data/vector/connection';
 import { mongoDBService } from '../data/mongodb/connection';
@@ -37,17 +37,50 @@ interface UsageStats {
   }>;
 }
 
+/** AI 工具调用消息格式 */
+interface ChatToolCallMessage {
+  /** 工具调用唯一标识 */
+  id: string;
+  /** 工具名称 */
+  name: string;
+  /** 工具参数 JSON 字符串 */
+  arguments: string;
+}
+
+/** AI 对话消息格式 */
+interface ChatOptionsMessage {
+  /** 消息角色 */
+  role: string;
+  /** 消息内容 */
+  content: string;
+  /** tool 消息对应的工具调用 ID */
+  tool_call_id?: string;
+  /** assistant 消息携带的工具调用列表 */
+  tool_calls?: ChatToolCallMessage[];
+}
+
 /**
  * 聊天选项接口
  */
 interface ChatOptions {
-  messages: Array<{ role: string; content: string }>;
+  messages: ChatOptionsMessage[];
   model?: string;
   temperature?: number;
   maxTokens?: number;
   provider?: string;
   apiKey?: string;
   baseUrl?: string;
+  /** 指定 AI 服务商 ID，使用对应 provider 的 url/apiKey/model */
+  providerId?: string;
+  /** AI 工具定义列表，用于 Function Calling */
+  tools?: Array<{
+    type: 'function';
+    function: {
+      name: string;
+      description: string;
+      parameters: Record<string, unknown>;
+    };
+  }>;
 }
 
 /**
@@ -107,15 +140,205 @@ interface TimeoutChunk {
 /**
  * 流式聊天结果联合类型
  */
-type StreamChunk = ContentChunk | ThinkingChunk | DegradedChunk | UsageChunk | TimeoutChunk;
+type StreamChunk = ContentChunk | ThinkingChunk | DegradedChunk | UsageChunk | TimeoutChunk | ToolCallChunk;
 
 /**
- * 流式Delta扩展接口（支持reasoning_content字段）
+ * AI 工具定义 - OpenAI Function Calling 格式
+ * 定义 AI 可调用的所有工具及其参数 Schema
+ */
+export const AI_TOOLS: Array<{
+  type: 'function';
+  function: {
+    name: string;
+    description: string;
+    parameters: {
+      type: 'object';
+      properties: Record<string, {
+        type: string;
+        description: string;
+        enum?: string[];
+      }>;
+      required: string[];
+    };
+  };
+}> = [
+  {
+    type: 'function',
+    function: {
+      name: 'create_node',
+      description: '在思维导图中创建新节点。如果不指定父节点ID，则默认在当前对话所在节点下创建子节点。',
+      parameters: {
+        type: 'object',
+        properties: {
+          parent_node_id: {
+            type: 'string',
+            description: '父节点的ID（可选，不传则使用当前对话所在节点）',
+          },
+          title: {
+            type: 'string',
+            description: '新节点的标题，应简洁精炼',
+          },
+          content: {
+            type: 'string',
+            description: '新节点的详细内容（可选）',
+          },
+          position: {
+            type: 'string',
+            description: '新节点相对于父节点的位置',
+            enum: ['left', 'right'],
+          },
+        },
+        required: ['title'],
+      },
+    },
+  },
+  {
+    type: 'function',
+    function: {
+      name: 'create_relation',
+      description: '在两个节点之间创建关系连线。关系类型包括：parent-child（父子）、supports（支持）、contradicts（矛盾）、prerequisite（前置）、elaborates（阐述）、references（引用）、conclusion（结论）、custom（自定义）。',
+      parameters: {
+        type: 'object',
+        properties: {
+          source_node_id: {
+            type: 'string',
+            description: '关系起始节点的ID',
+          },
+          target_node_id: {
+            type: 'string',
+            description: '关系目标节点的ID',
+          },
+          relation_type: {
+            type: 'string',
+            description: '关系类型',
+            enum: ['parent-child', 'supports', 'contradicts', 'prerequisite', 'elaborates', 'references', 'conclusion', 'custom'],
+          },
+          label: {
+            type: 'string',
+            description: '关系标签说明（可选）',
+          },
+        },
+        required: ['source_node_id', 'target_node_id', 'relation_type'],
+      },
+    },
+  },
+  {
+    type: 'function',
+    function: {
+      name: 'update_node',
+      description: '修改已有节点的标题或内容。至少需要提供 title 或 content 之一。',
+      parameters: {
+        type: 'object',
+        properties: {
+          node_id: {
+            type: 'string',
+            description: '要修改的节点ID',
+          },
+          title: {
+            type: 'string',
+            description: '新的节点标题',
+          },
+          content: {
+            type: 'string',
+            description: '新的节点详细内容',
+          },
+        },
+        required: ['node_id'],
+      },
+    },
+  },
+  {
+    type: 'function',
+    function: {
+      name: 'expand_node',
+      description: '为指定节点自动生成多个子主题节点。direction 决定扩展方向：deepen（深化）、broaden（扩展）、apply（应用）、compare（对比）。',
+      parameters: {
+        type: 'object',
+        properties: {
+          node_id: {
+            type: 'string',
+            description: '要扩展的节点ID（可选，不传则使用当前对话所在节点）',
+          },
+          direction: {
+            type: 'string',
+            description: '扩展方向',
+            enum: ['deepen', 'broaden', 'apply', 'compare'],
+          },
+          count: {
+            type: 'number',
+            description: '生成子节点的数量，默认3个',
+          },
+        },
+        required: ['direction'],
+      },
+    },
+  },
+  {
+    type: 'function',
+    function: {
+      name: 'get_mindmap_context',
+      description: '获取当前思维导图的结构概览，包括所有节点的ID、标题、类型和层级关系。在执行创建或修改操作前，应先调用此工具了解导图结构。',
+      parameters: {
+        type: 'object',
+        properties: {},
+        required: [],
+      },
+    },
+  },
+  {
+    type: 'function',
+    function: {
+      name: 'get_node_detail',
+      description: '获取指定节点的详细信息，包括标题、内容、标签、父节点、子节点和关联关系。',
+      parameters: {
+        type: 'object',
+        properties: {
+          node_id: {
+            type: 'string',
+            description: '要查询的节点ID',
+          },
+        },
+        required: ['node_id'],
+      },
+    },
+  },
+];
+
+/** 工具调用块 - AI 决定调用工具时返回 */
+export interface ToolCallChunk {
+  type: 'tool_call';
+  /** 工具调用信息 */
+  tool_calls: Array<{
+    /** 工具调用唯一标识 */
+    id: string;
+    /** 工具名称 */
+    name: string;
+    /** 工具调用参数（JSON 字符串） */
+    arguments: string;
+  }>;
+}
+
+/**
+ * 流式Delta扩展接口（支持reasoning_content和tool_calls字段）
  */
 interface StreamDeltaWithReasoning {
   content?: string | null;
   reasoning_content?: string | null;
   role?: string;
+  /** 流式工具调用增量数据 */
+  tool_calls?: Array<{
+    /** 工具调用在数组中的索引 */
+    index: number;
+    /** 工具调用唯一标识 */
+    id?: string;
+    /** 工具函数信息 */
+    function?: {
+      /** 工具函数名称 */
+      name?: string;
+      /** 工具函数参数（JSON片段） */
+      arguments?: string;
+    };
+  }>;
 }
 
 /**
@@ -156,9 +379,12 @@ class AIService {
   private static instance: AIService;
   private keyPools: Map<string, string[]> = new Map();
   private keyIndices: Map<string, number> = new Map();
+  /** 多 AI 服务商配置列表，从 config.aiProviders 初始化 */
+  private providers: AIProvider[] = [];
 
   private constructor() {
     this.initializeKeyPools();
+    this.initializeProviders();
     if (config.ai.openaiApiKey) {
       this.openai = new OpenAI({ apiKey: config.ai.openaiApiKey });
     }
@@ -198,6 +424,44 @@ class AIService {
       this.keyPools.set('openai', openaiKeys);
       this.keyIndices.set('openai', 0);
     }
+  }
+
+  /**
+   * 初始化多 AI 服务商配置列表
+   * 从 config.aiProviders 加载服务商配置，按 priority 升序排列
+   */
+  private initializeProviders(): void {
+    this.providers = [...config.ai.aiProviders].sort((a, b) => a.priority - b.priority);
+  }
+
+  /**
+   * 获取 AI 服务商配置
+   * 按 ID 查找指定服务商，未指定时按 priority 顺序选择优先级最高的服务商
+   * @param providerId - 服务商唯一标识，未指定时返回优先级最高的服务商
+   * @returns 匹配的 AIProvider，未找到时返回 undefined
+   */
+  getProvider(providerId?: string): AIProvider | undefined {
+    if (providerId) {
+      return this.providers.find((p) => p.id === providerId);
+    }
+    return this.providers.length > 0 ? this.providers[0] : undefined;
+  }
+
+  /**
+   * 获取所有已配置的 AI 服务商列表
+   * @returns 按 priority 排序的服务商列表（浅拷贝，防止外部修改内部状态）
+   */
+  getProviders(): AIProvider[] {
+    return [...this.providers];
+  }
+
+  /**
+   * 更新 AI 服务商配置列表（运行时动态更新）
+   * 用于 admin 后台保存配置后同步到运行中的 AI 服务实例
+   * @param newProviders - 新的服务商配置列表
+   */
+  updateProviders(newProviders: AIProvider[]): void {
+    this.providers = [...newProviders].sort((a, b) => a.priority - b.priority);
   }
 
   /**
@@ -329,6 +593,7 @@ class AIService {
   /**
    * 发送聊天请求（支持Provider降级）
    * 主Provider失败时自动尝试降级链中的下一个Provider，最多尝试3个
+   * 当 providerId 指定时，使用对应 provider 的 url/apiKey/model，跳过降级链
    * @param request - 聊天请求选项
    * @returns AI响应
    */
@@ -347,12 +612,30 @@ class AIService {
           error: 'Invalid message content',
         };
       }
-      if (!['system', 'user', 'assistant'].includes(msg.role)) {
+      if (!['system', 'user', 'assistant', 'tool'].includes(msg.role)) {
         return {
           success: false,
           error: `Invalid message role: ${msg.role}`,
         };
       }
+    }
+
+    if (request.providerId) {
+      const provider = this.getProvider(request.providerId);
+      if (!provider) {
+        return {
+          success: false,
+          error: `未找到指定的 AI 服务商: ${request.providerId}`,
+        };
+      }
+      const providerRequest: ChatOptions = {
+        ...request,
+        apiKey: provider.apiKey,
+        baseUrl: provider.url,
+        model: request.model || provider.model,
+        provider: request.providerId,
+      };
+      return this.chatWithProvider(providerRequest, request.providerId, providerRequest.model);
     }
 
     if (!this.shouldUseFallback(request)) {
@@ -402,12 +685,56 @@ class AIService {
       const temperature = Math.max(0, Math.min(2, request.temperature ?? 0.7));
       const maxTokens = request.maxTokens ? Math.max(1, Math.min(32000, request.maxTokens)) : undefined;
 
-      const response = await client.chat.completions.create({
-        model: effectiveModel,
-        messages: request.messages.map(m => ({
+      // 映射消息格式，处理 tool_calls 和 tool 角色消息
+      const mappedMessages = request.messages.map(m => {
+        if (m.role === 'tool') {
+          return {
+            role: 'tool' as const,
+            content: m.content.trim(),
+            tool_call_id: m.tool_call_id || '',
+          };
+        }
+        if (m.role === 'assistant' && m.tool_calls && m.tool_calls.length > 0) {
+          const trimmedContent = m.content.trim();
+          return {
+            role: 'assistant' as const,
+            ...(trimmedContent ? { content: trimmedContent } : {}),
+            tool_calls: m.tool_calls.map(toolCall => ({
+              id: toolCall.id,
+              type: 'function' as const,
+              function: {
+                name: toolCall.name,
+                arguments: toolCall.arguments,
+              },
+            })),
+          };
+        }
+        return {
           role: m.role as 'system' | 'user' | 'assistant',
           content: m.content.trim(),
-        })),
+        };
+      });
+
+      // 记录发送给 API 的消息格式，用于调试
+      if (process.env.NODE_ENV !== 'production') {
+        console.log('[AI Chat] 发送给API的消息:', JSON.stringify(mappedMessages.map(m => ({
+          role: m.role,
+          hasContent: !!(m as Record<string, unknown>).content,
+          contentType: typeof (m as Record<string, unknown>).content,
+          contentPreview: typeof (m as Record<string, unknown>).content === 'string'
+            ? String((m as Record<string, unknown>).content).substring(0, 50)
+            : (m as Record<string, unknown>).content,
+          hasToolCalls: !!(m as Record<string, unknown>).tool_calls,
+          toolCallCount: Array.isArray((m as Record<string, unknown>).tool_calls)
+            ? ((m as Record<string, unknown>).tool_calls as unknown[]).length
+            : 0,
+          toolCallId: (m as Record<string, unknown>).tool_call_id || undefined,
+        })), null, 2));
+      }
+
+      const response = await client.chat.completions.create({
+        model: effectiveModel,
+        messages: mappedMessages,
         temperature,
         max_tokens: maxTokens,
         stream: false,
@@ -489,6 +816,7 @@ class AIService {
    * 流式聊天（支持Provider降级和超时控制）
    * 主Provider失败时自动尝试降级链中的下一个Provider，最多尝试3个
    * 30秒无新数据时自动断开并发送超时通知
+   * 当 providerId 指定时，使用对应 provider 的 url/apiKey/model，跳过降级链
    * @param request - 聊天请求选项
    * @yields 响应内容片段（包含内容、思考过程、降级通知、用量信息、超时通知）
    */
@@ -498,12 +826,46 @@ class AIService {
     }
 
     for (const msg of request.messages) {
+      if (!['system', 'user', 'assistant', 'tool'].includes(msg.role)) {
+        throw new Error(`Invalid message role: ${msg.role}`);
+      }
+      // tool 角色消息：content 必须为字符串，tool_call_id 必须存在
+      if (msg.role === 'tool') {
+        if (typeof msg.content !== 'string') {
+          throw new Error('Invalid message content: tool message content must be a string');
+        }
+        if (!msg.tool_call_id) {
+          throw new Error('Invalid message content: tool message must have tool_call_id');
+        }
+        continue;
+      }
+      // assistant + tool_calls 消息：content 可以为空，但 tool_calls 必须存在且非空
+      if (msg.role === 'assistant' && msg.tool_calls && msg.tool_calls.length > 0) {
+        if (msg.content !== undefined && msg.content !== null && typeof msg.content !== 'string') {
+          throw new Error('Invalid message content: assistant+tool_calls message content must be a string or empty');
+        }
+        continue;
+      }
+      // system/user/assistant（无tool_calls）消息：content 必须为非空字符串
       if (!msg.content || typeof msg.content !== 'string') {
         throw new Error('Invalid message content');
       }
-      if (!['system', 'user', 'assistant'].includes(msg.role)) {
-        throw new Error(`Invalid message role: ${msg.role}`);
+    }
+
+    if (request.providerId) {
+      const provider = this.getProvider(request.providerId);
+      if (!provider) {
+        throw new Error(`未找到指定的 AI 服务商: ${request.providerId}`);
       }
+      const providerRequest: ChatOptions = {
+        ...request,
+        apiKey: provider.apiKey,
+        baseUrl: provider.url,
+        model: request.model || provider.model,
+        provider: request.providerId,
+      };
+      yield* this.chatStreamWithProvider(providerRequest, request.providerId, providerRequest.model);
+      return;
     }
 
     if (!this.shouldUseFallback(request)) {
@@ -553,6 +915,11 @@ class AIService {
     const temperature = Math.max(0, Math.min(2, request.temperature ?? 0.7));
     const maxTokens = request.maxTokens ? Math.max(1, Math.min(32000, request.maxTokens)) : undefined;
 
+    /** 工具调用缓冲区，用于流式组装 tool_calls */
+    const toolCallsBuffer: Array<{ id: string; name: string; arguments: string }> = [];
+    /** 标记是否已输出工具调用，防止重复 yield */
+    let hasEmittedToolCalls = false;
+
     const controller = new AbortController();
     let timeoutId: ReturnType<typeof setTimeout> | null = null;
 
@@ -568,24 +935,109 @@ class AIService {
     resetTimeout();
 
     try {
-      const stream = await client.chat.completions.create({
-        model: effectiveModel,
-        messages: request.messages.map(m => ({
+      // 映射消息格式，处理 tool_calls 和 tool 角色消息
+      const mappedMessages = request.messages.map(m => {
+        if (m.role === 'tool') {
+          return {
+            role: 'tool' as const,
+            content: m.content.trim(),
+            tool_call_id: m.tool_call_id || '',
+          };
+        }
+        if (m.role === 'assistant' && m.tool_calls && m.tool_calls.length > 0) {
+          const trimmedContent = m.content.trim();
+          return {
+            role: 'assistant' as const,
+            ...(trimmedContent ? { content: trimmedContent } : {}),
+            tool_calls: m.tool_calls.map(toolCall => ({
+              id: toolCall.id,
+              type: 'function' as const,
+              function: {
+                name: toolCall.name,
+                arguments: toolCall.arguments,
+              },
+            })),
+          };
+        }
+        return {
           role: m.role as 'system' | 'user' | 'assistant',
           content: m.content.trim(),
-        })),
+        };
+      });
+
+      // 记录发送给 API 的消息格式，用于调试 Invalid message content 错误
+      if (process.env.NODE_ENV !== 'production') {
+        console.log('[AI Stream] 发送给API的消息:', JSON.stringify(mappedMessages.map(m => ({
+          role: m.role,
+          hasContent: !!(m as Record<string, unknown>).content,
+          contentType: typeof (m as Record<string, unknown>).content,
+          contentPreview: typeof (m as Record<string, unknown>).content === 'string'
+            ? String((m as Record<string, unknown>).content).substring(0, 50)
+            : (m as Record<string, unknown>).content,
+          hasToolCalls: !!(m as Record<string, unknown>).tool_calls,
+          toolCallCount: Array.isArray((m as Record<string, unknown>).tool_calls)
+            ? ((m as Record<string, unknown>).tool_calls as unknown[]).length
+            : 0,
+          toolCallId: (m as Record<string, unknown>).tool_call_id || undefined,
+        })), null, 2));
+      }
+
+      const stream = await client.chat.completions.create({
+        model: effectiveModel,
+        messages: mappedMessages,
         temperature,
         max_tokens: maxTokens,
         stream: true,
         stream_options: { include_usage: true },
+        // 如果提供了工具定义，传入 tools 参数
+        ...(request.tools && request.tools.length > 0 ? { tools: request.tools } : {}),
       }, { signal: controller.signal });
 
       for await (const chunk of stream) {
         resetTimeout();
 
         const delta = chunk.choices[0]?.delta as StreamDeltaWithReasoning | undefined;
+        const finishReason = chunk.choices[0]?.finish_reason;
+
+        // 处理工具调用
+        if (delta?.tool_calls && delta.tool_calls.length > 0) {
+          // 流式组装 tool_calls
+          for (const toolCallDelta of delta.tool_calls) {
+            const index = toolCallDelta.index;
+            // 初始化 tool_call 缓冲区
+            if (!toolCallsBuffer[index]) {
+              toolCallsBuffer[index] = {
+                id: toolCallDelta.id || '',
+                name: toolCallDelta.function?.name || '',
+                arguments: '',
+              };
+            }
+            // 追加 id、name、arguments
+            if (toolCallDelta.id) {
+              toolCallsBuffer[index].id = toolCallDelta.id;
+            }
+            if (toolCallDelta.function?.name) {
+              toolCallsBuffer[index].name = toolCallDelta.function.name;
+            }
+            if (toolCallDelta.function?.arguments) {
+              toolCallsBuffer[index].arguments += toolCallDelta.function.arguments;
+            }
+          }
+        }
+
         const reasoningContent = delta?.reasoning_content || '';
         const content = delta?.content || '';
+
+        if (finishReason || (!content && !reasoningContent && !chunk.usage)) {
+          console.log('[AI Stream] chunk:', JSON.stringify({
+            finishReason,
+            hasContent: !!content,
+            hasReasoning: !!reasoningContent,
+            hasUsage: !!chunk.usage,
+            deltaKeys: delta ? Object.keys(delta) : [],
+            role: delta?.role,
+          }));
+        }
 
         if (reasoningContent) {
           yield { type: 'thinking', content: reasoningContent };
@@ -593,6 +1045,19 @@ class AIService {
 
         if (content) {
           yield { type: 'content', content };
+        }
+
+        // 当 finishReason 为 tool_calls 时，输出完整的工具调用
+        if (finishReason === 'tool_calls' && !hasEmittedToolCalls) {
+          const completeToolCalls = toolCallsBuffer.filter(tc => tc && tc.id && tc.name);
+          console.log('[AI Stream] 工具调用完成, finishReason=tool_calls, 完整工具调用:', JSON.stringify(completeToolCalls));
+          if (completeToolCalls.length > 0) {
+            hasEmittedToolCalls = true;
+            yield {
+              type: 'tool_call' as const,
+              tool_calls: completeToolCalls,
+            };
+          }
         }
 
         if (chunk.usage) {
@@ -912,3 +1377,8 @@ class AIService {
 
 export const aiService = AIService.getInstance();
 export type { AIUsageRecord, UsageStats, ChatOptions, StreamChunk };
+
+
+
+
+

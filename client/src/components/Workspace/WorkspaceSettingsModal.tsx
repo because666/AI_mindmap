@@ -1,5 +1,6 @@
 import React, { useState } from 'react';
-import { X, Globe, Lock, Users, Copy, Check, RefreshCw, Trash2, UserMinus, Settings } from 'lucide-react';
+import { X, Globe, Lock, Users, Copy, Check, RefreshCw, Trash2, UserMinus, Settings, Megaphone } from 'lucide-react';
+import { useTranslation } from 'react-i18next';
 import { useVisitorWorkspaceStore } from '../../stores/visitorWorkspaceStore';
 import ConfirmDialog from '../Common/ConfirmDialog';
 import type { WorkspaceType } from '../../types';
@@ -16,6 +17,7 @@ interface WorkspaceSettingsModalProps {
  * 桌面端居中弹窗，移动端全屏显示
  */
 const WorkspaceSettingsModal: React.FC<WorkspaceSettingsModalProps> = ({ isOpen, onClose }) => {
+  const { t } = useTranslation('workspace');
   const {
     visitor,
     currentWorkspace,
@@ -28,7 +30,7 @@ const WorkspaceSettingsModal: React.FC<WorkspaceSettingsModalProps> = ({ isOpen,
     clearError,
   } = useVisitorWorkspaceStore();
 
-  const [activeTab, setActiveTab] = useState<'info' | 'members' | 'danger'>('info');
+  const [activeTab, setActiveTab] = useState<'info' | 'members' | 'broadcast' | 'danger'>('info');
   const [editName, setEditName] = useState('');
   const [editDescription, setEditDescription] = useState('');
   const [editType, setEditType] = useState<WorkspaceType>('public');
@@ -37,6 +39,12 @@ const WorkspaceSettingsModal: React.FC<WorkspaceSettingsModalProps> = ({ isOpen,
   const [confirmDelete, setConfirmDelete] = useState(false);
   const [removeMemberConfirmOpen, setRemoveMemberConfirmOpen] = useState(false);
   const [pendingRemoveMemberId, setPendingRemoveMemberId] = useState<string | null>(null);
+  const [broadcastTitle, setBroadcastTitle] = useState('');
+  const [broadcastContent, setBroadcastContent] = useState('');
+  const [broadcastImportance, setBroadcastImportance] = useState<'normal' | 'high'>('normal');
+  const [broadcastSending, setBroadcastSending] = useState(false);
+  const [broadcastSuccess, setBroadcastSuccess] = useState(false);
+  const [broadcastError, setBroadcastError] = useState('');
   const isMobile = useIsMobile();
 
   if (!isOpen || !currentWorkspace) return null;
@@ -113,12 +121,54 @@ const WorkspaceSettingsModal: React.FC<WorkspaceSettingsModalProps> = ({ isOpen,
     setConfirmDelete(false);
   };
 
+  /**
+   * 发送工作区广播消息
+   * 调用 POST /api/workspaces/${workspaceId}/broadcast 接口
+   * 成功后清空表单并显示成功提示，失败显示错误提示
+   */
+  const handleSendBroadcast = async () => {
+    if (!broadcastTitle.trim() || !broadcastContent.trim()) return;
+
+    setBroadcastSending(true);
+    setBroadcastError('');
+    setBroadcastSuccess(false);
+
+    try {
+      const response = await fetch(`/api/workspaces/${currentWorkspace.id}/broadcast`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          title: broadcastTitle.trim(),
+          content: broadcastContent.trim(),
+          importance: broadcastImportance,
+        }),
+      });
+
+      const result = await response.json() as { success: boolean; error?: string };
+
+      if (result.success) {
+        setBroadcastTitle('');
+        setBroadcastContent('');
+        setBroadcastImportance('normal');
+        setBroadcastSuccess(true);
+        setTimeout(() => setBroadcastSuccess(false), 3000);
+      } else {
+        setBroadcastError(result.error || '发送失败，请稍后重试');
+      }
+    } catch (error) {
+      console.error('[WorkspaceSettingsModal] 发送广播失败:', error);
+      setBroadcastError('网络异常，请稍后重试');
+    } finally {
+      setBroadcastSending(false);
+    }
+  };
+
   const modalContent = (
     <>
       <div className={`flex items-center justify-between px-6 py-4 border-b border-dark-700 ${isMobile ? 'h-14' : ''}`}>
         <div className="flex items-center gap-2">
           <Settings className="w-5 h-5 text-primary-400" />
-          <h2 className="text-lg font-bold text-white">工作区设置</h2>
+          <h2 className="text-lg font-bold text-white">{t('workspaceSettings')}</h2>
         </div>
         <button
           onClick={onClose}
@@ -129,7 +179,9 @@ const WorkspaceSettingsModal: React.FC<WorkspaceSettingsModalProps> = ({ isOpen,
       </div>
 
       <div className="flex border-b border-dark-700">
-        {(['info', 'members', 'danger'] as const).map((tab) => (
+        {(['info', 'members', 'broadcast', 'danger'] as const)
+          .filter((tab) => tab !== 'broadcast' || isOwner)
+          .map((tab) => (
           <button
             key={tab}
             onClick={() => { setActiveTab(tab); setConfirmDelete(false); clearError(); }}
@@ -139,7 +191,7 @@ const WorkspaceSettingsModal: React.FC<WorkspaceSettingsModalProps> = ({ isOpen,
                 : 'text-dark-400 hover:text-white'
             }`}
           >
-            {tab === 'info' ? '基本信息' : tab === 'members' ? '成员管理' : '危险操作'}
+            {tab === 'info' ? t('basicInfo') : tab === 'members' ? t('memberManagement') : tab === 'broadcast' ? t('sendBroadcast') : t('dangerZone')}
           </button>
         ))}
       </div>
@@ -150,7 +202,7 @@ const WorkspaceSettingsModal: React.FC<WorkspaceSettingsModalProps> = ({ isOpen,
             {isEditing ? (
               <>
                 <div>
-                  <label className="block text-sm text-dark-300 mb-1">工作区名称</label>
+                  <label className="block text-sm text-dark-300 mb-1">{t('workspaceName')}</label>
                   <input
                     type="text"
                     value={editName}
@@ -160,7 +212,7 @@ const WorkspaceSettingsModal: React.FC<WorkspaceSettingsModalProps> = ({ isOpen,
                   />
                 </div>
                 <div>
-                  <label className="block text-sm text-dark-300 mb-1">描述</label>
+                  <label className="block text-sm text-dark-300 mb-1">{t('workspaceDescription')}</label>
                   <textarea
                     value={editDescription}
                     onChange={(e) => setEditDescription(e.target.value)}
@@ -171,7 +223,7 @@ const WorkspaceSettingsModal: React.FC<WorkspaceSettingsModalProps> = ({ isOpen,
                 </div>
                 {isOwner && (
                   <div>
-                    <label className="block text-sm text-dark-300 mb-2">工作区类型</label>
+                    <label className="block text-sm text-dark-300 mb-2">{t('workspaceType')}</label>
                     <div className="flex gap-2">
                       <button
                         type="button"
@@ -181,7 +233,7 @@ const WorkspaceSettingsModal: React.FC<WorkspaceSettingsModalProps> = ({ isOpen,
                         }`}
                       >
                         <Globe className="w-3.5 h-3.5" />
-                        公开
+                        {t('public')}
                       </button>
                       <button
                         type="button"
@@ -191,7 +243,7 @@ const WorkspaceSettingsModal: React.FC<WorkspaceSettingsModalProps> = ({ isOpen,
                         }`}
                       >
                         <Lock className="w-3.5 h-3.5" />
-                        私密
+                        {t('private')}
                       </button>
                     </div>
                   </div>
@@ -202,13 +254,13 @@ const WorkspaceSettingsModal: React.FC<WorkspaceSettingsModalProps> = ({ isOpen,
                     disabled={!editName.trim() || isLoading}
                     className="flex-1 px-4 py-2 bg-primary-600 text-white rounded-lg text-sm font-medium hover:bg-primary-700 disabled:opacity-50 transition-colors min-h-[44px]"
                   >
-                    保存
+                    {t('saveBtn', { ns: 'common' })}
                   </button>
                   <button
                     onClick={() => setIsEditing(false)}
                     className="px-4 py-2 bg-dark-700 text-dark-400 rounded-lg text-sm hover:text-white transition-colors min-h-[44px]"
                   >
-                    取消
+                    {t('cancelBtn', { ns: 'common' })}
                   </button>
                 </div>
               </>
@@ -225,7 +277,7 @@ const WorkspaceSettingsModal: React.FC<WorkspaceSettingsModalProps> = ({ isOpen,
                   <div className="flex-1 min-w-0">
                     <div className="text-white font-medium">{currentWorkspace.name}</div>
                     <div className="text-dark-500 text-xs">
-                      {currentWorkspace.type === 'public' ? '公开工作区' : '私密工作区'}
+                      {currentWorkspace.type === 'public' ? t('publicWorkspace') : t('privateWorkspace')}
                       {currentWorkspace.description && ` · ${currentWorkspace.description}`}
                     </div>
                   </div>
@@ -234,14 +286,14 @@ const WorkspaceSettingsModal: React.FC<WorkspaceSettingsModalProps> = ({ isOpen,
                       onClick={handleStartEdit}
                       className="px-3 py-1.5 text-primary-400 hover:text-primary-300 text-sm border border-primary-500/30 rounded-lg hover:bg-dark-700 transition-colors min-h-[44px] flex items-center"
                     >
-                      编辑
+                      {t('editBtn', { ns: 'common' })}
                     </button>
                   )}
                 </div>
 
                 {currentWorkspace.inviteCode && (
                   <div className="p-4 bg-dark-800 rounded-xl">
-                    <div className="text-sm text-dark-300 mb-2">邀请码</div>
+                    <div className="text-sm text-dark-300 mb-2">{t('inviteCode')}</div>
                     <div className="flex items-center gap-2">
                       <span className="text-primary-400 font-mono text-lg tracking-widest flex-1">
                         {currentWorkspace.inviteCode}
@@ -269,7 +321,7 @@ const WorkspaceSettingsModal: React.FC<WorkspaceSettingsModalProps> = ({ isOpen,
 
                 <div className="flex items-center gap-2 text-dark-500 text-xs">
                   <Users className="w-3.5 h-3.5" />
-                  <span>{currentWorkspace.members.length} 位成员</span>
+                  <span>{t('memberCount', { count: currentWorkspace.members.length })}</span>
                 </div>
               </>
             )}
@@ -289,7 +341,7 @@ const WorkspaceSettingsModal: React.FC<WorkspaceSettingsModalProps> = ({ isOpen,
                 <div className="flex-1 min-w-0">
                   <div className="text-white text-sm font-medium truncate">{member.nickname}</div>
                   <div className="text-dark-500 text-xs">
-                    {member.role === 'owner' ? '所有者' : '协作者'}
+                    {member.role === 'owner' ? t('owner') : t('collaborator')}
                   </div>
                 </div>
                 {isOwner && member.role !== 'owner' && (
@@ -307,13 +359,85 @@ const WorkspaceSettingsModal: React.FC<WorkspaceSettingsModalProps> = ({ isOpen,
           </div>
         )}
 
+        {activeTab === 'broadcast' && (
+          <div className="space-y-4">
+            <div className="flex items-center gap-2 mb-2">
+              <Megaphone className="w-4 h-4 text-primary-400" />
+              <span className="text-sm text-dark-300">{t('broadcastToMembers')}</span>
+            </div>
+            <div>
+              <label className="block text-sm text-dark-300 mb-1">{t('broadcastTitle')}</label>
+              <input
+                type="text"
+                value={broadcastTitle}
+                onChange={(e) => setBroadcastTitle(e.target.value)}
+                className="w-full px-3 py-2 bg-dark-800 border border-dark-600 rounded-lg text-white placeholder-dark-500 focus:outline-none focus:border-primary-500 text-sm"
+                placeholder={t('enterBroadcastTitle')}
+                maxLength={100}
+              />
+            </div>
+            <div>
+              <label className="block text-sm text-dark-300 mb-1">{t('broadcastContent')}</label>
+              <textarea
+                value={broadcastContent}
+                onChange={(e) => setBroadcastContent(e.target.value)}
+                className="w-full px-3 py-2 bg-dark-800 border border-dark-600 rounded-lg text-white placeholder-dark-500 focus:outline-none focus:border-primary-500 text-sm resize-none"
+                placeholder={t('enterBroadcastContent')}
+                rows={4}
+                maxLength={500}
+              />
+            </div>
+            <div>
+              <label className="block text-sm text-dark-300 mb-2">{t('broadcastImportance')}</label>
+              <div className="flex gap-2">
+                <button
+                  type="button"
+                  onClick={() => setBroadcastImportance('normal')}
+                  className={`flex-1 flex items-center justify-center gap-1.5 px-3 py-2 rounded-lg text-sm transition-colors min-h-[44px] ${
+                    broadcastImportance === 'normal' ? 'bg-primary-600 text-white' : 'bg-dark-700 text-dark-400 hover:text-white'
+                  }`}
+                >
+                  {t('normalImportance')}
+                </button>
+                <button
+                  type="button"
+                  onClick={() => setBroadcastImportance('high')}
+                  className={`flex-1 flex items-center justify-center gap-1.5 px-3 py-2 rounded-lg text-sm transition-colors min-h-[44px] ${
+                    broadcastImportance === 'high' ? 'bg-orange-600 text-white' : 'bg-dark-700 text-dark-400 hover:text-white'
+                  }`}
+                >
+                  {t('highImportance')}
+                </button>
+              </div>
+            </div>
+            {broadcastSuccess && (
+              <div className="p-3 bg-green-900/30 border border-green-700 rounded-lg text-green-400 text-sm">
+                {t('broadcastSent')}
+              </div>
+            )}
+            {broadcastError && (
+              <div className="p-3 bg-red-900/30 border border-red-700 rounded-lg text-red-400 text-sm">
+                {broadcastError}
+              </div>
+            )}
+            <button
+              onClick={handleSendBroadcast}
+              disabled={!broadcastTitle.trim() || !broadcastContent.trim() || broadcastSending}
+              className="w-full px-4 py-2 bg-primary-600 text-white rounded-lg text-sm font-medium hover:bg-primary-700 disabled:opacity-50 transition-colors min-h-[44px] flex items-center justify-center gap-2"
+            >
+              <Megaphone className="w-4 h-4" />
+              {broadcastSending ? t('broadcastSending') : t('sendBroadcastBtn')}
+            </button>
+          </div>
+        )}
+
         {activeTab === 'danger' && (
           <div className="space-y-4">
             {isOwner ? (
               <div className="p-4 bg-red-900/20 border border-red-700/30 rounded-xl">
-                <h3 className="text-red-400 font-medium mb-2">删除工作区</h3>
+                <h3 className="text-red-400 font-medium mb-2">{t('deleteWorkspace')}</h3>
                 <p className="text-dark-400 text-sm mb-3">
-                  删除后所有数据将永久丢失，此操作不可撤销。
+                  {t('deleteWorkspaceDesc')}
                 </p>
                 <button
                   onClick={handleDeleteWorkspace}
@@ -321,21 +445,21 @@ const WorkspaceSettingsModal: React.FC<WorkspaceSettingsModalProps> = ({ isOpen,
                   className="flex items-center gap-2 px-4 py-2 bg-red-600 text-white rounded-lg text-sm font-medium hover:bg-red-700 disabled:opacity-50 transition-colors min-h-[44px]"
                 >
                   <Trash2 className="w-4 h-4" />
-                  {confirmDelete ? '确认删除' : '删除工作区'}
+                  {confirmDelete ? t('confirmDelete') : t('deleteWorkspace')}
                 </button>
                 {confirmDelete && (
                   <button
                     onClick={() => setConfirmDelete(false)}
                     className="ml-2 px-4 py-2 bg-dark-700 text-dark-400 rounded-lg text-sm hover:text-white transition-colors min-h-[44px]"
                   >
-                    取消
+                    {t('cancelBtn', { ns: 'common' })}
                   </button>
                 )}
               </div>
             ) : (
               <div className="p-4 bg-dark-800 rounded-xl">
                 <p className="text-dark-400 text-sm">
-                  仅工作区所有者可以执行危险操作。
+                  {t('onlyOwnerCanDanger')}
                 </p>
               </div>
             )}
@@ -355,10 +479,10 @@ const WorkspaceSettingsModal: React.FC<WorkspaceSettingsModalProps> = ({ isOpen,
   const confirmDialog = (
     <ConfirmDialog
       isOpen={removeMemberConfirmOpen}
-      title="移除成员"
-      message="确定要移除该成员吗？此操作不可撤销。"
-      confirmText="移除"
-      cancelText="取消"
+      title={t('removeMemberTitle')}
+      message={t('removeMemberMessage')}
+      confirmText={t('removeBtn')}
+      cancelText={t('cancelBtn', { ns: 'common' })}
       onConfirm={handleConfirmRemoveMember}
       onCancel={handleCancelRemoveMember}
     />

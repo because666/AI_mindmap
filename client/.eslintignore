@@ -1,0 +1,6 @@
+# 生成产物目录
+android/app/build
+dist
+node_modules
+.vite
+coverage

@@ -1,0 +1,191 @@
+{
+  "welcomeTitle": "Welcome to DeepMindMap",
+  "welcomeSubtitle": "AI-powered mind map and knowledge management platform",
+  "welcome": "Welcome",
+  "congratulations": "Congratulations! You've learned all core features",
+  "completionHint": "Now you can start your DeepMindMap journey",
+  "previous": "Previous",
+  "next": "Next",
+  "closeTooltip": "Close guide",
+  "forcedCloseTooltip": "Please wait {{time}} before closing",
+  "pageIndicator": "Page {{current}} of {{total}}",
+  "jumpToPage": "Jump to page {{page}}",
+  "pages": {
+    "intro": {
+      "title": "Project Introduction",
+      "content": [
+        "**DeepMindMap** is a conversation-driven AI mind-mapping tool. It turns dialogue into structured visual thinking, helping you capture ideas, organize knowledge, and explore complex problems with AI assistance.",
+        "**Core capabilities** include:",
+        "- **AI integration**: Connect to models from OpenAI, Zhipu, DeepSeek, and more for intelligent suggestions and brainstorming.",
+        "- **Branched conversations**: Each node can have its own chat thread, so ideas can grow in parallel without losing context.",
+        "- **Visual thinking**: Transform abstract thoughts into clear mind-map structures with nodes, relations, and layouts.",
+        "- **Workspace isolation**: Keep different projects or teams separated in independent workspaces.",
+        "**Typical use cases**: personal note-taking, project planning, team brainstorming, research analysis, and collaborative knowledge building."
+      ],
+      "highlights": [
+        "AI-Powered",
+        "Branched Chat",
+        "Workspace Isolation"
+      ]
+    },
+    "canvas": {
+      "title": "Mind Canvas",
+      "content": [
+        "The **Mind Canvas** is your main workspace for building and exploring knowledge maps.",
+        "**Basic operations**:",
+        "- **Create nodes**: double-click on empty space, right-click to open the context menu, or start a new conversation.",
+        "- **Edit nodes**: click a node to rename it, change its summary, or adjust its style.",
+        "- **Connect nodes**: draw relations between ideas to show structure and meaning.",
+        "- **Expand / collapse**: focus on one branch at a time by collapsing unrelated parts of the map.",
+        "**Advanced features**:",
+        "- **Multi-select mode**: select several nodes at once to move, group, or batch-edit them.",
+        "- **Auto layout**: automatically arrange messy maps into clean hierarchical structures.",
+        "- **Zoom / pan**: navigate large maps smoothly with mouse wheel zoom and drag-to-pan."
+      ],
+      "highlights": [
+        "Double-click to Create",
+        "Multi-select",
+        "Auto Layout"
+      ]
+    },
+    "chat": {
+      "title": "AI Chat System",
+      "content": [
+        "DeepMindMap's AI chat is tightly bound to each branch of your mind map. Every node has its own isolated conversation context, while child nodes inherit the conversation history from their parent.",
+        "**Core features**:",
+        "- **Streaming output**: watch AI replies appear word-by-word in real time.",
+        "- **Context inheritance**: child nodes carry parent context forward, so the AI remembers what you have already discussed.",
+        "- **Multi-model support**: switch between OpenAI, Zhipu, DeepSeek, or other configured providers per chat.",
+        "- **File upload**: attach documents or images to enrich the conversation.",
+        "**Utility commands**:",
+        "- **Extract conclusion**: let the AI summarize the key takeaways of a branch.",
+        "- **Regenerate title**: automatically create a clearer node title from the chat content.",
+        "- **Clear conversation**: reset the current node's chat history when needed."
+      ],
+      "highlights": [
+        "Streaming Output",
+        "File Upload",
+        "Conclusion Extraction"
+      ]
+    },
+    "nodes": {
+      "title": "Nodes & Relations",
+      "content": [
+        "Nodes are the building blocks of every mind map in DeepMindMap.",
+        "**Node types**:",
+        "- **Root**: the central topic of the map.",
+        "- **Branch**: intermediate nodes that split into further sub-topics.",
+        "- **Leaf**: terminal nodes that hold final ideas or conclusions.",
+        "- **Composite**: a special node that aggregates multiple selected nodes into one unified unit.",
+        "**Relation types**:",
+        "| Relation | Meaning |",
+        "| parent-child | hierarchical ownership |",
+        "| supports | one node backs another |",
+        "| contradicts | one node opposes another |",
+        "| prerequisite | one node must come before another |",
+        "| elaborates | one node explains another in more detail |",
+        "| references | one node cites or links to another |",
+        "| conclusion | one node summarizes or follows from another |",
+        "| custom | define your own semantic relation |",
+        "Use these relations to keep the meaning between ideas clear and precise."
+      ],
+      "highlights": [
+        "Composite Nodes",
+        "8 Relation Types",
+        "Semantic Clarity"
+      ]
+    },
+    "tools": {
+      "title": "Tool Panel",
+      "content": [
+        "The **left tool panel** gives you quick access to search, history, and file management.",
+        "**Search**:",
+        "- Search across node titles, summaries, and chat content.",
+        "- Click any result to locate the matching node directly on the canvas.",
+        "**History**:",
+        "- Records your recent operations.",
+        "- Use **Undo** and **Redo** to step backward or forward through changes.",
+        "- Shortcuts: `Ctrl + Z` to undo, `Ctrl + Y` to redo.",
+        "**File management**:",
+        "- **Import**: bring existing work into DeepMindMap from JSON or Markdown files.",
+        "- **Export**: save your current map as JSON or Markdown for backup or sharing."
+      ],
+      "highlights": [
+        "Global Search",
+        "Action History",
+        "Import/Export"
+      ]
+    },
+    "workspace": {
+      "title": "Workspace & Messages",
+      "content": [
+        "**Workspaces** keep your projects isolated from one another. Each workspace has its own maps, members, and settings.",
+        "**Workspace operations**:",
+        "- **Create / join**: start a new workspace for a project, or join an existing one with an invite code.",
+        "- **Switch**: move between workspaces quickly from the workspace selector.",
+        "- **Public / private**: control whether a workspace is visible to invited members only or discoverable by others.",
+        "**Message center**:",
+        "- Receive system notices and workspace update notifications.",
+        "- Stay aware of unread reminders so you never miss important changes."
+      ],
+      "highlights": [
+        "Project Isolation",
+        "Invite Code",
+        "Message Center"
+      ]
+    },
+    "settings": {
+      "title": "Settings & Personalization",
+      "content": [
+        "Adjust DeepMindMap to fit your workflow and preferences.",
+        "**UI settings**:",
+        "- **Language**: switch between supported languages.",
+        "- **Chat panel width**: resize the chat sidebar to your comfort.",
+        "- **Auto-open chat**: open the chat panel automatically when starting a conversation.",
+        "- **Performance mode**: reduce visual effects on lower-end devices.",
+        "- **Welcome message**: toggle the welcome greeting on startup.",
+        "**API configuration**:",
+        "- Add models from OpenAI, Zhipu, DeepSeek, or compatible providers.",
+        "- Set a custom API key and base URL for full control.",
+        "- Optionally use the built-in service when you prefer not to manage keys manually."
+      ],
+      "highlights": [
+        "Multilingual",
+        "Multi-Model",
+        "Privacy & Security"
+      ]
+    },
+    "tips": {
+      "title": "Tips & Best Practices",
+      "content": [
+        "**Quick start suggestions**:",
+        "- Start with a central topic and let AI help you expand branches.",
+        "- Keep node titles short and move details into summaries or chat threads.",
+        "- Use relations to make the structure self-explanatory.",
+        "**Using AI effectively**:",
+        "- Ask specific questions to get more useful answers.",
+        "- Explore different branches for alternative ideas.",
+        "- Regularly extract conclusions to capture key takeaways.",
+        "**Common shortcuts**:",
+        "| Action | Windows / Linux | macOS |",
+        "| Undo | `Ctrl + Z` | `Cmd + Z` |",
+        "| Redo | `Ctrl + Y` | `Cmd + Shift + Z` |",
+        "| Delete | `Delete` | `Backspace` / `Delete` |",
+        "| Select all | `Ctrl + A` | `Cmd + A` |",
+        "| Copy / paste | `Ctrl + C` / `Ctrl + V` | `Cmd + C` / `Cmd + V` |",
+        "**Data security**:",
+        "- API keys are stored locally in your browser.",
+        "- Export your maps regularly to keep backups.",
+        "- Remember that public workspaces are visible to other users.",
+        "**Getting help**:",
+        "- Reopen this guide anytime from the settings menu.",
+        "- Use the feedback entry to report issues or suggest improvements."
+      ],
+      "highlights": [
+        "Best Practices",
+        "Shortcuts",
+        "Data Security"
+      ]
+    }
+  }
+}

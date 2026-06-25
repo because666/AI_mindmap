@@ -1,0 +1,14 @@
+- [x] `client/public/og-cover.png` 存在且已部署
+- [x] `client/index.html` 的 `<title>` 为中文默认标题
+- [x] `client/index.html` 包含有效的 `<meta name="description">`
+- [x] `client/index.html` 包含完整的 Open Graph 标签
+- [x] `client/index.html` 包含完整的 Twitter Card 标签
+- [x] `client/index.html` 包含 hreflang alternate 链接（zh、en、x-default）
+- [x] `client/src/locales/common/zh.json` 包含 `pageTitle` 和 `pageDescription`
+- [x] `client/src/locales/common/en.json` 包含 `pageTitle` 和 `pageDescription`
+- [x] `client/src/i18n.ts` 在语言切换时更新 `document.title`
+- [x] `client/src/i18n.ts` 在语言切换时更新 `<meta name="description">`
+- [x] 切换到英文后浏览器标签页标题为英文
+- [x] 切换到中文后浏览器标签页标题为中文
+- [x] 客户端构建通过
+- [x] 部署到服务器后，通过服务器 grep 验证标签生效

@@ -3,6 +3,7 @@ import { pushClientService, type MessageDetail as MessageDetailType } from '../.
 import ReactMarkdown from 'react-markdown';
 import remarkGfm from 'remark-gfm';
 import { ArrowLeft, Clock, User, CheckCircle2, AlertTriangle } from 'lucide-react';
+import { useTranslation } from 'react-i18next';
 
 interface MessageDetailProps {
   messageId: string;
@@ -10,6 +11,7 @@ interface MessageDetailProps {
 }
 
 export function MessageDetailComponent({ messageId, onBack }: MessageDetailProps) {
+  const { t } = useTranslation('message');
   const [message, setMessage] = useState<MessageDetailType | null>(null);
   const [loading, setLoading] = useState(true);
   const [markingRead, setMarkingRead] = useState(false);
@@ -65,7 +67,7 @@ export function MessageDetailComponent({ messageId, onBack }: MessageDetailProps
     const now = new Date();
     const diffMs = deadlineDate.getTime() - now.getTime();
 
-    if (diffMs <= 0) return '已过期';
+    if (diffMs <= 0) return t('expired');
 
     const diffDays = Math.floor(diffMs / 86400000);
     const diffHours = Math.floor((diffMs % 86400000) / 3600000);
@@ -83,10 +85,10 @@ export function MessageDetailComponent({ messageId, onBack }: MessageDetailProps
           <button onClick={onBack} className="p-1 -ml-1 hover:bg-dark-800 rounded-lg transition-colors">
             <ArrowLeft size={20} className="text-dark-300" />
           </button>
-          <span className="text-sm text-dark-400">加载中...</span>
+          <span className="text-sm text-dark-400">{t('loading')}</span>
         </div>
         <div className="flex-1 flex items-center justify-center text-dark-400">
-          加载中...
+          {t('loading')}
         </div>
       </div>
     );
@@ -101,7 +103,7 @@ export function MessageDetailComponent({ messageId, onBack }: MessageDetailProps
           </button>
         </div>
         <div className="flex-1 flex items-center justify-center text-dark-400">
-          消息不存在
+          {t('messageNotFound')}
         </div>
       </div>
     );
@@ -111,7 +113,7 @@ export function MessageDetailComponent({ messageId, onBack }: MessageDetailProps
     message.forceReadDeadline
   );
   const isForceReadPending =
-    message.forceRead && !message.read && remainingTime && remainingTime !== '已过期';
+    message.forceRead && !message.read && remainingTime && remainingTime !== t('expired');
 
   return (
     <div className="flex flex-col h-full bg-dark-950">
@@ -146,7 +148,7 @@ export function MessageDetailComponent({ messageId, onBack }: MessageDetailProps
         <div className="px-4 py-3 mt-4 border-t border-dark-800 space-y-2">
           <div className="flex items-center gap-2 text-xs text-dark-400">
             <User size={14} />
-            <span>发送者：{message.senderName}</span>
+            <span>{t('sender')}：{message.senderName}</span>
           </div>
           <div className="flex items-center gap-2 text-xs text-dark-400">
             <Clock size={14} />
@@ -188,7 +190,7 @@ export function MessageDetailComponent({ messageId, onBack }: MessageDetailProps
                 : 'bg-orange-500 hover:bg-orange-600 text-white'
             }`}
           >
-            {markingRead ? '处理中...' : '我已阅读并确认'}
+            {markingRead ? '...' : t('readAndConfirm')}
           </button>
         </div>
       )}

@@ -1,7 +1,7 @@
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useCallback } from 'react';
 import { usersApi } from '../../services/api';
-import type { UserListItem, PaginationResult } from '../../types';
-import { Search, Ban, Unlock, Trash2, Eye, Globe, X, ShieldBan } from 'lucide-react';
+import type { UserListItem, PaginationResult, TimelineEvent } from '../../types';
+import { Search, Ban, Unlock, Eye, Globe, X, ShieldBan, PlusCircle, MessageSquare, Lightbulb, Download, ChevronDown, ChevronUp } from 'lucide-react';
 
 interface ToastMessage {
   type: 'success' | 'error';
@@ -17,6 +17,101 @@ interface IpVisitor {
   createdAt: string;
   lastSeen: string;
 }
+
+/** 用户详情弹窗中的标签页类型 */
+type DetailTab = 'detail' | 'timeline';
+
+/**
+ * 时间线事件类型配置映射
+ * 定义每种事件类型的图标颜色、标签文本和图标组件
+ */
+const TIMELINE_EVENT_CONFIG: Record<string, { color: string; bgColor: string; label: string; Icon: React.FC<{ className?: string }> }> = {
+  node_created: { color: 'text-blue-600', bgColor: 'bg-blue-50', label: '节点创建', Icon: PlusCircle },
+  conversation: { color: 'text-green-600', bgColor: 'bg-green-50', label: '对话', Icon: MessageSquare },
+  conclusion: { color: 'text-purple-600', bgColor: 'bg-purple-50', label: '结论提炼', Icon: Lightbulb },
+  export: { color: 'text-orange-600', bgColor: 'bg-orange-50', label: '导出', Icon: Download },
+};
+
+/**
+ * 时间线事件项组件
+ * 展示单个时间线事件，支持点击展开查看详情
+ * @param event - 时间线事件数据
+ */
+const TimelineEventItem: React.FC<{ event: TimelineEvent }> = ({ event }) => {
+  const [expanded, setExpanded] = useState(false);
+  const config = TIMELINE_EVENT_CONFIG[event.type];
+  if (!config) return null;
+
+  const { color, bgColor, label, Icon } = config;
+
+  const formatTime = (timestamp: string): string => {
+    const date = new Date(timestamp);
+    const year = date.getFullYear();
+    const month = String(date.getMonth() + 1).padStart(2, '0');
+    const day = String(date.getDate()).padStart(2, '0');
+    const hours = String(date.getHours()).padStart(2, '0');
+    const minutes = String(date.getMinutes()).padStart(2, '0');
+    return `${year}-${month}-${day} ${hours}:${minutes}`;
+  };
+
+  const hasDetail = event.detail.nodeId || event.detail.messagePreview || event.detail.exportType;
+
+  return (
+    <div className="flex gap-3 group">
+      <div className="flex flex-col items-center">
+        <div className={`w-8 h-8 rounded-full ${bgColor} flex items-center justify-center flex-shrink-0`}>
+          <Icon className={`w-4 h-4 ${color}`} />
+        </div>
+        <div className="w-px flex-1 bg-gray-200 mt-1" />
+      </div>
+      <div className="pb-6 flex-1 min-w-0">
+        <div className="flex items-center gap-2">
+          <span className={`text-xs font-medium px-2 py-0.5 rounded-full ${bgColor} ${color}`}>{label}</span>
+          <span className="text-xs text-gray-400">{formatTime(event.timestamp)}</span>
+        </div>
+        <div className="mt-1">
+          {event.type === 'node_created' && event.detail.nodeTitle && (
+            <p className="text-sm text-gray-700 truncate">{event.detail.nodeTitle}</p>
+          )}
+          {event.type === 'conclusion' && event.detail.nodeTitle && (
+            <p className="text-sm text-gray-700 truncate">{event.detail.nodeTitle}</p>
+          )}
+          {event.type === 'conversation' && event.detail.messagePreview && (
+            <p className="text-sm text-gray-500 truncate">{event.detail.messagePreview}</p>
+          )}
+          {event.type === 'export' && event.detail.exportType && (
+            <p className="text-sm text-gray-500">格式：{event.detail.exportType}</p>
+          )}
+        </div>
+        {hasDetail && (
+          <button
+            onClick={() => setExpanded(!expanded)}
+            className="mt-1 text-xs text-blue-500 hover:text-blue-700 flex items-center gap-0.5"
+          >
+            {expanded ? <ChevronUp className="w-3 h-3" /> : <ChevronDown className="w-3 h-3" />}
+            {expanded ? '收起详情' : '查看详情'}
+          </button>
+        )}
+        {expanded && hasDetail && (
+          <div className="mt-2 p-3 bg-gray-50 rounded-lg text-xs text-gray-600 space-y-1">
+            {event.detail.nodeId && (
+              <p>节点ID：<span className="font-mono">{event.detail.nodeId}</span></p>
+            )}
+            {event.detail.nodeTitle && (
+              <p>节点标题：<span className="font-medium">{event.detail.nodeTitle}</span></p>
+            )}
+            {event.detail.messagePreview && (
+              <p>消息预览：<span>{event.detail.messagePreview}</span></p>
+            )}
+            {event.detail.exportType && (
+              <p>导出格式：<span>{event.detail.exportType}</span></p>
+            )}
+          </div>
+        )}
+      </div>
+    </div>
+  );
+};
 
 const UsersPage: React.FC = () => {
   const [data, setData] = useState<PaginationResult<UserListItem> | null>(null);
@@ -36,6 +131,19 @@ const UsersPage: React.FC = () => {
   const [ipBanDuration, setIpBanDuration] = useState(0);
   const [ipBanAutoAccounts, setIpBanAutoAccounts] = useState(true);
 
+  /** 用户详情弹窗状态 */
+  const [detailModal, setDetailModal] = useState<UserListItem | null>(null);
+  /** 详情弹窗当前标签页 */
+  const [detailTab, setDetailTab] = useState<DetailTab>('detail');
+  /** 时间线事件列表 */
+  const [timelineEvents, setTimelineEvents] = useState<TimelineEvent[]>([]);
+  /** 时间线加载状态 */
+  const [timelineLoading, setTimelineLoading] = useState(false);
+  /** 时间线分页信息 */
+  const [timelinePage, setTimelinePage] = useState(1);
+  const [timelineTotalPages, setTimelineTotalPages] = useState(1);
+  const [timelineTotal, setTimelineTotal] = useState(0);
+
   const showToast = (type: 'success' | 'error', text: string) => {
     setToast({ type, text });
     setTimeout(() => setToast(null), 3000);
@@ -54,6 +162,62 @@ const UsersPage: React.FC = () => {
       console.error('加载用户列表失败:', error);
     } finally {
       setLoading(false);
+    }
+  };
+
+  /**
+   * 加载用户时间线数据
+   * @param userId - 用户ID
+   * @param pageNum - 页码
+   */
+  const loadTimeline = useCallback(async (userId: string, pageNum: number) => {
+    setTimelineLoading(true);
+    try {
+      const res = await usersApi.getUserTimeline(userId, { page: pageNum, limit: 20 });
+      const result = res.data.data;
+      if (result) {
+        setTimelineEvents(result.items);
+        setTimelineTotalPages(result.totalPages);
+        setTimelineTotal(result.total);
+        setTimelinePage(pageNum);
+      }
+    } catch (error) {
+      console.error('加载用户轨迹失败:', error);
+      setTimelineEvents([]);
+      showToast('error', '加载用户轨迹失败');
+    } finally {
+      setTimelineLoading(false);
+    }
+  }, []);
+
+  /**
+   * 打开用户详情弹窗
+   * @param user - 用户列表项数据
+   */
+  const openDetailModal = (user: UserListItem) => {
+    setDetailModal(user);
+    setDetailTab('detail');
+    setTimelineEvents([]);
+    setTimelinePage(1);
+    setTimelineTotalPages(1);
+    setTimelineTotal(0);
+  };
+
+  /** 关闭用户详情弹窗 */
+  const closeDetailModal = () => {
+    setDetailModal(null);
+    setTimelineEvents([]);
+  };
+
+  /**
+   * 切换详情弹窗标签页
+   * 切换到轨迹标签页时自动加载第一页数据
+   * @param tab - 目标标签页
+   */
+  const handleTabChange = (tab: DetailTab) => {
+    setDetailTab(tab);
+    if (tab === 'timeline' && detailModal) {
+      loadTimeline(detailModal.id, 1);
     }
   };
 
@@ -217,7 +381,7 @@ const UsersPage: React.FC = () => {
                       <td className="py-3 px-4 text-sm text-gray-500">{user.stats.workspaceCount}</td>
                       <td className="py-3 px-4">
                         <div className="flex gap-2">
-                          <button className="p-1 text-gray-400 hover:text-blue-600" title="查看">
+                          <button onClick={() => openDetailModal(user)} className="p-1 text-gray-400 hover:text-blue-600" title="查看">
                             <Eye className="w-4 h-4" />
                           </button>
                           {user.isBanned ? (
@@ -255,6 +419,7 @@ const UsersPage: React.FC = () => {
                       </span>
                     </div>
                     <div className="flex gap-2">
+                      <button onClick={() => openDetailModal(user)} className="text-xs text-blue-600">详情</button>
                       {user.isBanned ? (
                         <button onClick={() => handleUnban(user.id)} className="text-xs text-green-600">解封</button>
                       ) : (
@@ -324,6 +489,137 @@ const UsersPage: React.FC = () => {
             <div className="flex gap-3 justify-end">
               <button onClick={() => setBanModal(null)} className="px-4 py-2 text-sm text-gray-600 border rounded-lg">取消</button>
               <button onClick={handleBan} className="px-4 py-2 text-sm text-white bg-red-600 rounded-lg hover:bg-red-700">确认封禁</button>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {detailModal && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/30" onClick={closeDetailModal}>
+          <div className="bg-white rounded-xl max-w-2xl w-full mx-4 max-h-[85vh] flex flex-col" onClick={(e) => e.stopPropagation()}>
+            <div className="p-4 border-b border-gray-100 flex items-center justify-between flex-shrink-0">
+              <div>
+                <h3 className="text-lg font-bold text-gray-800">{detailModal.nickname}</h3>
+                <p className="text-xs text-gray-500 mt-0.5">ID: {detailModal.id}</p>
+              </div>
+              <button onClick={closeDetailModal} className="p-1 hover:bg-gray-100 rounded">
+                <X className="w-5 h-5 text-gray-400" />
+              </button>
+            </div>
+
+            <div className="flex border-b border-gray-100 flex-shrink-0">
+              <button
+                onClick={() => handleTabChange('detail')}
+                className={`px-4 py-2.5 text-sm font-medium border-b-2 transition-colors ${
+                  detailTab === 'detail'
+                    ? 'border-blue-600 text-blue-600'
+                    : 'border-transparent text-gray-500 hover:text-gray-700'
+                }`}
+              >
+                详情
+              </button>
+              <button
+                onClick={() => handleTabChange('timeline')}
+                className={`px-4 py-2.5 text-sm font-medium border-b-2 transition-colors ${
+                  detailTab === 'timeline'
+                    ? 'border-blue-600 text-blue-600'
+                    : 'border-transparent text-gray-500 hover:text-gray-700'
+                }`}
+              >
+                轨迹
+              </button>
+            </div>
+
+            <div className="flex-1 overflow-y-auto">
+              {detailTab === 'detail' && (
+                <div className="p-4 space-y-4">
+                  <div className="grid grid-cols-2 gap-4">
+                    <div>
+                      <p className="text-xs text-gray-500 mb-1">状态</p>
+                      <span className={`inline-flex items-center px-2 py-0.5 rounded-full text-xs font-medium ${
+                        detailModal.isBanned ? 'bg-red-50 text-red-600' : 'bg-green-50 text-green-600'
+                      }`}>
+                        {detailModal.isBanned ? '封禁' : '正常'}
+                      </span>
+                    </div>
+                    <div>
+                      <p className="text-xs text-gray-500 mb-1">注册时间</p>
+                      <p className="text-sm text-gray-800">{new Date(detailModal.createdAt).toLocaleString()}</p>
+                    </div>
+                    <div>
+                      <p className="text-xs text-gray-500 mb-1">最后活跃</p>
+                      <p className="text-sm text-gray-800">{new Date(detailModal.lastActiveAt).toLocaleString()}</p>
+                    </div>
+                    <div>
+                      <p className="text-xs text-gray-500 mb-1">IP地址</p>
+                      {detailModal.lastIp ? (
+                        <button
+                          onClick={() => { closeDetailModal(); handleIpClick(detailModal.lastIp!); }}
+                          className="text-sm text-blue-600 hover:underline font-mono"
+                        >
+                          {detailModal.lastIp}
+                        </button>
+                      ) : (
+                        <p className="text-sm text-gray-400">未记录</p>
+                      )}
+                    </div>
+                    <div>
+                      <p className="text-xs text-gray-500 mb-1">工作区数</p>
+                      <p className="text-sm text-gray-800">{detailModal.stats.workspaceCount}</p>
+                    </div>
+                    <div>
+                      <p className="text-xs text-gray-500 mb-1">节点数</p>
+                      <p className="text-sm text-gray-800">{detailModal.stats.nodeCount}</p>
+                    </div>
+                  </div>
+                  {detailModal.isBanned && detailModal.banReason && (
+                    <div className="p-3 bg-red-50 rounded-lg">
+                      <p className="text-xs text-red-500 font-medium mb-1">封禁原因</p>
+                      <p className="text-sm text-red-700">{detailModal.banReason}</p>
+                    </div>
+                  )}
+                </div>
+              )}
+
+              {detailTab === 'timeline' && (
+                <div className="p-4">
+                  {timelineLoading ? (
+                    <div className="py-8 text-center text-gray-400">加载轨迹中...</div>
+                  ) : timelineEvents.length === 0 ? (
+                    <div className="py-8 text-center text-gray-400">暂无轨迹数据</div>
+                  ) : (
+                    <>
+                      <div className="mb-3 text-xs text-gray-500">共 {timelineTotal} 条活动记录</div>
+                      <div>
+                        {timelineEvents.map((event, index) => (
+                          <TimelineEventItem key={`${event.type}-${event.timestamp}-${index}`} event={event} />
+                        ))}
+                      </div>
+                      {timelineTotalPages > 1 && (
+                        <div className="mt-4 pt-3 border-t border-gray-100 flex justify-center gap-2">
+                          <button
+                            onClick={() => { if (detailModal) loadTimeline(detailModal.id, timelinePage - 1); }}
+                            disabled={timelinePage === 1}
+                            className="px-3 py-1 text-sm border rounded-lg disabled:opacity-50"
+                          >
+                            上一页
+                          </button>
+                          <span className="px-3 py-1 text-sm text-gray-500">
+                            {timelinePage}/{timelineTotalPages}
+                          </span>
+                          <button
+                            onClick={() => { if (detailModal) loadTimeline(detailModal.id, timelinePage + 1); }}
+                            disabled={timelinePage === timelineTotalPages}
+                            className="px-3 py-1 text-sm border rounded-lg disabled:opacity-50"
+                          >
+                            下一页
+                          </button>
+                        </div>
+                      )}
+                    </>
+                  )}
+                </div>
+              )}
             </div>
           </div>
         </div>

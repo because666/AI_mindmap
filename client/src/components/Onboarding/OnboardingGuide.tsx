@@ -1,5 +1,6 @@
 import React, { useState, useEffect, useCallback, useRef } from 'react';
 import { X, ChevronLeft, ChevronRight, Clock, BookOpen, Sparkles } from 'lucide-react';
+import { useTranslation } from 'react-i18next';
 import { onboardingGuideConfig, type GuidePage } from '../../data/onboardingContent';
 import { markOnboardingCompleted } from '../../utils/onboardingStorage';
 import MarkdownRenderer from '../Chat/MarkdownRenderer';
@@ -20,26 +21,49 @@ const OnboardingGuide: React.FC<OnboardingGuideProps> = ({
   onClose,
   isForced = false 
 }) => {
+  const { t } = useTranslation('onboarding');
   const [currentPage, setCurrentPage] = useState(0);
   const [countdown, setCountdown] = useState(onboardingGuideConfig.countdownSeconds);
   const [canClose, setCanClose] = useState(!isForced);
+  const [prevIsOpen, setPrevIsOpen] = useState(isOpen);
   const countdownRef = useRef<NodeJS.Timeout | null>(null);
   const contentRef = useRef<HTMLDivElement>(null);
-  
+
   const isMobile = useIsMobile();
   const pages = onboardingGuideConfig.pages;
   const totalPages = pages.length;
+
+  /**
+   * 在渲染期间检测打开状态变化，同步重置相关状态
+   * 将打开时的状态重置逻辑从 useEffect 中移出，避免在 effect 体内直接调用 setState
+   */
+  if (isOpen !== prevIsOpen) {
+    setPrevIsOpen(isOpen);
+    if (isOpen) {
+      setCurrentPage(0);
+      if (isForced) {
+        setCountdown(onboardingGuideConfig.countdownSeconds);
+        setCanClose(false);
+      } else {
+        setCanClose(true);
+      }
+    }
+  }
+
   const currentPageData: GuidePage = pages[currentPage];
+
+  const translatedTitle: string = t(currentPageData.titleKey);
+  const translatedContent: string[] = t(currentPageData.contentKey, { returnObjects: true }) as string[];
+  const translatedHighlights: string[] = t(currentPageData.highlightsKey, { returnObjects: true }) as string[];
 
   /**
    * 倒计时逻辑
-   * 仅在强制模式下启用，用户必须等待指定时间才能关闭
+   * 仅在强制模式下启用，通过 interval 递减倒计时并在结束时允许关闭
+   * 打开时的状态重置已在渲染体中处理，此处不再直接调用 setState 初始化
    */
   useEffect(() => {
     if (!isOpen || !isForced || canClose) return;
 
-    setCountdown(onboardingGuideConfig.countdownSeconds);
-    
     countdownRef.current = setInterval(() => {
       setCountdown((prev) => {
         if (prev <= 1) {
@@ -58,22 +82,7 @@ const OnboardingGuide: React.FC<OnboardingGuideProps> = ({
         clearInterval(countdownRef.current);
       }
     };
-  }, [isOpen, isForced]);
-
-  /**
-   * 重置状态当打开时
-   */
-  useEffect(() => {
-    if (isOpen) {
-      setCurrentPage(0);
-      if (isForced) {
-        setCountdown(onboardingGuideConfig.countdownSeconds);
-        setCanClose(false);
-      } else {
-        setCanClose(true);
-      }
-    }
-  }, [isOpen, isForced]);
+  }, [isOpen, isForced, canClose]);
 
   /**
    * 滚动到内容顶部当切换页面
@@ -142,12 +151,12 @@ const OnboardingGuide: React.FC<OnboardingGuideProps> = ({
   /**
    * 渲染高亮标签
    */
-  const renderHighlights = () => {
-    if (!currentPageData.highlights || currentPageData.highlights.length === 0) return null;
+  const renderHighlights = (highlights: string[]) => {
+    if (!highlights || highlights.length === 0) return null;
 
     return (
       <div className="flex flex-wrap gap-2 mt-4 pt-4 border-t border-dark-700">
-        {currentPageData.highlights.map((highlight, index) => (
+        {highlights.map((highlight, index) => (
           <span
             key={index}
             className="px-3 py-1 bg-primary-600/20 text-primary-300 rounded-full text-xs font-medium border border-primary-500/30"
@@ -173,7 +182,7 @@ const OnboardingGuide: React.FC<OnboardingGuideProps> = ({
               ? 'bg-primary-400 w-6'
               : 'bg-dark-600 hover:bg-dark-500'
           }`}
-          aria-label={`跳转到第${index + 1}页`}
+          aria-label={t('jumpToPage', { page: index + 1 })} 
         />
       ))}
     </div>
@@ -188,9 +197,9 @@ const OnboardingGuide: React.FC<OnboardingGuideProps> = ({
             {currentPageData.icon}
           </div>
           <div>
-            <h2 className="text-lg font-semibold text-white">{currentPageData.title}</h2>
+            <h2 className="text-lg font-semibold text-white">{translatedTitle}</h2>
             <p className="text-xs text-dark-400">
-              第 {currentPage + 1} 页，共 {totalPages} 页
+              {t('pageIndicator', { current: currentPage + 1, total: totalPages })}
             </p>
           </div>
         </div>
@@ -212,7 +221,7 @@ const OnboardingGuide: React.FC<OnboardingGuideProps> = ({
                 ? 'text-dark-400 hover:text-white hover:bg-dark-700'
                 : 'text-dark-600 cursor-not-allowed opacity-50'
             }`}
-            title={canClose || !isForced ? "关闭引导" : `请等待 ${formatCountdown(countdown)} 后关闭`}
+            title={canClose || !isForced ? t('closeTooltip') : t('forcedCloseTooltip', { time: formatCountdown(countdown) })}
           >
             <X className="w-5 h-5" />
           </button>
@@ -231,32 +240,32 @@ const OnboardingGuide: React.FC<OnboardingGuideProps> = ({
           <div className="text-center mb-6 pb-6 border-b border-dark-700">
             <div className="inline-flex items-center gap-2 px-4 py-2 bg-primary-600/20 rounded-full text-primary-300 text-sm mb-3">
               <Sparkles className="w-4 h-4" />
-              <span>欢迎使用</span>
+              <span>{t('welcome')}</span>
             </div>
             <h1 className="text-2xl font-bold text-white mb-2">
-              {onboardingGuideConfig.title}
+              {t(onboardingGuideConfig.titleKey)}
             </h1>
             <p className="text-dark-400 text-sm">
-              {onboardingGuideConfig.subtitle}
+              {t(onboardingGuideConfig.subtitleKey)}
             </p>
           </div>
         )}
 
         {/* 主要内容 */}
         <div className="prose prose-invert max-w-none prose-sm prose-headings:text-white prose-p:text-dark-300 prose-li:text-dark-300 prose-strong:text-white prose-code:text-primary-300 prose-pre:bg-dark-800 prose-table:border-dark-700">
-          {renderContent(currentPageData.content)}
+          {renderContent(translatedContent)}
         </div>
 
         {/* 高亮标签 */}
-        {renderHighlights()}
+        {renderHighlights(translatedHighlights)}
 
         {/* 结束提示（最后一页） */}
         {currentPage === totalPages - 1 && (
           <div className="mt-6 p-4 bg-green-500/10 border border-green-500/30 rounded-xl text-center">
             <BookOpen className="w-8 h-8 text-green-400 mx-auto mb-2" />
-            <p className="text-green-300 font-medium">🎉 恭喜！您已了解所有核心功能</p>
+            <p className="text-green-300 font-medium">🎉 {t('congratulations')}</p>
             <p className="text-dark-400 text-xs mt-1">
-              现在可以开始您的 DeepMindMap 之旅了
+              {t('completionHint')}
             </p>
           </div>
         )}
@@ -276,7 +285,7 @@ const OnboardingGuide: React.FC<OnboardingGuideProps> = ({
             }`}
           >
             <ChevronLeft className="w-4 h-4" />
-            <span>上一步</span>
+            <span>{t('previous')}</span>
           </button>
 
           {/* 页面指示器 */}
@@ -292,7 +301,7 @@ const OnboardingGuide: React.FC<OnboardingGuideProps> = ({
                 : 'bg-primary-600 text-white hover:bg-primary-700'
             }`}
           >
-            <span>下一步</span>
+            <span>{t('next')}</span>
             <ChevronRight className="w-4 h-4" />
           </button>
         </div>

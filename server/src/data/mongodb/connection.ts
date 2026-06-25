@@ -1,4 +1,4 @@
-import { MongoClient, Db, Collection, Document, Filter, UpdateFilter, FindOptions } from 'mongodb';
+import { MongoClient, Db, Collection, Document, Filter, UpdateFilter, FindOptions, OptionalUnlessRequiredId } from 'mongodb';
 import { config } from '../../config';
 
 class MongoDBService {
@@ -22,20 +22,26 @@ class MongoDBService {
     const database = config.mongodb.database;
 
     if (!uri || uri === 'mongodb://localhost:27017') {
-      console.log('⚠️ MongoDB not configured, skipping connection');
+      if (process.env.NODE_ENV !== 'production') {
+        console.log('⚠️ MongoDB not configured, skipping connection');
+      }
       return;
     }
 
-    console.log('🔌 Connecting to MongoDB...');
+    if (process.env.NODE_ENV !== 'production') {
+      console.log('🔌 Connecting to MongoDB...');
+    }
 
     try {
       this.client = new MongoClient(uri);
       await this.client.connect();
       this.db = this.client.db(database);
-      console.log('✅ MongoDB connected successfully');
+      if (process.env.NODE_ENV !== 'production') {
+        console.log('✅ MongoDB connected successfully');
+      }
       await this.ensureIndexes();
-    } catch (error: any) {
-      const errorMsg = error?.message || String(error);
+    } catch (error: unknown) {
+      const errorMsg = error instanceof Error ? error.message : String(error);
       console.error('❌ MongoDB connection failed:', errorMsg);
       console.warn('⚠️ Continuing without MongoDB');
       this.client = null;
@@ -66,7 +72,9 @@ class MongoDBService {
       await this.db.collection('visitors').createIndex({ id: 1 }, { unique: true, background: true });
       await this.db.collection('workspaces').createIndex({ id: 1 }, { unique: true, background: true });
       await this.db.collection('attack_logs').createIndex({ ipAddress: 1 }, { background: true });
-      console.log('✅ MongoDB indexes initialized');
+      if (process.env.NODE_ENV !== 'production') {
+        console.log('✅ MongoDB indexes initialized');
+      }
     } catch (error) {
       console.warn('Index creation warning:', error);
     }
@@ -88,7 +96,7 @@ class MongoDBService {
     const col = this.getCollection<T>(collection);
     if (!col) return null;
 
-    const result = await col.insertOne(doc as any);
+    const result = await col.insertOne(doc as unknown as OptionalUnlessRequiredId<T>);
     return result.insertedId.toString();
   }
 

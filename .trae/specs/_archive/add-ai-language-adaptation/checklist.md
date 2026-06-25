@@ -1,0 +1,13 @@
+- [x] DEFAULT_SYSTEM_PROMPT 中已移除硬编码"使用中文回答"指令
+- [x] 服务端 ai.ts 从请求体读取 language 字段并动态追加语言指令
+- [x] 服务端 conversations.ts 的 buildContextMessages 支持语言指令
+- [x] 标题生成端点根据语言偏好生成对应语言标题
+- [x] 结论提炼端点根据语言偏好生成对应语言结论
+- [x] 客户端 chatService.sendMessageStream 请求体包含 language 字段
+- [x] ChatPanel 传递当前 i18n 语言到 chatService
+- [x] 未指定语言时默认使用中文（向后兼容）
+- [ ] 切换到英文后 AI 使用英文回复
+- [ ] 切换到中文后 AI 使用中文回复
+- [x] 客户端构建通过
+- [x] 服务端编译通过
+- [x] 部署到服务器并验证功能正常

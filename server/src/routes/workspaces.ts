@@ -2,6 +2,7 @@ import { Router, Request, Response } from 'express';
 import { workspaceService } from '../services/workspaceService';
 import { visitorAuth, getClientIp } from '../middleware';
 import { mongoDBService } from '../data/mongodb/connection';
+import { pushService } from '../services/pushService';
 
 const router = Router();
 
@@ -36,6 +37,8 @@ router.post('/visitor/register', async (req: Request, res: Response) => {
 
 /**
  * 获取访客信息
+ * 注意：visitorSecret 为签名密钥，仅在注册/更新接口返回给客户端，
+ * 查询接口需脱敏以防止密钥泄露导致签名机制被绕过
  */
 router.get('/visitor/:visitorId', async (req: Request, res: Response) => {
   try {
@@ -43,7 +46,9 @@ router.get('/visitor/:visitorId', async (req: Request, res: Response) => {
     if (!visitor) {
       return res.status(404).json({ success: false, error: '访客不存在' });
     }
-    res.json({ success: true, data: visitor });
+    // 脱敏：移除 visitorSecret 字段，防止密钥泄露
+    const { visitorSecret, ...visitorWithoutSecret } = visitor;
+    res.json({ success: true, data: visitorWithoutSecret });
   } catch (error: unknown) {
     const message = error instanceof Error ? error.message : String(error);
     res.status(500).json({ success: false, error: message });
@@ -256,6 +261,48 @@ router.delete('/:workspaceId', visitorAuth, async (req: Request, res: Response) 
       return res.status(400).json({ success: false, error: result.error });
     }
     res.json({ success: true });
+  } catch (error: unknown) {
+    const message = error instanceof Error ? error.message : String(error);
+    res.status(500).json({ success: false, error: message });
+  }
+});
+
+/**
+ * 工作区创建者向成员发送广播
+ * 验证当前访客为工作区创建者后，调用推送服务发送广播通知
+ * @param workspaceId - 工作区ID
+ * @param title - 广播标题（必填）
+ * @param content - 广播内容（必填）
+ * @param importance - 重要程度，可选 'normal' | 'high'，默认 'normal'
+ */
+router.post('/:workspaceId/broadcast', visitorAuth, async (req: Request, res: Response) => {
+  try {
+    const { workspaceId } = req.params;
+    const { title, content, importance } = req.body;
+    const visitorId = req.visitorId!;
+
+    if (!title || !content) {
+      return res.status(400).json({ success: false, error: '标题和内容不能为空' });
+    }
+
+    const workspace = await workspaceService.getWorkspace(workspaceId);
+    if (!workspace) {
+      return res.status(404).json({ success: false, error: '工作区不存在' });
+    }
+
+    if (workspace.ownerId !== visitorId) {
+      return res.status(403).json({ success: false, error: '只有工作区创建者可以发送广播' });
+    }
+
+    const message = await pushService.sendWorkspaceNotification({
+      workspaceId,
+      senderId: visitorId,
+      title,
+      content,
+      importance: importance || 'normal',
+    });
+
+    res.json({ success: true, data: { messageId: message._id?.toString() } });
   } catch (error: unknown) {
     const message = error instanceof Error ? error.message : String(error);
     res.status(500).json({ success: false, error: message });

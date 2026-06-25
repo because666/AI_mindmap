@@ -1,4 +1,5 @@
 import React, { useState, useMemo, useCallback, useEffect } from 'react';
+import { useTranslation } from 'react-i18next';
 import { X, Server, Key, Globe, Cpu, Save, AlertCircle } from 'lucide-react';
 import { AI_PROVIDERS, PRESET_MODELS, getPresetModelById } from '../../utils/aiModels';
 import { useAPIConfigStore, createConfigId } from '../../stores/apiConfigStore';
@@ -55,20 +56,22 @@ const getPresetModelsByProvider = (provider: AIProvider) => {
 };
 
 /**
- * API格式选项映射
- */
-const API_FORMAT_OPTIONS: { value: APIFormat; label: string }[] = [
-  { value: 'openai', label: 'OpenAI兼容格式' },
-  { value: 'zhipu', label: '智谱格式' },
-  { value: 'anthropic', label: 'Anthropic格式' },
-  { value: 'deepseek', label: 'DeepSeek格式' },
-];
-
-/**
  * 添加模型弹窗组件
  * 支持"模型服务商"和"自定义配置"两种添加方式
  */
 const AddModelModal: React.FC<AddModelModalProps> = ({ isOpen, onClose }) => {
+  const { t } = useTranslation('settings');
+
+  /**
+   * API格式选项映射
+   */
+  const API_FORMAT_OPTIONS: { value: APIFormat; label: string }[] = [
+    { value: 'openai', label: t('openaiCompatible') },
+    { value: 'zhipu', label: t('zhipuFormat') },
+    { value: 'anthropic', label: t('anthropicFormat') },
+    { value: 'deepseek', label: t('deepseekFormat') },
+  ];
+
   const [activeTab, setActiveTab] = useState<ModalTab>('provider');
   const [errors, setErrors] = useState<Record<string, string>>({});
 
@@ -88,10 +91,13 @@ const AddModelModal: React.FC<AddModelModalProps> = ({ isOpen, onClose }) => {
 
   /**
    * 弹窗打开时重置错误状态
+   * 使用微任务延迟 setState，避免在 effect body 中同步调用 setState 触发级联渲染
    */
   useEffect(() => {
     if (isOpen) {
-      setErrors({});
+      Promise.resolve().then(() => {
+        setErrors({});
+      });
     }
   }, [isOpen]);
 
@@ -272,12 +278,12 @@ const AddModelModal: React.FC<AddModelModalProps> = ({ isOpen, onClose }) => {
   const tabs: { id: ModalTab; label: string; icon: React.ReactNode }[] = [
     {
       id: 'provider',
-      label: '模型服务商',
+      label: t('modelProvider'),
       icon: <Server className="w-4 h-4" />,
     },
     {
       id: 'custom',
-      label: '自定义配置',
+      label: t('customConfig'),
       icon: <Cpu className="w-4 h-4" />,
     },
   ];
@@ -296,7 +302,7 @@ const AddModelModal: React.FC<AddModelModalProps> = ({ isOpen, onClose }) => {
         <div className="flex items-center justify-between px-6 py-4 border-b border-dark-700">
           <div className="flex items-center gap-3">
             <Server className="w-5 h-5 text-primary-400" />
-            <h2 className="text-lg font-semibold text-white">添加模型</h2>
+            <h2 className="text-lg font-semibold text-white">{t('addModel')}</h2>
           </div>
           <button
             onClick={handleClose}
@@ -332,7 +338,7 @@ const AddModelModal: React.FC<AddModelModalProps> = ({ isOpen, onClose }) => {
               <div>
                 <label className="flex items-center gap-2 text-sm font-medium text-dark-300 mb-2">
                   <Server className="w-4 h-4" />
-                  服务商
+                  {t('provider')}
                 </label>
                 <select
                   value={providerForm.provider}
@@ -351,7 +357,7 @@ const AddModelModal: React.FC<AddModelModalProps> = ({ isOpen, onClose }) => {
               <div>
                 <label className="flex items-center gap-2 text-sm font-medium text-dark-300 mb-2">
                   <Cpu className="w-4 h-4" />
-                  模型
+                  {t('model')}
                 </label>
                 <select
                   value={providerForm.modelId}
@@ -388,13 +394,13 @@ const AddModelModal: React.FC<AddModelModalProps> = ({ isOpen, onClose }) => {
               <div>
                 <label className="flex items-center gap-2 text-sm font-medium text-dark-300 mb-2">
                   <Key className="w-4 h-4" />
-                  API密钥
+                  {t('apiKey')}
                 </label>
                 <input
                   type="password"
                   value={providerForm.apiKey}
                   onChange={(e) => handleProviderFormChange('apiKey', e.target.value)}
-                  placeholder="输入你的API密钥..."
+                  placeholder={t('apiKeyPlaceholder')}
                   className={`w-full px-4 py-2.5 bg-dark-800 border rounded-xl text-white placeholder-dark-500 focus:outline-none transition-colors text-sm ${
                     errors.providerApiKey ? 'border-red-500 focus:border-red-500' : 'border-dark-600 focus:border-primary-500'
                   }`}
@@ -415,7 +421,7 @@ const AddModelModal: React.FC<AddModelModalProps> = ({ isOpen, onClose }) => {
               <div>
                 <label className="flex items-center gap-2 text-sm font-medium text-dark-300 mb-2">
                   <Server className="w-4 h-4" />
-                  API格式
+                  {t('apiFormat')}
                 </label>
                 <select
                   value={customForm.apiFormat}
@@ -434,8 +440,8 @@ const AddModelModal: React.FC<AddModelModalProps> = ({ isOpen, onClose }) => {
               <div>
                 <label className="flex items-center gap-2 text-sm font-medium text-dark-300 mb-2">
                   <Globe className="w-4 h-4" />
-                  请求地址
-                  <span className="text-xs text-dark-500">（选填，用于中转站）</span>
+                  {t('requestUrl')}
+                  <span className="text-xs text-dark-500">{t('requestUrlOptional')}</span>
                 </label>
                 <input
                   type="url"
@@ -450,8 +456,8 @@ const AddModelModal: React.FC<AddModelModalProps> = ({ isOpen, onClose }) => {
               {/* 模型名称 */}
               <div>
                 <label className="flex items-center gap-2 text-sm font-medium text-dark-300 mb-2">
-                  模型名称
-                  <span className="text-xs text-dark-500">（选填，不填则使用模型ID）</span>
+                  {t('modelName')}
+                  <span className="text-xs text-dark-500">{t('modelNameOptional')}</span>
                 </label>
                 <input
                   type="text"
@@ -466,7 +472,7 @@ const AddModelModal: React.FC<AddModelModalProps> = ({ isOpen, onClose }) => {
               <div>
                 <label className="flex items-center gap-2 text-sm font-medium text-dark-300 mb-2">
                   <Cpu className="w-4 h-4" />
-                  模型ID
+                  {t('modelId')}
                 </label>
                 <input
                   type="text"
@@ -489,13 +495,13 @@ const AddModelModal: React.FC<AddModelModalProps> = ({ isOpen, onClose }) => {
               <div>
                 <label className="flex items-center gap-2 text-sm font-medium text-dark-300 mb-2">
                   <Key className="w-4 h-4" />
-                  API密钥
+                  {t('apiKey')}
                 </label>
                 <input
                   type="password"
                   value={customForm.apiKey}
                   onChange={(e) => handleCustomFormChange('apiKey', e.target.value)}
-                  placeholder="输入你的API密钥..."
+                  placeholder={t('apiKeyPlaceholder')}
                   className={`w-full px-4 py-2.5 bg-dark-800 border rounded-xl text-white placeholder-dark-500 focus:outline-none transition-colors text-sm ${
                     errors.customApiKey ? 'border-red-500 focus:border-red-500' : 'border-dark-600 focus:border-primary-500'
                   }`}

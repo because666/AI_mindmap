@@ -16,7 +16,9 @@ import { executeTools } from '../../services/toolExecutor';
 import MarkdownRenderer from './MarkdownRenderer';
 import MindMapThumbnail from './MindMapThumbnail';
 import ConfirmDialog from '../Common/ConfirmDialog';
+import ExtensionDirectionButtons from './ExtensionDirectionButtons';
 import { MODEL_CONTEXT_WINDOWS, estimateTokens } from '../../constants/modelContext';
+import { parseExtensionDirections } from '../../utils/extensionDirections';
 
 interface ChatPanelProps {
   nodeId?: string | null;
@@ -292,7 +294,10 @@ const ChatPanel: React.FC<ChatPanelProps> = ({ nodeId }) => {
   const [streamingContent, setStreamingContent] = useState<string>('');
   const [streamingThinkingContent, setStreamingThinkingContent] = useState<string>('');
   const [branchCreating, setBranchCreating] = useState(false);
+  const [extensionLoadingDirection, setExtensionLoadingDirection] = useState<string | null>(null);
   const [hasBuiltInKey, setHasBuiltInKey] = useState(false);
+  /** 待自动发送的延伸方向追问（节点切换后通过 effect 触发发送） */
+  const pendingExtensionSendRef = useRef<{ targetNodeId: string; direction: string } | null>(null);
   const [workspaceFiles, setWorkspaceFiles] = useState<FileInfo[]>([]);
   const [selectedFileIds, setSelectedFileIds] = useState<string[]>([]);
   const [isUploading, setIsUploading] = useState(false);
@@ -333,7 +338,11 @@ const ChatPanel: React.FC<ChatPanelProps> = ({ nodeId }) => {
 
   const node = nodeId ? nodes.get(nodeId) : null;
   const conversation = node?.conversationId ? conversations.get(node.conversationId) : null;
-  const messages = conversation?.messages || [];
+  /**
+   * 当前对话消息列表
+   * 使用 useMemo 稳定数组引用，避免作为依赖时触发频繁的 effect/callback 重运行
+   */
+  const messages = useMemo(() => conversation?.messages || [], [conversation?.messages]);
 
   useEffect(() => {
     messagesEndRef.current?.scrollIntoView({ behavior: 'smooth' });
@@ -347,6 +356,21 @@ const ChatPanel: React.FC<ChatPanelProps> = ({ nodeId }) => {
       return () => clearTimeout(timer);
     }
   }, [nodeId, isMobile]);
+
+  /**
+   * 处理延伸方向自动追问
+   * 用户点击延伸方向按钮后，会先创建子节点并切换过去；当 nodeId 变为目标节点时，
+   * 自动向新节点发送生成的追问。使用 ref 存储待发送信息，避免将 sendMessage 加入依赖数组。
+   */
+  useEffect(() => {
+    if (pendingExtensionSendRef.current && pendingExtensionSendRef.current.targetNodeId === nodeId) {
+      const { direction } = pendingExtensionSendRef.current;
+      pendingExtensionSendRef.current = null;
+      const prompt = t('exploreDirectionPrompt', { direction });
+      sendMessage(prompt);
+    }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [nodeId, t]);
 
   useEffect(() => {
     if (isLoading || streamingContent) {
@@ -948,6 +972,31 @@ const ChatPanel: React.FC<ChatPanelProps> = ({ nodeId }) => {
   };
 
   /**
+   * 处理用户点击延伸方向按钮
+   * 在当前节点下创建以方向为标题的子节点，切换到该子节点，并自动发送追问
+   * @param direction - 用户点击的延伸方向文本
+   */
+  const handleExtensionDirectionClick = async (direction: string) => {
+    if (!nodeId || extensionLoadingDirection !== null) return;
+
+    setExtensionLoadingDirection(direction);
+    try {
+      const childId = createChildNode(nodeId, direction);
+      if (!childId) {
+        useToastStore.getState().addToast('error', t('branchCreateFailed'));
+        return;
+      }
+      selectNode(childId);
+      pendingExtensionSendRef.current = { targetNodeId: childId, direction };
+    } catch (err) {
+      console.error('创建延伸分支失败:', err);
+      useToastStore.getState().addToast('error', t('branchCreateFailed'));
+    } finally {
+      setExtensionLoadingDirection(null);
+    }
+  };
+
+  /**
    * 生成智能标题（流式）
    * 根据当前对话消息调用AI流式生成精炼标题，更新节点标题
    * @param force - 是否强制生成（忽略手动修改标记）
@@ -1343,36 +1392,55 @@ const ChatPanel: React.FC<ChatPanelProps> = ({ nodeId }) => {
           </div>
         ) : (
           <>
-            {messages.map((message) => (
-              <div
-                key={message._id}
-                className={`flex gap-3 w-full ${message.role === 'user' ? 'flex-row-reverse justify-start' : 'justify-start'}`}
-              >
+            {messages.map((message) => {
+              const { directions, cleanContent } = message.role === 'assistant'
+                ? parseExtensionDirections(message.content)
+                : { directions: [], cleanContent: message.content };
+
+              return (
                 <div
-                  className={`w-8 h-8 rounded-full flex items-center justify-center flex-shrink-0 ${
-                    message.role === 'user' ? 'bg-primary-600' : 'bg-dark-700'
-                  }`}
+                  key={message._id}
+                  className={`flex gap-3 w-full ${message.role === 'user' ? 'flex-row-reverse justify-start' : 'justify-start'}`}
                 >
-                  {message.role === 'user' ? (
-                    <User className="w-4 h-4 text-white" />
-                  ) : (
-                    <Bot className="w-4 h-4 text-primary-400" />
-                  )}
-                </div>
-                <div
-                  className={`max-w-[85%] px-4 py-2.5 rounded-2xl ${
-                    message.role === 'user'
-                      ? 'bg-primary-600 text-white rounded-tr-sm'
-                      : 'bg-dark-700 text-white rounded-tl-sm'
-                  }`}
-                >
-                  <MessageContent content={message.content} role={message.role} />
-                  <div className="text-xs mt-1 text-dark-500">
-                    {formatMessageTime(message.timestamp)}
+                  <div
+                    className={`w-8 h-8 rounded-full flex items-center justify-center flex-shrink-0 ${
+                      message.role === 'user' ? 'bg-primary-600' : 'bg-dark-700'
+                    }`}
+                  >
+                    {message.role === 'user' ? (
+                      <User className="w-4 h-4 text-white" />
+                    ) : (
+                      <Bot className="w-4 h-4 text-primary-400" />
+                    )}
+                  </div>
+                  <div
+                    className={`flex flex-col max-w-[85%] ${
+                      message.role === 'user' ? 'items-end' : 'items-start'
+                    }`}
+                  >
+                    <div
+                      className={`px-4 py-2.5 rounded-2xl ${
+                        message.role === 'user'
+                          ? 'bg-primary-600 text-white rounded-tr-sm'
+                          : 'bg-dark-700 text-white rounded-tl-sm'
+                      }`}
+                    >
+                      <MessageContent content={cleanContent} role={message.role} />
+                      <div className="text-xs mt-1 text-dark-500">
+                        {formatMessageTime(message.timestamp)}
+                      </div>
+                    </div>
+                    {message.role === 'assistant' && directions.length > 0 && (
+                      <ExtensionDirectionButtons
+                        directions={directions}
+                        onDirectionClick={handleExtensionDirectionClick}
+                        loadingDirection={extensionLoadingDirection}
+                      />
+                    )}
                   </div>
                 </div>
-              </div>
-            ))}
+              );
+            })}
             
             {streamingContent && (
               <div className="flex gap-3 w-full justify-start">

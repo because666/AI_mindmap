@@ -1,4 +1,5 @@
-import React, { useState, useEffect } from 'react';
+import React, { useState } from 'react';
+import { useTranslation } from 'react-i18next';
 import { X, Settings as SettingsIcon, Sliders, Key, BookOpen } from 'lucide-react';
 import APIConfigPanel from './APIConfigPanel';
 import UISettingsPanel from './UISettingsPanel';
@@ -18,22 +19,17 @@ type SettingsTab = 'api' | 'ui' | 'guide';
  * 支持桌面端居中弹窗和移动端全屏显示
  */
 const SettingsModal: React.FC<SettingsModalProps> = ({ isOpen, onClose, initialTab }) => {
+  const { t } = useTranslation('settings');
   const [activeTab, setActiveTab] = useState<SettingsTab>(initialTab || 'ui');
   const [showGuide, setShowGuide] = useState(false);
   const isMobile = useIsMobile();
 
-  useEffect(() => {
-    if (isOpen && initialTab) {
-      setActiveTab(initialTab);
-    }
-  }, [isOpen, initialTab]);
-
   if (!isOpen) return null;
 
   const tabs: { id: SettingsTab; label: string; icon: React.ReactNode }[] = [
-    { id: 'ui', label: '界面设置', icon: <Sliders className="w-4 h-4" /> },
-    { id: 'api', label: 'API配置', icon: <Key className="w-4 h-4" /> },
-    { id: 'guide', label: '新手引导', icon: <BookOpen className="w-4 h-4" /> }
+    { id: 'ui', label: t('uiSettings'), icon: <Sliders className="w-4 h-4" /> },
+    { id: 'api', label: t('apiConfiguration'), icon: <Key className="w-4 h-4" /> },
+    { id: 'guide', label: t('onboardingGuide'), icon: <BookOpen className="w-4 h-4" /> }
   ];
 
   const modalContent = (
@@ -41,7 +37,7 @@ const SettingsModal: React.FC<SettingsModalProps> = ({ isOpen, onClose, initialT
       <div className={`flex items-center justify-between px-6 py-4 border-b border-dark-700 ${isMobile ? 'h-14' : ''}`}>
         <div className="flex items-center gap-3">
           <SettingsIcon className="w-5 h-5 text-primary-400" />
-          <h2 className="text-lg font-semibold text-white">设置</h2>
+          <h2 className="text-lg font-semibold text-white">{t('settings')}</h2>
         </div>
         <button
           onClick={onClose}
@@ -75,48 +71,52 @@ const SettingsModal: React.FC<SettingsModalProps> = ({ isOpen, onClose, initialT
           <div className="space-y-4">
             <div className="text-center py-8">
               <BookOpen className="w-16 h-16 text-primary-400 mx-auto mb-4" />
-              <h3 className="text-xl font-semibold text-white mb-2">新手引导</h3>
+              <h3 className="text-xl font-semibold text-white mb-2">{t('onboardingGuide')}</h3>
               <p className="text-dark-400 text-sm mb-6 max-w-md mx-auto">
-                查看完整的新手引导文档，了解DeepMindMap的所有功能和使用方法
+                {t('guideDescription')}
               </p>
               <button
                 onClick={() => setShowGuide(true)}
                 className="px-6 py-3 bg-primary-600 hover:bg-primary-700 text-white rounded-xl font-medium transition-colors shadow-lg"
               >
-                打开新手引导
+                {t('openGuide')}
               </button>
             </div>
             
             <div className="bg-dark-800 rounded-xl p-4 border border-dark-700">
-              <h4 className="text-sm font-medium text-white mb-3">引导内容包含</h4>
+              <h4 className="text-sm font-medium text-white mb-3">{t('guideContentIncludes')}</h4>
               <ul className="space-y-2 text-xs text-dark-400">
                 <li className="flex items-center gap-2">
                   <span className="w-1.5 h-1.5 bg-primary-400 rounded-full" />
-                  项目介绍与核心定位
+                  {t('guideProjectIntro')}
                 </li>
                 <li className="flex items-center gap-2">
                   <span className="w-1.5 h-1.5 bg-primary-400 rounded-full" />
-                  思维画布使用指南
+                  {t('guideCanvasUsage')}
                 </li>
                 <li className="flex items-center gap-2">
                   <span className="w-1.5 h-1.5 bg-primary-400 rounded-full" />
-                  AI对话系统详解
+                  {t('guideAiChat')}
                 </li>
                 <li className="flex items-center gap-2">
                   <span className="w-1.5 h-1.5 bg-primary-400 rounded-full" />
-                  节点管理与关系连接
+                  {t('guideNodeManagement')}
                 </li>
                 <li className="flex items-center gap-2">
                   <span className="w-1.5 h-1.5 bg-primary-400 rounded-full" />
-                  工作区协作功能
+                  {t('guideTools')}
                 </li>
                 <li className="flex items-center gap-2">
                   <span className="w-1.5 h-1.5 bg-primary-400 rounded-full" />
-                  设置与个性化配置
+                  {t('guideWorkspaceCollab')}
                 </li>
                 <li className="flex items-center gap-2">
                   <span className="w-1.5 h-1.5 bg-primary-400 rounded-full" />
-                  使用技巧与快捷键
+                  {t('guideSettingsConfig')}
+                </li>
+                <li className="flex items-center gap-2">
+                  <span className="w-1.5 h-1.5 bg-primary-400 rounded-full" />
+                  {t('guideTipsShortcuts')}
                 </li>
               </ul>
             </div>

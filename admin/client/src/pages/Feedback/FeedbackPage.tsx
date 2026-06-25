@@ -1,7 +1,7 @@
 import React, { useState, useEffect, useCallback } from 'react';
-import { feedbacksApi } from '../../services/api';
-import type { FeedbackListItem, FeedbackStats, FeedbackStatus, FeedbackType, PaginationResult } from '../../types';
-import { MessageSquare, Clock, CheckCircle, TrendingUp, Search, Download, X, Eye } from 'lucide-react';
+import { feedbacksApi, adminAccountsApi } from '../../services/api';
+import type { FeedbackListItem, FeedbackStats, FeedbackStatus, FeedbackType, InternalNote, PaginationResult } from '../../types';
+import { MessageSquare, Clock, CheckCircle, TrendingUp, Search, Download, X, Eye, UserCheck, AlertTriangle, StickyNote } from 'lucide-react';
 import { format } from 'date-fns';
 
 /**
@@ -42,18 +42,66 @@ interface ToastMessage {
 
 /**
  * 反馈详情弹窗状态接口
+ * 包含工单分配、内部备注等扩展状态
  */
 interface DetailModalState {
   visible: boolean;
   item: FeedbackListItem | null;
   newStatus: FeedbackStatus;
   saving: boolean;
+  /** 工单分配 - 被分配人昵称 */
+  assigneeInput: string;
+  /** 工单分配 - SLA 时长（小时） */
+  slaHoursInput: number;
+  /** 分配操作进行中 */
+  assigning: boolean;
+  /** 内部备注列表 */
+  notes: InternalNote[];
+  /** 新备注内容 */
+  newNoteContent: string;
+  /** 备注操作进行中 */
+  addingNote: boolean;
+  /** 备注加载中 */
+  notesLoading: boolean;
+}
+
+/**
+ * 计算 SLA 剩余时间的返回类型
+ */
+interface SlaRemaining {
+  /** 是否已超时 */
+  overdue: boolean;
+  /** 剩余毫秒数（超时为负数） */
+  remainingMs: number;
+  /** 格式化的剩余时间字符串 */
+  display: string;
+}
+
+/**
+ * 计算 SLA 剩余时间
+ * 根据截止时间与当前时间差值，返回剩余时间信息
+ * @param slaDeadline - SLA 截止时间的 ISO 字符串
+ * @returns 包含超时状态、剩余毫秒数和格式化显示文本的对象
+ */
+function computeSlaRemaining(slaDeadline: string): SlaRemaining {
+  const deadline = new Date(slaDeadline).getTime();
+  const now = Date.now();
+  const diff = deadline - now;
+  const overdue = diff <= 0;
+  const absDiff = Math.abs(diff);
+  const hours = Math.floor(absDiff / (1000 * 60 * 60));
+  const minutes = Math.floor((absDiff % (1000 * 60 * 60)) / (1000 * 60));
+  const display = overdue
+    ? `已超时 ${hours}小时${minutes}分钟`
+    : `${hours}小时${minutes}分钟`;
+  return { overdue, remainingMs: diff, display };
 }
 
 /**
  * 反馈管理页面
  * 展示反馈统计数据、筛选条件、反馈列表、分页及详情弹窗
- * 支持按类型/状态/日期范围/关键词筛选，支持导出和修改反馈状态
+ * 支持按类型/状态/日期范围/关键词/被分配人筛选，支持导出、修改反馈状态
+ * 支持工单分配、SLA 倒计时、内部备注功能
  */
 const FeedbackPage: React.FC = () => {
   const [stats, setStats] = useState<FeedbackStats | null>(null);
@@ -67,12 +115,24 @@ const FeedbackPage: React.FC = () => {
   const [startDate, setStartDate] = useState<string>('');
   const [endDate, setEndDate] = useState<string>('');
   const [keyword, setKeyword] = useState<string>('');
+  /** 被分配人筛选 */
+  const [assigneeFilter, setAssigneeFilter] = useState<string>('');
+
+  /** 管理员昵称列表，用于工单分配下拉建议 */
+  const [adminNicknames, setAdminNicknames] = useState<string[]>([]);
 
   const [detailModal, setDetailModal] = useState<DetailModalState>({
     visible: false,
     item: null,
     newStatus: 'pending',
     saving: false,
+    assigneeInput: '',
+    slaHoursInput: 48,
+    assigning: false,
+    notes: [],
+    newNoteContent: '',
+    addingNote: false,
+    notesLoading: false,
   });
 
   const [toast, setToast] = useState<ToastMessage | null>(null);
@@ -86,6 +146,22 @@ const FeedbackPage: React.FC = () => {
     setToast({ type, text });
     setTimeout(() => setToast(null), 3000);
   };
+
+  /**
+   * 加载管理员昵称列表
+   * 从管理员账户接口获取所有活跃管理员的昵称，用于工单分配下拉建议
+   * 加载失败时不影响页面主流程
+   */
+  const loadAdminNicknames = useCallback(async () => {
+    try {
+      const res = await adminAccountsApi.getAccounts({ page: 1, limit: 100 });
+      const responseData = res.data.data as { items: { nickname: string }[] };
+      const nicknames = responseData.items.map((item) => item.nickname);
+      setAdminNicknames(nicknames);
+    } catch (error) {
+      console.error('加载管理员昵称列表失败:', error);
+    }
+  }, []);
 
   /**
    * 加载反馈统计数据
@@ -102,7 +178,7 @@ const FeedbackPage: React.FC = () => {
 
   /**
    * 加载反馈列表数据
-   * 根据当前筛选条件和分页参数异步获取列表
+   * 根据当前筛选条件（含被分配人）和分页参数异步获取列表
    * 加载失败时在控制台输出错误信息
    */
   const loadList = useCallback(async () => {
@@ -116,6 +192,7 @@ const FeedbackPage: React.FC = () => {
         startDate: startDate || undefined,
         endDate: endDate || undefined,
         keyword: keyword || undefined,
+        assignee: assigneeFilter || undefined,
       });
       setData(res.data.data as PaginationResult<FeedbackListItem>);
     } catch (error) {
@@ -123,11 +200,12 @@ const FeedbackPage: React.FC = () => {
     } finally {
       setLoading(false);
     }
-  }, [page, pageSize, typeFilter, statusFilter, startDate, endDate, keyword]);
+  }, [page, pageSize, typeFilter, statusFilter, startDate, endDate, keyword, assigneeFilter]);
 
   useEffect(() => {
     loadStats();
-  }, [loadStats]);
+    loadAdminNicknames();
+  }, [loadStats, loadAdminNicknames]);
 
   useEffect(() => {
     loadList();
@@ -135,7 +213,7 @@ const FeedbackPage: React.FC = () => {
 
   /**
    * 重置所有筛选条件
-   * 清空类型、状态、日期范围、关键词筛选，并重置页码为1
+   * 清空类型、状态、日期范围、关键词、被分配人筛选，并重置页码为1
    */
   const handleReset = () => {
     setTypeFilter('');
@@ -143,6 +221,7 @@ const FeedbackPage: React.FC = () => {
     setStartDate('');
     setEndDate('');
     setKeyword('');
+    setAssigneeFilter('');
     setPage(1);
   };
 
@@ -187,7 +266,8 @@ const FeedbackPage: React.FC = () => {
 
   /**
    * 打开反馈详情弹窗
-   * 设置弹窗可见、当前反馈项数据，并初始化状态选择为当前反馈状态
+   * 设置弹窗可见、当前反馈项数据，初始化状态、分配信息、备注
+   * 同时异步加载该工单的内部备注列表
    * @param item - 要查看详情的反馈列表项
    */
   const openDetail = (item: FeedbackListItem) => {
@@ -196,7 +276,23 @@ const FeedbackPage: React.FC = () => {
       item,
       newStatus: item.status,
       saving: false,
+      assigneeInput: item.assignee || '',
+      slaHoursInput: item.slaHours || 48,
+      assigning: false,
+      notes: item.internalNotes || [],
+      newNoteContent: '',
+      addingNote: false,
+      notesLoading: true,
     });
+    feedbacksApi.getNotes(item._id)
+      .then((res) => {
+        const notesData = (res.data.data ?? []) as InternalNote[];
+        setDetailModal((prev) => ({ ...prev, notes: notesData, notesLoading: false }));
+      })
+      .catch((error: unknown) => {
+        console.error('加载备注失败:', error);
+        setDetailModal((prev) => ({ ...prev, notesLoading: false }));
+      });
   };
 
   /**
@@ -209,6 +305,13 @@ const FeedbackPage: React.FC = () => {
       item: null,
       newStatus: 'pending',
       saving: false,
+      assigneeInput: '',
+      slaHoursInput: 48,
+      assigning: false,
+      notes: [],
+      newNoteContent: '',
+      addingNote: false,
+      notesLoading: false,
     });
   };
 
@@ -225,7 +328,6 @@ const FeedbackPage: React.FC = () => {
       await feedbacksApi.updateStatus(detailModal.item._id, detailModal.newStatus);
       showToast('success', '状态更新成功');
       closeDetail();
-      // 直接更新本地列表中对应项的状态，实现即时刷新
       setData((prev) => {
         if (!prev) return prev;
         return {
@@ -243,6 +345,94 @@ const FeedbackPage: React.FC = () => {
       showToast('error', '状态更新失败，请重试');
     } finally {
       setDetailModal((prev) => ({ ...prev, saving: false }));
+    }
+  };
+
+  /**
+   * 分配工单给指定管理员
+   * 调用 assignFeedback API，成功后更新本地列表数据和弹窗状态
+   * 失败时显示错误提示
+   */
+  const handleAssign = async () => {
+    if (!detailModal.item) return;
+    if (detailModal.assigning) return;
+    if (!detailModal.assigneeInput.trim()) {
+      showToast('error', '请输入被分配人昵称');
+      return;
+    }
+    setDetailModal((prev) => ({ ...prev, assigning: true }));
+    try {
+      const res = await feedbacksApi.assignFeedback(
+        detailModal.item._id,
+        detailModal.assigneeInput.trim(),
+        detailModal.slaHoursInput
+      );
+      const assignData = res.data.data as { assignee: string; assignedAt: string; slaHours: number; slaDeadline: string };
+      showToast('success', '工单已分配');
+      setDetailModal((prev) => ({
+        ...prev,
+        assigning: false,
+        item: prev.item
+          ? {
+              ...prev.item,
+              assignee: assignData.assignee,
+              assignedAt: assignData.assignedAt,
+              slaHours: assignData.slaHours,
+              slaDeadline: assignData.slaDeadline,
+            }
+          : prev.item,
+      }));
+      setData((prev) => {
+        if (!prev) return prev;
+        return {
+          ...prev,
+          items: prev.items.map((item) =>
+            item._id === detailModal.item!._id
+              ? {
+                  ...item,
+                  assignee: assignData.assignee,
+                  assignedAt: assignData.assignedAt,
+                  slaHours: assignData.slaHours,
+                  slaDeadline: assignData.slaDeadline,
+                }
+              : item
+          ),
+        };
+      });
+    } catch (error) {
+      console.error('分配工单失败:', error);
+      showToast('error', '分配工单失败，请重试');
+      setDetailModal((prev) => ({ ...prev, assigning: false }));
+    }
+  };
+
+  /**
+   * 添加内部备注
+   * 调用 addNote API，成功后将新备注追加到本地备注列表
+   * 失败时显示错误提示
+   */
+  const handleAddNote = async () => {
+    if (!detailModal.item) return;
+    if (detailModal.addingNote) return;
+    if (!detailModal.newNoteContent.trim()) {
+      showToast('error', '备注内容不能为空');
+      return;
+    }
+    setDetailModal((prev) => ({ ...prev, addingNote: true }));
+    try {
+      const res = await feedbacksApi.addNote(detailModal.item._id, detailModal.newNoteContent.trim());
+      const noteData = res.data.data as InternalNote;
+      showToast('success', '备注已添加');
+      setDetailModal((prev) => ({
+        ...prev,
+        addingNote: false,
+        newNoteContent: '',
+        notes: [...prev.notes, noteData],
+      }));
+    } catch (error) {
+      console.error('添加备注失败:', error);
+      showToast('error', '添加备注失败，请重试');
+      setDetailModal((prev) => ({ ...prev, addingNote: false }));
     }
   };
 
@@ -269,6 +459,25 @@ const FeedbackPage: React.FC = () => {
       <div className="text-2xl font-bold text-gray-900">{value}</div>
     </div>
   );
+
+  /**
+   * 渲染 SLA 倒计时标签
+   * 根据 slaDeadline 计算剩余时间，超时显示红色警告
+   * @param slaDeadline - SLA 截止时间的 ISO 字符串
+   * @returns React 节点
+   */
+  const renderSlaBadge = (slaDeadline: string | undefined): React.ReactNode => {
+    if (!slaDeadline) return null;
+    const sla = computeSlaRemaining(slaDeadline);
+    return (
+      <span className={`inline-flex items-center gap-1 px-2 py-0.5 rounded-full text-xs font-medium ${
+        sla.overdue ? 'bg-red-50 text-red-600' : 'bg-blue-50 text-blue-600'
+      }`}>
+        {sla.overdue ? <AlertTriangle className="w-3 h-3" /> : <Clock className="w-3 h-3" />}
+        {sla.display}
+      </span>
+    );
+  };
 
   return (
     <div>
@@ -344,6 +553,23 @@ const FeedbackPage: React.FC = () => {
             />
           </div>
 
+          <div className="relative min-w-[150px]">
+            <UserCheck className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-gray-400" />
+            <input
+              type="text"
+              placeholder="按被分配人筛选"
+              value={assigneeFilter}
+              onChange={(e) => { setAssigneeFilter(e.target.value); setPage(1); }}
+              list="assignee-filter-list"
+              className="w-full pl-9 pr-4 py-2 border border-gray-200 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-blue-500"
+            />
+            <datalist id="assignee-filter-list">
+              {adminNicknames.map((n) => (
+                <option key={n} value={n} />
+              ))}
+            </datalist>
+          </div>
+
           <button type="submit" className="px-4 py-2 bg-blue-600 text-white rounded-lg text-sm hover:bg-blue-700">
             搜索
           </button>
@@ -382,8 +608,9 @@ const FeedbackPage: React.FC = () => {
                     <th className="text-left py-3 px-4 text-xs font-medium text-gray-500">标题</th>
                     <th className="text-left py-3 px-4 text-xs font-medium text-gray-500">类型</th>
                     <th className="text-left py-3 px-4 text-xs font-medium text-gray-500">状态</th>
+                    <th className="text-left py-3 px-4 text-xs font-medium text-gray-500">被分配人</th>
+                    <th className="text-left py-3 px-4 text-xs font-medium text-gray-500">SLA</th>
                     <th className="text-left py-3 px-4 text-xs font-medium text-gray-500">联系方式</th>
-                    <th className="text-left py-3 px-4 text-xs font-medium text-gray-500">提交IP</th>
                     <th className="text-left py-3 px-4 text-xs font-medium text-gray-500">提交时间</th>
                     <th className="text-left py-3 px-4 text-xs font-medium text-gray-500">操作</th>
                   </tr>
@@ -402,8 +629,13 @@ const FeedbackPage: React.FC = () => {
                           {STATUS_MAP[item.status]?.label ?? item.status}
                         </span>
                       </td>
+                      <td className="py-3 px-4 text-sm text-gray-600">
+                        {item.assignee || <span className="text-gray-300">未分配</span>}
+                      </td>
+                      <td className="py-3 px-4">
+                        {renderSlaBadge(item.slaDeadline)}
+                      </td>
                       <td className="py-3 px-4 text-sm text-gray-500 max-w-[120px] truncate">{item.contact || '-'}</td>
-                      <td className="py-3 px-4 text-sm text-gray-500 font-mono text-xs">{item.visitorIp || '-'}</td>
                       <td className="py-3 px-4 text-sm text-gray-500">
                         {format(new Date(item.createdAt), 'yyyy-MM-dd HH:mm')}
                       </td>
@@ -436,13 +668,20 @@ const FeedbackPage: React.FC = () => {
                       <Eye className="w-4 h-4" />
                     </button>
                   </div>
-                  <div className="flex items-center gap-2 mb-1">
+                  <div className="flex items-center gap-2 mb-1 flex-wrap">
                     <span className={`inline-flex items-center px-2 py-0.5 rounded-full text-xs font-medium ${TYPE_MAP[item.type]?.className ?? 'bg-gray-100 text-gray-500'}`}>
                       {item.type}
                     </span>
                     <span className={`inline-flex items-center px-2 py-0.5 rounded-full text-xs font-medium ${STATUS_MAP[item.status]?.className ?? 'bg-gray-100 text-gray-500'}`}>
                       {STATUS_MAP[item.status]?.label ?? item.status}
                     </span>
+                    {item.assignee && (
+                      <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded-full text-xs font-medium bg-indigo-50 text-indigo-600">
+                        <UserCheck className="w-3 h-3" />
+                        {item.assignee}
+                      </span>
+                    )}
+                    {renderSlaBadge(item.slaDeadline)}
                   </div>
                   <div className="text-xs text-gray-400">
                     {item.visitorIp && <span className="font-mono mr-2">IP:{item.visitorIp}</span>}
@@ -534,6 +773,118 @@ const FeedbackPage: React.FC = () => {
               </div>
             </div>
 
+            {/* SLA 倒计时显示 */}
+            {detailModal.item.slaDeadline && (
+              <div className="border-t border-gray-100 pt-4 mb-4">
+                <span className="text-xs font-medium text-gray-500 block mb-1">SLA 倒计时</span>
+                <div className="flex items-center gap-2">
+                  {renderSlaBadge(detailModal.item.slaDeadline)}
+                  {detailModal.item.slaHours && (
+                    <span className="text-xs text-gray-400">（限时 {detailModal.item.slaHours} 小时）</span>
+                  )}
+                </div>
+                {detailModal.item.assignedAt && (
+                  <p className="text-xs text-gray-400 mt-1">
+                    分配时间：{format(new Date(detailModal.item.assignedAt), 'yyyy-MM-dd HH:mm:ss')}
+                  </p>
+                )}
+              </div>
+            )}
+
+            {/* 工单分配区域 */}
+            <div className="border-t border-gray-100 pt-4 mb-4">
+              <div className="flex items-center gap-1 mb-2">
+                <UserCheck className="w-4 h-4 text-gray-500" />
+                <span className="text-xs font-medium text-gray-500">工单分配</span>
+                {detailModal.item.assignee && (
+                  <span className="text-xs text-indigo-600 ml-1">当前：{detailModal.item.assignee}</span>
+                )}
+              </div>
+              <div className="flex gap-2 items-end">
+                <div className="flex-1">
+                  <label className="text-xs text-gray-400 block mb-1">被分配人昵称</label>
+                  <input
+                    type="text"
+                    value={detailModal.assigneeInput}
+                    onChange={(e) => setDetailModal((prev) => ({ ...prev, assigneeInput: e.target.value }))}
+                    list="assignee-modal-list"
+                    placeholder="输入管理员昵称"
+                    className="w-full px-3 py-2 border border-gray-200 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-blue-500"
+                  />
+                  <datalist id="assignee-modal-list">
+                    {adminNicknames.map((n) => (
+                      <option key={n} value={n} />
+                    ))}
+                  </datalist>
+                </div>
+                <div className="w-24">
+                  <label className="text-xs text-gray-400 block mb-1">SLA（小时）</label>
+                  <input
+                    type="number"
+                    min={1}
+                    max={720}
+                    value={detailModal.slaHoursInput}
+                    onChange={(e) => setDetailModal((prev) => ({ ...prev, slaHoursInput: Number(e.target.value) || 48 }))}
+                    className="w-full px-3 py-2 border border-gray-200 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-blue-500"
+                  />
+                </div>
+                <button
+                  onClick={handleAssign}
+                  disabled={detailModal.assigning}
+                  className="px-4 py-2 text-sm text-white bg-indigo-600 rounded-lg hover:bg-indigo-700 disabled:opacity-50 whitespace-nowrap"
+                >
+                  {detailModal.assigning ? '分配中...' : '分配'}
+                </button>
+              </div>
+            </div>
+
+            {/* 内部备注区域 */}
+            <div className="border-t border-gray-100 pt-4 mb-4">
+              <div className="flex items-center gap-1 mb-2">
+                <StickyNote className="w-4 h-4 text-gray-500" />
+                <span className="text-xs font-medium text-gray-500">内部备注</span>
+                <span className="text-xs text-red-400 ml-1">（仅管理员可见）</span>
+              </div>
+
+              {detailModal.notesLoading ? (
+                <div className="text-xs text-gray-400 py-2">加载备注中...</div>
+              ) : detailModal.notes.length === 0 ? (
+                <div className="text-xs text-gray-400 py-2">暂无备注</div>
+              ) : (
+                <div className="space-y-2 mb-3 max-h-[200px] overflow-y-auto">
+                  {detailModal.notes.map((note, idx) => (
+                    <div key={idx} className="bg-gray-50 rounded-lg p-3">
+                      <div className="flex items-center justify-between mb-1">
+                        <span className="text-xs font-medium text-indigo-600">{note.author}</span>
+                        <span className="text-xs text-gray-400">
+                          {format(new Date(note.createdAt), 'yyyy-MM-dd HH:mm')}
+                        </span>
+                      </div>
+                      <p className="text-sm text-gray-700 whitespace-pre-wrap">{note.content}</p>
+                    </div>
+                  ))}
+                </div>
+              )}
+
+              <div className="flex gap-2">
+                <textarea
+                  value={detailModal.newNoteContent}
+                  onChange={(e) => setDetailModal((prev) => ({ ...prev, newNoteContent: e.target.value }))}
+                  placeholder="输入备注内容..."
+                  rows={2}
+                  className="flex-1 px-3 py-2 border border-gray-200 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-blue-500 resize-none"
+                />
+                <button
+                  onClick={handleAddNote}
+                  disabled={detailModal.addingNote}
+                  className="px-4 py-2 text-sm text-white bg-gray-600 rounded-lg hover:bg-gray-700 disabled:opacity-50 whitespace-nowrap self-end"
+                >
+                  {detailModal.addingNote ? '添加中...' : '添加备注'}
+                </button>
+              </div>
+            </div>
+
+            {/* 修改状态 */}
             <div className="border-t border-gray-100 pt-4">
               <label className="text-xs font-medium text-gray-500 block mb-1">修改状态</label>
               <select

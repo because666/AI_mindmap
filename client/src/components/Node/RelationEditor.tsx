@@ -1,6 +1,7 @@
-import React, { useState, useEffect } from 'react';
+import React, { useState } from 'react';
 import { X, Link2, Save, Info } from 'lucide-react';
-import { useAppStore, RELATION_TYPE_LABELS, type RelationType } from '../../stores/appStore';
+import { useTranslation } from 'react-i18next';
+import { useAppStore, getRelationTypeLabels, type RelationType } from '../../stores/appStore';
 import type { NodeData } from '../../stores/appStore';
 import { useToastStore } from '../../stores/toastStore';
 import useIsMobile from '../../hooks/useIsMobile';
@@ -14,27 +15,31 @@ interface RelationEditorProps {
 }
 
 /**
- * 关系编辑器组件
+ * 关系编辑器内容组件
+ * 负责实际的关系表单渲染与保存逻辑
+ * 通过外层 RelationEditor 传入 key，在初始源/目标节点变化时自动重置内部状态
  * 支持桌面端居中弹窗和移动端全屏显示
  */
-const RelationEditor: React.FC<RelationEditorProps> = ({
+const RelationEditorContent: React.FC<RelationEditorProps> = ({
   isOpen,
   onClose,
   sourceNodeId: initialSourceId,
   targetNodeId: initialTargetId,
   allNodes
 }) => {
+  const { t } = useTranslation('canvas');
+  const RELATION_TYPE_LABELS = getRelationTypeLabels();
   const { addRelation } = useAppStore();
+
+  /**
+   * 根据传入的初始源/目标节点 ID 初始化下拉框状态
+   * 由于组件通过 key 重置，初始值只在挂载时计算一次
+   */
   const [sourceId, setSourceId] = useState(initialSourceId || '');
   const [targetId, setTargetId] = useState(initialTargetId || '');
   const [relationType, setRelationType] = useState<RelationType>('supports');
   const [description, setDescription] = useState('');
   const isMobile = useIsMobile();
-
-  useEffect(() => {
-    if (initialSourceId) setSourceId(initialSourceId);
-    if (initialTargetId) setTargetId(initialTargetId);
-  }, [initialSourceId, initialTargetId]);
 
   const handleSave = () => {
     if (!sourceId || !targetId) {
@@ -67,7 +72,7 @@ const RelationEditor: React.FC<RelationEditorProps> = ({
       <div className={`flex items-center justify-between px-6 py-4 border-b border-dark-700 ${isMobile ? 'h-14' : ''}`}>
         <div className="flex items-center gap-2">
           <Link2 className="w-5 h-5 text-primary-400" />
-          <h2 className="text-lg font-semibold text-white">创建关系</h2>
+          <h2 className="text-lg font-semibold text-white">{t('createRelation')}</h2>
         </div>
         <button
           onClick={onClose}
@@ -79,7 +84,7 @@ const RelationEditor: React.FC<RelationEditorProps> = ({
 
       <div className={`p-6 space-y-5 overflow-y-auto ${isMobile ? 'flex-1' : ''}`}>
         <div className="space-y-2">
-          <label className="text-sm font-medium text-dark-300">源节点</label>
+          <label className="text-sm font-medium text-dark-300">{t('sourceNode')}</label>
           <select
             value={sourceId}
             onChange={(e) => setSourceId(e.target.value)}
@@ -95,7 +100,7 @@ const RelationEditor: React.FC<RelationEditorProps> = ({
         </div>
 
         <div className="space-y-2">
-          <label className="text-sm font-medium text-dark-300">关系类型</label>
+          <label className="text-sm font-medium text-dark-300">{t('relationType')}</label>
           <div className="grid grid-cols-2 gap-2">
             {(Object.keys(RELATION_TYPE_LABELS) as RelationType[])
               .filter(type => type !== 'parent-child')
@@ -127,7 +132,7 @@ const RelationEditor: React.FC<RelationEditorProps> = ({
         </div>
 
         <div className="space-y-2">
-          <label className="text-sm font-medium text-dark-300">目标节点</label>
+          <label className="text-sm font-medium text-dark-300">{t('targetNode')}</label>
           <select
             value={targetId}
             onChange={(e) => setTargetId(e.target.value)}
@@ -143,7 +148,7 @@ const RelationEditor: React.FC<RelationEditorProps> = ({
         </div>
 
         <div className="space-y-2">
-          <label className="text-sm font-medium text-dark-300">关系描述（可选）</label>
+          <label className="text-sm font-medium text-dark-300">{t('relationDescription')}</label>
           <textarea
             value={description}
             onChange={(e) => setDescription(e.target.value)}
@@ -186,7 +191,7 @@ const RelationEditor: React.FC<RelationEditorProps> = ({
           className="flex items-center gap-2 px-4 py-2.5 bg-primary-600 text-white rounded-xl hover:bg-primary-700 disabled:opacity-50 disabled:cursor-not-allowed transition-colors min-h-[44px]"
         >
           <Save className="w-4 h-4" />
-          创建关系
+          {t('createRelation')}
         </button>
       </div>
     </>
@@ -209,6 +214,20 @@ const RelationEditor: React.FC<RelationEditorProps> = ({
       </div>
     </div>
   );
+};
+
+/**
+ * 关系编辑器外层组件
+ * 通过 key 控制 RelationEditorContent 的挂载与重置
+ * 当初始源节点或目标节点变化时，子组件会重新挂载，表单状态自动同步
+ * @param props - 关系编辑器属性
+ * @returns 关系编辑器组件
+ */
+const RelationEditor: React.FC<RelationEditorProps> = (props) => {
+  const { sourceNodeId, targetNodeId } = props;
+  const resetKey = `${sourceNodeId ?? ''}-${targetNodeId ?? ''}`;
+
+  return <RelationEditorContent key={resetKey} {...props} />;
 };
 
 export default RelationEditor;

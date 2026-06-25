@@ -1,4 +1,5 @@
 import { useState, useEffect } from 'react';
+import { useTranslation } from 'react-i18next';
 import { CheckCircle, Plus, Trash2, Cpu, Zap } from 'lucide-react';
 import { useAPIConfigStore } from '../../stores/apiConfigStore';
 import { AI_PROVIDERS } from '../../utils/aiModels';
@@ -22,6 +23,7 @@ interface BuiltInServiceInfo {
  * 包含当前使用状态提示、创意度滑块和添加新模型入口
  */
 const APIConfigPanel: React.FC = () => {
+  const { t } = useTranslation('settings');
   const savedConfigs = useAPIConfigStore((s) => s.savedConfigs);
   const activeConfigId = useAPIConfigStore((s) => s.activeConfigId);
   const temperature = useAPIConfigStore((s) => s.temperature);
@@ -111,7 +113,7 @@ const APIConfigPanel: React.FC = () => {
       <div className="p-3 bg-primary-600/10 border border-primary-500/30 rounded-lg">
         {!activeConfigId ? (
           <p className="text-sm text-primary-400">
-            ✅ 系统内置AI服务 · {builtInInfo.providerName} · {builtInInfo.modelName}
+            ✅ {t('builtInAIService')} · {builtInInfo.providerName} · {builtInInfo.modelName}
           </p>
         ) : (
           <p className="text-sm text-primary-400">
@@ -131,7 +133,7 @@ const APIConfigPanel: React.FC = () => {
         >
           <Cpu className="w-4 h-4 text-dark-200 flex-shrink-0" />
           <div className="flex-1 min-w-0">
-            <p className="text-sm text-dark-200 font-medium">系统内置服务</p>
+            <p className="text-sm text-dark-200 font-medium">{t('builtInService')}</p>
             <p className="text-xs text-dark-400">
               {builtInInfo.providerName} · {builtInInfo.modelName}
             </p>
@@ -180,13 +182,13 @@ const APIConfigPanel: React.FC = () => {
         className="w-full flex items-center justify-center gap-2 px-4 py-2.5 bg-dark-700 border border-dark-600 rounded-lg text-dark-200 hover:bg-dark-600 hover:text-white transition-all text-sm"
       >
         <Plus className="w-4 h-4" />
-        添加新模型配置
+        {t('addNewModelConfig')}
       </button>
 
       {/* 创意度滑块 */}
       <div>
         <div className="flex items-center justify-between mb-2">
-          <label className="text-sm font-medium text-dark-300">创意度</label>
+          <label className="text-sm font-medium text-dark-300">{t('creativity')}</label>
           <span className="text-sm text-primary-400 font-mono">{temperature.toFixed(1)}</span>
         </div>
         <input
@@ -199,8 +201,8 @@ const APIConfigPanel: React.FC = () => {
           className="w-full h-2 bg-dark-700 rounded-lg appearance-none cursor-pointer accent-primary-500"
         />
         <div className="flex justify-between mt-1">
-          <span className="text-xs text-dark-500">精确</span>
-          <span className="text-xs text-dark-500">创意</span>
+          <span className="text-xs text-dark-500">{t('precise')}</span>
+          <span className="text-xs text-dark-500">{t('creative')}</span>
         </div>
       </div>
 

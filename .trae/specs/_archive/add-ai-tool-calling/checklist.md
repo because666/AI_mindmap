@@ -1,0 +1,27 @@
+- [x] ToolCall、ToolResult、ToolCallStreamEvent 等类型已定义在 client/src/types/index.ts
+- [x] 6个工具的 JSON Schema 定义已创建在 server/src/services/aiService.ts
+- [x] StreamChunk 联合类型已新增 ToolCallChunk
+- [x] chatStreamWithProvider 方法已支持 tools 参数传入 OpenAI SDK
+- [x] 流式解析循环已处理 delta.tool_calls 字段
+- [x] ai.ts 路由已实现 tool_call 事件的 SSE 推送
+- [x] /chat/tool-result 端点已实现，可接收客户端回传的工具执行结果
+- [x] 工具调用循环逻辑已实现（tool_call → 推送 → 等待 tool_result → 再次调用 AI）
+- [x] 工具调用次数限制已实现（最多5次）
+- [x] chatService.ts 的 parseSSEStream 已支持 tool_call 和 tool_result 事件解析
+- [x] StreamEvent 类型已新增 tool_call 和 tool_result 事件类型
+- [x] toolExecutor.ts 已创建，实现6个工具的执行逻辑
+- [x] toolExecutor 正确调用 appStore 中的 CRUD 方法
+- [x] 工具执行结果回传逻辑已实现
+- [x] 工具执行错误处理已实现
+- [x] ChatPanel 已处理 tool_call 事件并调用 toolExecutor
+- [x] 工具调用状态 UI 组件已实现（执行中/成功/失败指示器）
+- [x] 工具执行完成后结果回传并等待 AI 继续响应的流程已实现
+- [x] 系统提示词已增加工具使用指引
+- [x] TypeScript 编译无报错
+- [x] AI 创建节点功能验证通过（代码审查）
+- [x] AI 创建关系功能验证通过（代码审查）
+- [x] AI 编辑节点内容功能验证通过（代码审查）
+- [x] AI 自动扩展节点功能验证通过（代码审查）
+- [x] AI 查询导图结构功能验证通过（代码审查）
+- [x] 多次工具调用功能验证通过（代码审查）
+- [x] 工具调用失败处理验证通过（代码审查）

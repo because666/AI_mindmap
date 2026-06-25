@@ -67,6 +67,7 @@ class AdminDBService {
       await this.db.collection('chat_audits').createIndex({ 'auditResult.status': 1 });
       await this.db.collection('chat_audits').createIndex({ 'auditResult.riskLevel': 1 });
       await this.db.collection('ip_bans').createIndex({ ip: 1 }, { unique: true });
+      await this.db.collection('admin_accounts').createIndex({ username: 1 }, { unique: true });
       console.log('✅ 后台系统索引初始化完成');
     } catch (error) {
       console.warn('后台系统索引创建警告:', error);
@@ -127,6 +128,25 @@ class AdminDBService {
     if (!col) return false;
     const result = await col.updateOne(filter, update);
     return result.modifiedCount > 0;
+  }
+
+  /**
+   * 批量更新文档
+   * 更新集合中所有匹配 filter 的文档
+   * @param collection - 集合名称
+   * @param filter - 查询过滤条件
+   * @param update - 更新操作（支持 $set、$pull 等操作符）
+   * @returns 修改的文档数量，数据库未连接返回 0
+   */
+  async updateMany<T extends Document>(
+    collection: string,
+    filter: Filter<T>,
+    update: UpdateFilter<T>
+  ): Promise<number> {
+    const col = this.getCollection<T>(collection);
+    if (!col) return 0;
+    const result = await col.updateMany(filter, update);
+    return result.modifiedCount;
   }
 
   async deleteOne<T extends Document>(collection: string, filter: Filter<T>): Promise<boolean> {

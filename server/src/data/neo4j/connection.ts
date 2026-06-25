@@ -21,13 +21,17 @@ class Neo4jService {
     const user = config.neo4j.user;
     const password = config.neo4j.password;
     
-    if (!uri || uri === 'bolt://localhost:7687') {
-      console.log('⚠️ Neo4j not configured, skipping connection');
+    if (!uri) {
+      if (process.env.NODE_ENV !== 'production') {
+        console.log('⚠️ Neo4j URI 未配置，跳过连接');
+      }
       return;
     }
-    
-    console.log(`🔌 Connecting to Neo4j at ${uri}...`);
-    
+
+    if (process.env.NODE_ENV !== 'production') {
+      console.log(`🔌 Connecting to Neo4j at ${uri}...`);
+    }
+
     try {
       this.driver = neo4j.driver(
         uri,
@@ -37,13 +41,15 @@ class Neo4jService {
           connectionAcquisitionTimeout: 10000,
         }
       );
-      
+
       await this.driver.verifyConnectivity();
-      console.log('✅ Neo4j connected successfully');
+      if (process.env.NODE_ENV !== 'production') {
+        console.log('✅ Neo4j connected successfully');
+      }
       await this.initializeConstraints();
-    } catch (error: any) {
-      const errorMsg = error?.message || String(error);
-      console.error('❌ Neo4j connection failed:', errorMsg);
+    } catch (error: unknown) {
+      const errorMsg = error instanceof Error ? error.message : String(error);
+      console.error('❌ Neo4j 连接失败:', errorMsg);
       console.warn('⚠️ Continuing without Neo4j');
       this.driver = null;
     }
@@ -63,7 +69,9 @@ class Neo4jService {
       await session.run(`
         CREATE CONSTRAINT IF NOT EXISTS FOR (n:User) REQUIRE n.id IS UNIQUE
       `);
-      console.log('✅ Neo4j constraints initialized');
+      if (process.env.NODE_ENV !== 'production') {
+        console.log('✅ Neo4j constraints initialized');
+      }
     } finally {
       await session.close();
     }
@@ -80,9 +88,9 @@ class Neo4jService {
     return this.driver?.session() || null;
   }
 
-  async runQuery<T = any>(query: string, params: Record<string, any> = {}): Promise<T[]> {
+  async runQuery<T = Record<string, unknown>>(query: string, params: Record<string, unknown> = {}): Promise<T[]> {
     if (!this.driver) {
-      console.warn('Neo4j not connected, skipping query');
+      console.warn('Neo4j 未连接，跳过查询');
       return [];
     }
     

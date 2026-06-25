@@ -14,6 +14,11 @@ import SettingsPage from './pages/Settings/SettingsPage';
 import IpBansPage from './pages/IpBans/IpBansPage';
 import FeedbackPage from './pages/Feedback/FeedbackPage';
 import AIUsagePage from './pages/AIUsage/AIUsagePage';
+import AuditLogsPage from './pages/AuditLogs/AuditLogsPage';
+import ExportCenterPage from './pages/ExportCenter/ExportCenterPage';
+import AdminAccountsPage from './pages/AdminAccounts/AdminAccountsPage';
+import UserSegmentsPage from './pages/UserSegments/UserSegmentsPage';
+import AnnouncementsPage from './pages/Announcements/AnnouncementsPage';
 
 /**
  * 受保护的路由组件
@@ -123,6 +128,41 @@ const App: React.FC = () => {
           <ProtectedRoute>
             <AdminLayout>
               <AIUsagePage />
+            </AdminLayout>
+          </ProtectedRoute>
+        } />
+        <Route path="/audit-logs" element={
+          <ProtectedRoute>
+            <AdminLayout>
+              <AuditLogsPage />
+            </AdminLayout>
+          </ProtectedRoute>
+        } />
+        <Route path="/export-center" element={
+          <ProtectedRoute>
+            <AdminLayout>
+              <ExportCenterPage />
+            </AdminLayout>
+          </ProtectedRoute>
+        } />
+        <Route path="/admin-accounts" element={
+          <ProtectedRoute>
+            <AdminLayout>
+              <AdminAccountsPage />
+            </AdminLayout>
+          </ProtectedRoute>
+        } />
+        <Route path="/user-segments" element={
+          <ProtectedRoute>
+            <AdminLayout>
+              <UserSegmentsPage />
+            </AdminLayout>
+          </ProtectedRoute>
+        } />
+        <Route path="/announcements" element={
+          <ProtectedRoute>
+            <AdminLayout>
+              <AnnouncementsPage />
             </AdminLayout>
           </ProtectedRoute>
         } />

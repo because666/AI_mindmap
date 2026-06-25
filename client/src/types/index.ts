@@ -91,6 +91,12 @@ export interface IVisitor {
   lastSeen: string;
   workspaces: string[];
   createdAt: string;
+  /**
+   * 访客签名密钥
+   * 由服务端注册接口返回，客户端存入 localStorage 用于生成 HMAC-SHA256 签名
+   * 查询接口不返回此字段
+   */
+  visitorSecret?: string;
 }
 
 /**
@@ -207,7 +213,7 @@ export interface ApiResponse<T> {
 /**
  * 流式响应事件类型
  */
-export type StreamEventType = 'content' | 'thinking' | 'done' | 'error';
+export type StreamEventType = 'content' | 'thinking' | 'done' | 'error' | 'tool_call' | 'tool_result';
 
 /**
  * 流式响应数据接口
@@ -219,10 +225,18 @@ export interface StreamEvent {
   thinkingContent?: string;
   fullThinkingContent?: string;
   error?: string;
+  /** 工具调用信息（type 为 tool_call 时存在） */
+  tool_calls?: ToolCall[];
+  /** 工具执行结果（type 为 tool_result 时存在） */
+  tool_results?: ToolResult[];
+  /** 工具调用会话ID（type 为 tool_call 时存在，客户端驱动模式下不再用于回传） */
+  session_id?: string;
+  /** 当 type 为 done 时，标记是否有待处理的工具调用（客户端需发起新请求） */
+  toolCallPending?: boolean;
 }
 
 /**
- * 流式响应回调类型
+ * 流式响应回调类型（同步回调，不再需要异步等待工具执行结果）
  */
 export type StreamCallback = (event: StreamEvent) => void;
 
@@ -230,6 +244,58 @@ export type StreamCallback = (event: StreamEvent) => void;
  * 聊天消息接口
  */
 export interface ChatMessage {
-  role: 'user' | 'assistant' | 'system';
+  role: 'user' | 'assistant' | 'system' | 'tool';
   content: string;
+  /** assistant 消息中的工具调用（AI 决定调用工具时） */
+  tool_calls?: ToolCall[];
+  /** tool 消息对应的 tool_call ID */
+  tool_call_id?: string;
+}
+
+/** 含工具调用的助手消息 */
+export interface AssistantToolMessage {
+  role: 'assistant';
+  content: string;
+  tool_calls: ToolCall[];
+}
+
+/** 工具消息 */
+export interface ToolChatMessage {
+  role: 'tool';
+  content: string;
+  tool_call_id: string;
+}
+
+export type ConversationMessage = ChatMessage | AssistantToolMessage | ToolChatMessage;
+
+/** AI 工具调用信息 */
+export interface ToolCall {
+  /** 工具调用唯一标识 */
+  id: string;
+  /** 工具名称 */
+  name: string;
+  /** 工具调用参数（JSON 字符串） */
+  arguments: string;
+}
+
+/** 工具执行结果 */
+export interface ToolResult {
+  /** 对应的 tool_call ID */
+  tool_call_id: string;
+  /** 工具执行结果（JSON 字符串） */
+  content: string;
+}
+
+/** 工具调用流式事件 */
+export interface ToolCallStreamEvent {
+  type: 'tool_call';
+  /** 工具调用信息 */
+  tool_calls: ToolCall[];
+}
+
+/** 工具结果流式事件 */
+export interface ToolResultStreamEvent {
+  type: 'tool_result';
+  /** 工具执行结果 */
+  results: ToolResult[];
 }

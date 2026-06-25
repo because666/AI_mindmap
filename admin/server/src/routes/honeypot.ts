@@ -6,7 +6,7 @@ import { AttackLog, AdminConfig } from '../types';
 const router = Router();
 
 const DEFAULT_QUESTION = process.env.SECRET_QUESTION || '世界上最帅的人是谁';
-const DEFAULT_ANSWER = process.env.SECRET_ANSWER || '罗楚瑞';
+const DEFAULT_ANSWER = process.env.SECURITY_ANSWER || '';
 
 /**
  * 获取安全配置

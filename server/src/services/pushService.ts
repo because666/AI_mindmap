@@ -1,5 +1,5 @@
 import axios from 'axios';
-import { ObjectId } from 'mongodb';
+import { ObjectId, Document } from 'mongodb';
 import { config } from '../config';
 import { mongoDBService } from '../data/mongodb/connection';
 import {
@@ -11,10 +11,29 @@ import {
   BroadcastOptions,
   WorkspaceNotificationOptions,
   FeedbackNotificationOptions,
+  DisplayType,
 } from '../types/push';
 
 const JPUSH_API_URL = 'https://api.jpush.cn/v3/push';
 const JPUSH_REPORT_URL = 'https://report.jpush.cn/v3';
+
+/**
+ * 用户文档接口（用于推送服务查询用户信息）
+ */
+interface UserDocument extends Document {
+  id?: string;
+  nickname?: string;
+  name?: string;
+}
+
+/**
+ * 工作区成员文档接口（用于推送服务查询工作区成员）
+ */
+interface WorkspaceMemberDocument extends Document {
+  workspaceId?: string;
+  userId?: string;
+  visitorId?: string;
+}
 
 class PushService {
   private appKey: string;
@@ -141,15 +160,16 @@ class PushService {
       scheduledAt,
       forceRead = true,
       forceReadDeadline,
+      displayType = 'dot' as DisplayType,
     } = options;
 
     let targetUsers: string[] = [];
 
     if (targetType === 'all' || targetType === 'active_users' as string) {
-      const userCollection = mongoDBService.getCollection<any>('users');
+      const userCollection = mongoDBService.getCollection<UserDocument>('users');
       if (userCollection) {
         const users = await userCollection.find({}).toArray();
-        targetUsers = users.map((u) => u.id?.toString() || u._id?.toString());
+        targetUsers = users.map((u) => u.id?.toString() || u._id?.toString()).filter((id): id is string => Boolean(id));
       }
       
       if (targetUsers.length === 0) {
@@ -191,6 +211,7 @@ class PushService {
       },
       forceRead,
       forceReadDeadline: deadline,
+      displayType,
     };
 
     const collection = mongoDBService.getCollection<PushMessage>('push_messages');
@@ -198,7 +219,7 @@ class PushService {
       throw new Error('数据库连接不可用');
     }
 
-    const result = await collection.insertOne(messageData as any);
+    const result = await collection.insertOne(messageData as PushMessage);
     const messageId = result.insertedId.toString();
     const message = { ...messageData, _id: result.insertedId } as PushMessage;
 
@@ -222,7 +243,7 @@ class PushService {
   async sendWorkspaceNotification(options: WorkspaceNotificationOptions): Promise<PushMessage> {
     const { workspaceId, senderId, title, content, importance = 'normal' } = options;
 
-    const memberCollection = mongoDBService.getCollection<any>('workspace_members');
+    const memberCollection = mongoDBService.getCollection<WorkspaceMemberDocument>('workspace_members');
     if (!memberCollection) {
       throw new Error('数据库连接不可用');
     }
@@ -232,9 +253,9 @@ class PushService {
       userId: { $ne: senderId },
     }).toArray();
 
-    const targetUserIds = members.map((m) => m.visitorId || m.userId);
+    const targetUserIds = members.map((m) => m.visitorId || m.userId).filter((id): id is string => Boolean(id));
 
-    const userCollection = mongoDBService.getCollection<any>('users');
+    const userCollection = mongoDBService.getCollection<UserDocument>('users');
     let senderName = '未知用户';
     if (userCollection && senderId) {
       const sender = await userCollection.findOne({ id: senderId });
@@ -283,7 +304,7 @@ class PushService {
       throw new Error('数据库连接不可用');
     }
 
-    const result = await collection.insertOne(messageData as any);
+    const result = await collection.insertOne(messageData as PushMessage);
     const messageId = result.insertedId.toString();
     const message = { ...messageData, _id: result.insertedId } as PushMessage;
 
@@ -350,7 +371,7 @@ class PushService {
       throw new Error('数据库连接不可用');
     }
 
-    const result = await collection.insertOne(messageData as any);
+    const result = await collection.insertOne(messageData as PushMessage);
     const message = { ...messageData, _id: result.insertedId } as PushMessage;
 
     await this.sendPushNotification(result.insertedId.toString(), title, content, targetUserIds);
@@ -373,7 +394,9 @@ class PushService {
     newStatus: string
   ): Promise<PushMessage | null> {
     if (!visitorId || visitorId === 'anonymous') {
-      console.log('[Push] 反馈推送跳过：visitorId为anonymous，无法推送');
+      if (process.env.NODE_ENV !== 'production') {
+        console.log('[Push] 反馈推送跳过：visitorId为anonymous，无法推送');
+      }
       return null;
     }
 
@@ -436,9 +459,13 @@ class PushService {
         { $set: { sentAt: now } }
       );
       message.sentAt = now;
-      console.log(`[Push] 反馈推送已发送：visitorId=${visitorId}, status=${newStatus}`);
+      if (process.env.NODE_ENV !== 'production') {
+        console.log(`[Push] 反馈推送已发送：visitorId=${visitorId}, status=${newStatus}`);
+      }
     } else {
-      console.log(`[Push] 反馈推送已记录但无可用设备: visitorId=${visitorId}`);
+      if (process.env.NODE_ENV !== 'production') {
+        console.log(`[Push] 反馈推送已记录但无可用设备: visitorId=${visitorId}`);
+      }
     }
 
     return message;
@@ -461,7 +488,9 @@ class PushService {
       const registrationIds = await this.getUsersDevices(targetUserIds);
 
       if (registrationIds.length === 0) {
-        console.log(`[Push] 无可用设备，消息 ${messageId} 已保存但未发送`);
+        if (process.env.NODE_ENV !== 'production') {
+          console.log(`[Push] 无可用设备，消息 ${messageId} 已保存但未发送`);
+        }
         return;
       }
 
@@ -502,9 +531,12 @@ class PushService {
         }
       }
 
-      console.log(`[Push] 消息 ${messageId} 发送成功，目标设备数: ${registrationIds.length}`);
-    } catch (error: any) {
-      console.error(`[Push] 消息 ${messageId} 发送失败:`, error.message);
+      if (process.env.NODE_ENV !== 'production') {
+        console.log(`[Push] 消息 ${messageId} 发送成功，目标设备数: ${registrationIds.length}`);
+      }
+    } catch (error: unknown) {
+      const errorMsg = error instanceof Error ? error.message : String(error);
+      console.error(`[Push] 消息 ${messageId} 发送失败:`, errorMsg);
       throw error;
     }
   }
@@ -515,6 +547,8 @@ class PushService {
    * @param registrationId 设备注册ID
    */
   async handleDeliveryReceipt(messageId: string, registrationId: string): Promise<void> {
+    if (!/^[0-9a-fA-F]{24}$/.test(messageId)) return;
+
     const deviceCollection = mongoDBService.getCollection<UserDevice>('user_devices');
     if (!deviceCollection) return;
 
@@ -544,6 +578,8 @@ class PushService {
    * @param userId 用户ID
    */
   async markAsRead(messageId: string, userId: string): Promise<boolean> {
+    if (!/^[0-9a-fA-F]{24}$/.test(messageId)) return false;
+
     const collection = mongoDBService.getCollection<PushMessage>('push_messages');
     if (!collection) return false;
 
@@ -680,6 +716,7 @@ class PushService {
       createdAt: Date;
       read: boolean;
       forceRead: boolean;
+      displayType?: DisplayType;
     }>;
     pagination: {
       page: number;
@@ -733,6 +770,7 @@ class PushService {
         createdAt: msg.createdAt,
         read: recipient?.read || false,
         forceRead: msg.forceRead,
+        displayType: msg.displayType,
       };
     });
 
@@ -757,6 +795,10 @@ class PushService {
    * @returns 消息详情
    */
   async getMessageDetail(messageId: string, userId?: string): Promise<Record<string, any> | null> {
+    if (!/^[0-9a-fA-F]{24}$/.test(messageId)) {
+      return null;
+    }
+
     const collection = mongoDBService.getCollection<PushMessage>('push_messages');
     if (!collection) return null;
 
@@ -801,7 +843,9 @@ class PushService {
    * @param messageId 消息ID
    * @returns 已读统计详情
    */
-  async getMessageStats(messageId: string): Promise<Record<string, any> | null> {
+  async getMessageStats(messageId: string): Promise<Record<string, unknown> | null> {
+    if (!/^[0-9a-fA-F]{24}$/.test(messageId)) return null;
+
     const collection = mongoDBService.getCollection<PushMessage>('push_messages');
     if (!collection) return null;
 
@@ -810,7 +854,7 @@ class PushService {
 
     const unreadRecipients = message.recipients.filter((r) => !r.read);
 
-    const userCollection = mongoDBService.getCollection<any>('users');
+    const userCollection = mongoDBService.getCollection<UserDocument>('users');
     const unreadUsers = [];
 
     for (const recipient of unreadRecipients.slice(0, 50)) {
@@ -846,6 +890,8 @@ class PushService {
    * @param messageId 消息ID
    */
   private async updateMessageStats(messageId: string): Promise<void> {
+    if (!/^[0-9a-fA-F]{24}$/.test(messageId)) return;
+
     const collection = mongoDBService.getCollection<PushMessage>('push_messages');
     if (!collection) return;
 
@@ -923,7 +969,9 @@ class PushService {
       await db.collection('user_push_status').createIndex({ userId: 1, read: 1, archived: 1 });
       await db.collection('user_push_status').createIndex({ userId: 1, createdAt: -1 });
 
-      console.log('✅ 推送模块索引初始化完成');
+      if (process.env.NODE_ENV !== 'production') {
+        console.log('✅ 推送模块索引初始化完成');
+      }
     } catch (error) {
       console.warn('⚠️ 推送模块索引创建警告:', error);
     }

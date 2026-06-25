@@ -2,7 +2,7 @@ import { Router, Request, Response } from 'express';
 import { ObjectId } from 'mongodb';
 import { Parser } from 'json2csv';
 import { adminDB } from '../config/database';
-import { FeedbackListItem, FeedbackStatus, FeedbackType } from '../types';
+import { FeedbackListItem, FeedbackStatus, FeedbackType, InternalNote } from '../types';
 import { requireAuth } from '../middleware/auth';
 import { auditLog } from '../middleware/auditLog';
 import { feedbackService } from '../services/feedbackService';
@@ -59,6 +59,11 @@ function buildFilter(query: Record<string, unknown>): Record<string, unknown> {
     filter.title = { $regex: safeKeyword, $options: 'i' };
   }
 
+  const assignee = query.assignee as string | undefined;
+  if (assignee && assignee.trim()) {
+    filter.assignee = assignee.trim();
+  }
+
   return filter;
 }
 
@@ -101,6 +106,11 @@ router.get('/', requireAuth, async (req: Request, res: Response) => {
       visitorId: (item.visitorId as string) || 'anonymous',
       status: item.status as FeedbackStatus,
       createdAt: new Date(item.createdAt as Date).toISOString(),
+      assignee: (item.assignee as string) || undefined,
+      assignedAt: item.assignedAt ? new Date(item.assignedAt as Date).toISOString() : undefined,
+      internalNotes: (item.internalNotes as InternalNote[]) || undefined,
+      slaDeadline: item.slaDeadline ? new Date(item.slaDeadline as Date).toISOString() : undefined,
+      slaHours: (item.slaHours as number) || undefined,
     }));
 
     res.json({
@@ -230,6 +240,174 @@ router.post('/export', requireAuth, async (req: Request, res: Response) => {
   } catch (error) {
     console.error('导出反馈数据失败:', error);
     res.status(500).json({ success: false, error: '导出反馈数据失败' });
+  }
+});
+
+/**
+ * PUT /:id/assign
+ * 分配反馈工单给指定管理员
+ * 请求体：{ assignee: string, slaHours?: number }
+ * 设置 assignee、assignedAt、slaDeadline 字段
+ * slaHours 默认 48 小时
+ */
+router.put(
+  '/:id/assign',
+  requireAuth,
+  auditLog('分配反馈工单', 'feedback'),
+  async (req: Request, res: Response) => {
+    try {
+      const { id } = req.params;
+      const { assignee, slaHours } = req.body as {
+        assignee?: string;
+        slaHours?: number;
+      };
+
+      if (!id || !ObjectId.isValid(id)) {
+        res.status(400).json({ success: false, error: '无效的反馈ID' });
+        return;
+      }
+
+      if (!assignee || typeof assignee !== 'string' || assignee.trim().length === 0) {
+        res.status(400).json({ success: false, error: '被分配人昵称不能为空' });
+        return;
+      }
+
+      const feedback = await adminDB.findOne('feedbacks', { _id: new ObjectId(id) } as never);
+      if (!feedback) {
+        res.status(404).json({ success: false, error: '反馈不存在' });
+        return;
+      }
+
+      const hours = slaHours && slaHours > 0 ? slaHours : 48;
+      const now = new Date();
+      const slaDeadline = new Date(now.getTime() + hours * 60 * 60 * 1000);
+
+      await adminDB.updateOne(
+        'feedbacks',
+        { _id: new ObjectId(id) } as never,
+        {
+          $set: {
+            assignee: assignee.trim(),
+            assignedAt: now,
+            slaHours: hours,
+            slaDeadline,
+          },
+        }
+      );
+
+      res.json({
+        success: true,
+        message: '工单已分配',
+        data: {
+          assignee: assignee.trim(),
+          assignedAt: now.toISOString(),
+          slaHours: hours,
+          slaDeadline: slaDeadline.toISOString(),
+        },
+      });
+    } catch (error) {
+      console.error('分配工单失败:', error);
+      res.status(500).json({ success: false, error: '分配工单失败' });
+    }
+  }
+);
+
+/**
+ * POST /:id/notes
+ * 添加内部备注
+ * 请求体：{ content: string }
+ * 从 session 读取 author（管理员昵称）
+ */
+router.post(
+  '/:id/notes',
+  requireAuth,
+  auditLog('添加反馈内部备注', 'feedback'),
+  async (req: Request, res: Response) => {
+    try {
+      const { id } = req.params;
+      const { content } = req.body as { content?: string };
+
+      if (!id || !ObjectId.isValid(id)) {
+        res.status(400).json({ success: false, error: '无效的反馈ID' });
+        return;
+      }
+
+      if (!content || typeof content !== 'string' || content.trim().length === 0) {
+        res.status(400).json({ success: false, error: '备注内容不能为空' });
+        return;
+      }
+
+      const feedback = await adminDB.findOne('feedbacks', { _id: new ObjectId(id) } as never);
+      if (!feedback) {
+        res.status(404).json({ success: false, error: '反馈不存在' });
+        return;
+      }
+
+      const author = ((req as unknown as Record<string, unknown>).adminNickname as string) || '未知管理员';
+      const now = new Date();
+      const note: InternalNote = {
+        content: content.trim(),
+        author,
+        createdAt: now,
+      };
+
+      await adminDB.updateOne(
+        'feedbacks',
+        { _id: new ObjectId(id) } as never,
+        { $push: { internalNotes: note } } as never
+      );
+
+      res.json({
+        success: true,
+        message: '备注已添加',
+        data: {
+          content: note.content,
+          author: note.author,
+          createdAt: now.toISOString(),
+        },
+      });
+    } catch (error) {
+      console.error('添加备注失败:', error);
+      res.status(500).json({ success: false, error: '添加备注失败' });
+    }
+  }
+);
+
+/**
+ * GET /:id/notes
+ * 获取内部备注列表
+ * 返回指定反馈工单的所有内部备注
+ */
+router.get('/:id/notes', requireAuth, async (req: Request, res: Response) => {
+  try {
+    const { id } = req.params;
+
+    if (!id || !ObjectId.isValid(id)) {
+      res.status(400).json({ success: false, error: '无效的反馈ID' });
+      return;
+    }
+
+    const feedback = await adminDB.findOne('feedbacks', { _id: new ObjectId(id) } as never);
+    if (!feedback) {
+      res.status(404).json({ success: false, error: '反馈不存在' });
+      return;
+    }
+
+    const notes = ((feedback as Record<string, unknown>).internalNotes as InternalNote[]) || [];
+
+    const formattedNotes = notes.map((note) => ({
+      content: note.content,
+      author: note.author,
+      createdAt: new Date(note.createdAt).toISOString(),
+    }));
+
+    res.json({
+      success: true,
+      data: formattedNotes,
+    });
+  } catch (error) {
+    console.error('获取备注列表失败:', error);
+    res.status(500).json({ success: false, error: '获取备注列表失败' });
   }
 });
 

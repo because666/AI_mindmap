@@ -7,7 +7,7 @@ import { sensitiveWordService } from '../services/sensitiveWordService';
 import { fileService } from '../services/fileService';
 import { workspaceMemberAuth } from '../middleware';
 import { createAIRateLimit } from '../middleware/aiRateLimit';
-import { DEFAULT_SYSTEM_PROMPT, TITLE_GENERATION_PROMPT, CONCLUSION_EXTRACTION_PROMPT } from '../config/prompts.js';
+import { DEFAULT_SYSTEM_PROMPT, TITLE_GENERATION_PROMPT, CONCLUSION_EXTRACTION_PROMPT, getLanguageInstruction } from '../config/prompts.js';
 import { config } from '../config/index.js';
 import { estimateTokens, truncateContextByNode } from '../utils/contextUtils.js';
 import type { ContextUsageInfo } from '../utils/contextUtils.js';
@@ -67,6 +67,36 @@ router.get('/list', workspaceMemberAuth, async (req: Request, res: Response) => 
   try {
     const conversations = await conversationService.getConversationsByWorkspaceId(req.workspaceId!);
     res.json({ success: true, data: conversations });
+  } catch (error: unknown) {
+    const message = error instanceof Error ? error.message : String(error);
+    res.status(500).json({ success: false, error: message });
+  }
+});
+
+/**
+ * 分页查询对话消息
+ * 从独立 messages 集合查询，支持 cursor 分页
+ * 查询参数：limit（默认50）、beforeTimestamp（cursor游标）
+ */
+router.get('/:conversationId/messages', workspaceMemberAuth, async (req: Request, res: Response) => {
+  try {
+    const { conversationId } = req.params;
+    const limit = Math.min(Math.max(Number(req.query.limit) || 50, 1), 200);
+    const beforeTimestamp = req.query.beforeTimestamp
+      ? new Date(req.query.beforeTimestamp as string)
+      : undefined;
+
+    if (beforeTimestamp && isNaN(beforeTimestamp.getTime())) {
+      return res.status(400).json({ success: false, error: 'beforeTimestamp 格式无效' });
+    }
+
+    const result = await conversationService.getMessagesByConversation(
+      conversationId,
+      limit,
+      beforeTimestamp
+    );
+
+    res.json({ success: true, data: result });
   } catch (error: unknown) {
     const message = error instanceof Error ? error.message : String(error);
     res.status(500).json({ success: false, error: message });
@@ -137,7 +167,7 @@ router.post('/:nodeId/message', workspaceMemberAuth, aiChatRateLimit, async (req
       return res.json({ success: true, data: { message: content } });
     }
 
-    const { messages: contextMessages, contextInfo } = await buildContextMessages(req.params.nodeId, req.body.model);
+    const { messages: contextMessages, contextInfo } = await buildContextMessages(req.params.nodeId, req.body.model, req.body.language as string | undefined);
 
     let fileContext = '';
     if (fileIds && Array.isArray(fileIds) && fileIds.length > 0) {
@@ -351,9 +381,10 @@ router.post('/internal/refresh-cache', async (req: Request, res: Response) => {
 /**
  * 结论提炼请求体接口
  */
-interface ExtractConclusionRequest {
+export interface ExtractConclusionRequest {
   nodeId: string;
   workspaceId?: string;
+  messages?: Array<{ role: string; content: string }>;
   config?: {
     apiKey?: string;
     provider?: string;
@@ -375,37 +406,48 @@ router.post('/extract-conclusion', workspaceMemberAuth, aiTaskRateLimit, async (
   let currentModel = '';
   let usageInfo = { promptTokens: 0, completionTokens: 0, totalTokens: 0 };
   let fullContent = '';
+  let fullThinkingContent = '';
 
   try {
-    const { nodeId, config: userConfig } = req.body as ExtractConclusionRequest;
+    const { nodeId, messages, config: userConfig, language } = req.body as ExtractConclusionRequest & { language?: string };
 
     if (!nodeId) {
-      return res.status(400).json({ success: false, conclusion: '' });
+      return res.status(400).json({ success: false, error: '节点ID不能为空', conclusion: '' });
     }
 
-    const conversation = await conversationService.getConversationByNodeId(nodeId);
+    let sourceMessages: Array<{ role: string; content: string }> = Array.isArray(messages) ? messages : [];
 
-    if (!conversation || !conversation.messages || conversation.messages.length === 0) {
-      return res.json({ success: false, conclusion: '' });
+    if (sourceMessages.length === 0) {
+      const conversation = await conversationService.getConversationByNodeId(nodeId);
+      sourceMessages = conversation?.messages || [];
     }
 
-    const chatMessages = conversation.messages
-      .filter((msg: { role: string; content: string }) => msg.role === 'user' || msg.role === 'assistant')
-      .map((msg: { role: string; content: string }) => ({ role: msg.role, content: msg.content }));
+    const chatMessages = sourceMessages
+      .filter((msg) => (msg.role === 'user' || msg.role === 'assistant') && typeof msg.content === 'string')
+      .map((msg) => ({ role: msg.role, content: msg.content.trim() }))
+      .filter((msg) => msg.content.length > 0);
 
-    if (chatMessages.length === 0) {
-      return res.json({ success: false, conclusion: '' });
+    const hasUserMessage = chatMessages.some((msg) => msg.role === 'user');
+    const hasAssistantMessage = chatMessages.some((msg) => msg.role === 'assistant');
+
+    if (!hasUserMessage || !hasAssistantMessage) {
+      return res.status(400).json({ success: false, error: '结论提炼需要至少一轮有效问答', conclusion: '' });
     }
 
+    const conclusionLanguageInstruction = getLanguageInstruction(language);
     const systemMessage: { role: string; content: string } = {
       role: 'system',
-      content: CONCLUSION_EXTRACTION_PROMPT,
+      content: CONCLUSION_EXTRACTION_PROMPT + conclusionLanguageInstruction,
     };
 
     const aiMessages: Array<{ role: string; content: string }> = [
       systemMessage,
       ...chatMessages,
     ];
+
+    if (aiMessages.length > 0 && aiMessages[aiMessages.length - 1].role === 'assistant') {
+      aiMessages.push({ role: 'user', content: '请根据以上对话内容提炼核心结论' });
+    }
 
     const chatModel = userConfig?.model;
     const chatProvider = userConfig?.provider;
@@ -442,6 +484,7 @@ router.post('/extract-conclusion', workspaceMemberAuth, aiTaskRateLimit, async (
           break;
 
         case 'thinking':
+          fullThinkingContent += chunk.content;
           res.write(`data: ${JSON.stringify({
             type: 'thinking',
             thinkingContent: chunk.content,
@@ -468,7 +511,25 @@ router.post('/extract-conclusion', workspaceMemberAuth, aiTaskRateLimit, async (
       }
     }
 
-    const conclusion = fullContent.trim();
+    const conclusion = fullContent.trim() || fullThinkingContent.trim();
+    if (!conclusion) {
+      const errorMessage = 'AI未提炼出有效结论，请稍后重试';
+      res.write(`event: error\ndata: ${JSON.stringify({ message: errorMessage })}\n\n`);
+      res.end();
+
+      recordAIUsage({
+        visitorId: req.visitorId || '',
+        workspaceId: req.workspaceId || '',
+        model: currentModel,
+        provider: currentProvider,
+        usageInfo,
+        startTime,
+        isSuccess: false,
+        errorMessage,
+      });
+      return;
+    }
+
     res.write(`event: done\ndata: ${JSON.stringify({ conclusion })}\n\n`);
     res.end();
 
@@ -486,7 +547,7 @@ router.post('/extract-conclusion', workspaceMemberAuth, aiTaskRateLimit, async (
     console.error('[结论提炼] 提炼结论失败:', message);
 
     if (!res.headersSent) {
-      res.json({ success: false, conclusion: '' });
+      res.status(500).json({ success: false, error: '结论提炼失败，请稍后重试', conclusion: '' });
     } else {
       res.write(`event: error\ndata: ${JSON.stringify({ message: '结论提炼失败' })}\n\n`);
       res.end();
@@ -508,7 +569,7 @@ router.post('/extract-conclusion', workspaceMemberAuth, aiTaskRateLimit, async (
 /**
  * 标题生成请求体接口
  */
-interface GenerateTitleRequest {
+export interface GenerateTitleRequest {
   messages: Array<{ role: string; content: string }>;
   parentNodeTitle?: string;
   config?: {
@@ -532,25 +593,43 @@ router.post('/generate-title', workspaceMemberAuth, aiTaskRateLimit, async (req:
   let currentModel = '';
   let usageInfo = { promptTokens: 0, completionTokens: 0, totalTokens: 0 };
   let fullContent = '';
+  let fullThinkingContent = '';
 
   try {
-    const { messages, parentNodeTitle, config: userConfig } = req.body as GenerateTitleRequest;
+    const { messages, parentNodeTitle, config: userConfig, language } = req.body as GenerateTitleRequest & { language?: string };
 
     if (!messages || !Array.isArray(messages) || messages.length === 0) {
       return res.status(400).json({ success: false, error: 'messages不能为空' });
     }
 
+    const validMessages = messages
+      .filter((msg) => (msg.role === 'user' || msg.role === 'assistant') && typeof msg.content === 'string')
+      .map((msg) => ({ role: msg.role, content: msg.content.trim() }))
+      .filter((msg) => msg.content.length > 0);
+    const hasUserMessage = validMessages.some((msg) => msg.role === 'user');
+    const hasAssistantMessage = validMessages.some((msg) => msg.role === 'assistant');
+
+    if (!hasUserMessage || !hasAssistantMessage) {
+      return res.status(400).json({ success: false, error: '标题生成需要至少一轮有效问答' });
+    }
+
+    const titleLanguageInstruction = getLanguageInstruction(language);
+    const baseTitlePrompt = parentNodeTitle
+      ? `${TITLE_GENERATION_PROMPT}\n父节点标题：${parentNodeTitle}，请保持语义连贯`
+      : TITLE_GENERATION_PROMPT;
     const systemMessage: { role: string; content: string } = {
       role: 'system',
-      content: parentNodeTitle
-        ? `${TITLE_GENERATION_PROMPT}\n父节点标题：${parentNodeTitle}，请保持语义连贯`
-        : TITLE_GENERATION_PROMPT,
+      content: baseTitlePrompt + titleLanguageInstruction,
     };
 
     const chatMessages: Array<{ role: string; content: string }> = [
       systemMessage,
-      ...messages,
+      ...validMessages,
     ];
+
+    if (chatMessages.length > 0 && chatMessages[chatMessages.length - 1].role === 'assistant') {
+      chatMessages.push({ role: 'user', content: '请根据以上对话内容生成标题' });
+    }
 
     const chatModel = userConfig?.model;
     const chatProvider = userConfig?.provider;
@@ -587,6 +666,7 @@ router.post('/generate-title', workspaceMemberAuth, aiTaskRateLimit, async (req:
           break;
 
         case 'thinking':
+          fullThinkingContent += chunk.content;
           res.write(`data: ${JSON.stringify({
             type: 'thinking',
             thinkingContent: chunk.content,
@@ -613,7 +693,25 @@ router.post('/generate-title', workspaceMemberAuth, aiTaskRateLimit, async (req:
       }
     }
 
-    const title = fullContent.trim().substring(0, 10) || '新对话';
+    const title = (fullContent.trim() || fullThinkingContent.trim()).substring(0, 10);
+    if (!title) {
+      const errorMessage = 'AI未生成有效标题，请稍后重试';
+      res.write(`event: error\ndata: ${JSON.stringify({ message: errorMessage })}\n\n`);
+      res.end();
+
+      recordAIUsage({
+        visitorId: req.visitorId || '',
+        workspaceId: req.workspaceId || '',
+        model: currentModel,
+        provider: currentProvider,
+        usageInfo,
+        startTime,
+        isSuccess: false,
+        errorMessage,
+      });
+      return;
+    }
+
     res.write(`event: done\ndata: ${JSON.stringify({ title })}\n\n`);
     res.end();
 
@@ -631,7 +729,7 @@ router.post('/generate-title', workspaceMemberAuth, aiTaskRateLimit, async (req:
     console.error('[标题生成] 生成标题失败:', message);
 
     if (!res.headersSent) {
-      res.json({ success: true, title: '新对话' });
+      res.status(500).json({ success: false, error: '标题生成失败，请稍后重试' });
     } else {
       res.write(`event: error\ndata: ${JSON.stringify({ message: '标题生成失败' })}\n\n`);
       res.end();
@@ -660,13 +758,15 @@ router.post('/generate-title', workspaceMemberAuth, aiTaskRateLimit, async (req:
  */
 async function buildContextMessages(
   nodeId: string,
-  model?: string
+  model?: string,
+  language?: string
 ): Promise<{ messages: Array<{ role: string; content: string }>; contextInfo: ContextUsageInfo }> {
   const messages: Array<{ role: string; content: string }> = [];
   const parentChainTitles: string[] = [];
   const visited = new Set<string>();
 
-  const systemPrompt = config.ai.systemPrompt || DEFAULT_SYSTEM_PROMPT;
+  const languageInstruction = getLanguageInstruction(language);
+  const systemPrompt = (config.ai.systemPrompt || DEFAULT_SYSTEM_PROMPT) + languageInstruction;
   messages.push({ role: 'system', content: systemPrompt });
 
   const collectContext = async (id: string, depth: number = 0, isParentChain: boolean = true) => {
@@ -685,14 +785,15 @@ async function buildContextMessages(
     }
 
     if (node.conversationId) {
-      const conv = await conversationService.getConversation(node.conversationId);
-      if (conv && conv.messages.length > 0) {
+      // 统一从独立 messages 集合查询消息，不再读取 conversation 文档的 messages 数组
+      const convMessages = await conversationService.getConversationMessages(node.conversationId);
+      if (convMessages.length > 0) {
         messages.push({
           role: 'system',
           content: `[节点: ${node.title}]`,
         });
 
-        for (const msg of conv.messages) {
+        for (const msg of convMessages) {
           messages.push({
             role: msg.role,
             content: msg.content,

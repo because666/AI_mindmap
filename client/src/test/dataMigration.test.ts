@@ -3,7 +3,7 @@ import { describe, it, expect } from 'vitest';
 /**
  * 测试数据迁移函数
  */
-const migrateNodeData = (node: any): any => {
+const migrateNodeData = (node: Partial<Record<string, unknown>>): Record<string, unknown> => {
   return {
     ...node,
     hidden: node.hidden ?? false,
@@ -20,19 +20,23 @@ const migrateNodeData = (node: any): any => {
 /**
  * 测试关系数据迁移函数
  */
-const migrateRelationsData = (relations: any): any[] => {
+const migrateRelationsData = (relations: unknown): unknown[] => {
   if (!relations) return [];
-  
+
   if (!Array.isArray(relations)) return [];
-  
-  const firstItem = relations[0];
+
+  const arr = relations as unknown[];
+
+  const firstItem = arr[0];
   if (Array.isArray(firstItem) && firstItem.length === 2) {
-    return relations
-      .map((entry: any) => entry[1])
-      .filter((r: any) => r && r.type && r.id && r.sourceId && r.targetId);
+    return arr
+      .map((entry) => (entry as [unknown, unknown])[1])
+      .filter((r) => r && typeof r === 'object' &&
+        Boolean((r as Record<string, unknown>).type && (r as Record<string, unknown>).id && (r as Record<string, unknown>).sourceId && (r as Record<string, unknown>).targetId));
   }
-  
-  return relations.filter((r: any) => r && r.type && r.id && r.sourceId && r.targetId);
+
+  return arr.filter((r) => r && typeof r === 'object' &&
+    Boolean((r as Record<string, unknown>).type && (r as Record<string, unknown>).id && (r as Record<string, unknown>).sourceId && (r as Record<string, unknown>).targetId));
 };
 
 describe('Node Data Migration', () => {

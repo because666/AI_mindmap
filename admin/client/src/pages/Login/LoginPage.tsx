@@ -112,7 +112,7 @@ const LoginPage: React.FC = () => {
             {hasPassword ? (
               <>
                 <p className="text-sm text-gray-500 text-center">系统已初始化，请输入密码登录</p>
-                <p className="text-sm text-amber-600 text-center">默认密码：admin123（登录后请修改）</p>
+                <p className="text-sm text-amber-600 text-center">请通过环境变量配置管理员密码</p>
               </>
             ) : (
               <>

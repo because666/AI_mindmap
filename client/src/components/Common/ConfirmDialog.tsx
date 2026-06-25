@@ -1,4 +1,5 @@
 import React from 'react';
+import { useTranslation } from 'react-i18next';
 
 /**
  * 确认弹窗按钮变体类型
@@ -46,12 +47,13 @@ const ConfirmDialog: React.FC<ConfirmDialogProps> = ({
   isOpen,
   title,
   message,
-  confirmText = '确认',
-  cancelText = '取消',
+  confirmText,
+  cancelText,
   variant = 'danger',
   onConfirm,
   onCancel,
 }) => {
+  const { t } = useTranslation('common');
   if (!isOpen) return null;
 
   const confirmButtonStyle = VARIANT_STYLES[variant];
@@ -70,13 +72,13 @@ const ConfirmDialog: React.FC<ConfirmDialogProps> = ({
             onClick={onCancel}
             className="px-4 py-2 rounded-xl text-dark-300 hover:text-white hover:bg-dark-700 transition-colors text-sm"
           >
-            {cancelText}
+            {cancelText || t('cancel')}
           </button>
           <button
             onClick={onConfirm}
             className={`px-4 py-2 rounded-xl text-white transition-colors text-sm ${confirmButtonStyle}`}
           >
-            {confirmText}
+            {confirmText || t('confirm')}
           </button>
         </div>
       </div>

@@ -1,6 +1,7 @@
 import { useState, useEffect } from 'react';
 import { pushClientService } from '../../services/pushService';
 import { Bell } from 'lucide-react';
+import { useTranslation } from 'react-i18next';
 
 interface UnreadBadgeProps {
   onClick?: () => void;
@@ -10,6 +11,7 @@ interface UnreadBadgeProps {
 }
 
 export function UnreadBadge({ onClick, size = 24, externalUnreadCount, className }: UnreadBadgeProps) {
+  const { t } = useTranslation('message');
   const [internalUnreadCount, setInternalUnreadCount] = useState(0);
   const [forceReadPending, setForceReadPending] = useState(0);
 
@@ -34,7 +36,7 @@ export function UnreadBadge({ onClick, size = 24, externalUnreadCount, className
 
     const interval = setInterval(fetchUnreadCount, 10000);
 
-    const handlePushNotificationClick = (_event: Event) => {
+    const handlePushNotificationClick = () => {
       if (onClick) {
         onClick();
       }
@@ -52,7 +54,7 @@ export function UnreadBadge({ onClick, size = 24, externalUnreadCount, className
     <button
       onClick={onClick}
       className={className || 'relative p-2 hover:bg-gray-100 dark:hover:bg-gray-800 rounded-lg transition-colors'}
-      aria-label={`消息中心${unreadCount > 0 ? `，${unreadCount}条未读` : ''}`}
+      aria-label={t('unreadCount', { count: unreadCount })}
     >
       <Bell
         size={size}

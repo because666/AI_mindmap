@@ -1,0 +1,14 @@
+{
+  "actionHistory": "Action History",
+  "undo": "Undo",
+  "redo": "Redo",
+  "noActionHistory": "No action history",
+  "undoSteps": "{{count}} steps to undo",
+  "redoSteps": "{{count}} steps to redo",
+  "current": "Current",
+  "undoneOperations": "Undone operations",
+  "noHistory": "No action history",
+  "createNodeAction": "Create node: {{title}}",
+  "updateNodeAction": "Update node: {{title}}",
+  "deleteNodeAction": "Delete node: {{title}}"
+}

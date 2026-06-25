@@ -1,6 +1,6 @@
 import { Router, Request, Response } from 'express';
 import { adminDB } from '../config/database';
-import { UserListItem, PaginationResult } from '../types';
+import { UserListItem, PaginationResult, TimelineEvent, TimelineEventType, TimelineEventDetail } from '../types';
 import { requireAuth } from '../middleware/auth';
 import { auditLog } from '../middleware/auditLog';
 import { escapeRegex, sanitizePagination } from '../utils/validators';
@@ -143,6 +143,136 @@ router.get('/:id', requireAuth, async (req: Request, res: Response) => {
   } catch (error) {
     console.error('获取用户详情失败:', error);
     res.status(500).json({ success: false, error: '获取用户详情失败' });
+  }
+});
+
+/**
+ * 获取用户消息轨迹时间线
+ * 聚合该用户在 nodes（创建事件）、conversations（对话事件）、
+ * nodes（结论提炼事件，type=conclusion）、export_tasks（导出事件）中的活动记录
+ * 按 createdAt 倒序排列，支持分页
+ * @param req.params.id - 用户ID
+ * @param req.query.page - 页码，默认1
+ * @param req.query.limit - 每页数量，默认20
+ * @returns 分页的时间线事件列表
+ */
+router.get('/:id/timeline', requireAuth, async (req: Request, res: Response) => {
+  try {
+    const { id } = req.params;
+    const { page, limit, skip } = sanitizePagination(req.query.page, req.query.limit, 50);
+
+    const visitor = await adminDB.findOne('visitors', { id } as never);
+    if (!visitor) {
+      res.status(404).json({ success: false, error: '用户不存在' });
+      return;
+    }
+
+    const allEvents: TimelineEvent[] = [];
+
+    const normalNodes = await adminDB.find('nodes', {
+      createdBy: id,
+      type: { $ne: 'conclusion' },
+    } as never, { sort: { createdAt: -1 }, limit: 500 });
+
+    for (const node of normalNodes) {
+      const nodeRecord = node as Record<string, unknown>;
+      allEvents.push({
+        type: 'node_created' as TimelineEventType,
+        timestamp: (nodeRecord.createdAt as Date)?.toISOString() || new Date().toISOString(),
+        detail: {
+          nodeId: nodeRecord.id as string,
+          nodeTitle: nodeRecord.title as string,
+        } as TimelineEventDetail,
+      });
+    }
+
+    const conclusionNodes = await adminDB.find('nodes', {
+      createdBy: id,
+      type: 'conclusion',
+    } as never, { sort: { createdAt: -1 }, limit: 500 });
+
+    for (const node of conclusionNodes) {
+      const nodeRecord = node as Record<string, unknown>;
+      allEvents.push({
+        type: 'conclusion' as TimelineEventType,
+        timestamp: (nodeRecord.createdAt as Date)?.toISOString() || new Date().toISOString(),
+        detail: {
+          nodeId: nodeRecord.id as string,
+          nodeTitle: nodeRecord.title as string,
+        } as TimelineEventDetail,
+      });
+    }
+
+    const conversations = await adminDB.find('conversations', {
+      createdBy: id,
+    } as never, { sort: { createdAt: -1 }, limit: 500 });
+
+    for (const conv of conversations) {
+      const convRecord = conv as Record<string, unknown>;
+      const messages = (convRecord.messages as Array<{ role: string; content: string }>) || [];
+      const firstUserMsg = messages.find((m) => m.role === 'user');
+      const preview = firstUserMsg
+        ? (firstUserMsg.content.length > 50 ? firstUserMsg.content.substring(0, 50) + '...' : firstUserMsg.content)
+        : undefined;
+      allEvents.push({
+        type: 'conversation' as TimelineEventType,
+        timestamp: (convRecord.createdAt as Date)?.toISOString() || new Date().toISOString(),
+        detail: {
+          messagePreview: preview,
+        } as TimelineEventDetail,
+      });
+    }
+
+    const visitorIps: string[] = [];
+    if (visitor.lastIp) {
+      visitorIps.push(visitor.lastIp as string);
+    }
+    if (visitor.ipHistory && Array.isArray(visitor.ipHistory)) {
+      for (const ip of visitor.ipHistory as string[]) {
+        if (!visitorIps.includes(ip)) {
+          visitorIps.push(ip);
+        }
+      }
+    }
+
+    if (visitorIps.length > 0) {
+      const exportFilter = {
+        createdByIp: { $in: visitorIps },
+      };
+      const exportTasks = await adminDB.find('export_tasks', exportFilter as never, {
+        sort: { createdAt: -1 },
+        limit: 500,
+      });
+
+      for (const task of exportTasks) {
+        const taskRecord = task as Record<string, unknown>;
+        allEvents.push({
+          type: 'export' as TimelineEventType,
+          timestamp: (taskRecord.createdAt as Date)?.toISOString() || new Date().toISOString(),
+          detail: {
+            exportType: `${taskRecord.type as string}/${taskRecord.format as string}`,
+          } as TimelineEventDetail,
+        });
+      }
+    }
+
+    allEvents.sort((a, b) => new Date(b.timestamp).getTime() - new Date(a.timestamp).getTime());
+
+    const total = allEvents.length;
+    const pagedEvents = allEvents.slice(skip, skip + limit);
+
+    const result: PaginationResult<TimelineEvent> = {
+      items: pagedEvents,
+      total,
+      page,
+      limit,
+      totalPages: Math.ceil(total / limit),
+    };
+
+    res.json({ success: true, data: result });
+  } catch (error) {
+    console.error('获取用户轨迹失败:', error);
+    res.status(500).json({ success: false, error: '获取用户轨迹失败' });
   }
 });
 

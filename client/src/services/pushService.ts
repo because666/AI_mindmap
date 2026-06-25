@@ -1,43 +1,6 @@
 import { Capacitor } from '@capacitor/core';
-import { JPush } from 'capacitor-plugin-jpush';
-import axios from 'axios';
-
-/**
- * 获取 API 基础 URL
- */
-const getApiBaseUrl = () => {
-  if (import.meta.env.VITE_API_URL) {
-    return import.meta.env.VITE_API_URL;
-  }
-  if (import.meta.env.PROD) {
-    return '/api';
-  }
-  return 'http://localhost:3001/api';
-};
-
-const API_BASE_URL = getApiBaseUrl();
-
-/**
- * 创建推送服务专用 axios 实例
- * 使用 baseURL 方式避免路径拼接产生双斜杠
- */
-const pushApi = axios.create({
-  baseURL: API_BASE_URL,
-  headers: {
-    'Content-Type': 'application/json',
-  },
-});
-
-/**
- * 请求拦截器：自动添加访客ID头
- */
-pushApi.interceptors.request.use((config) => {
-  const visitorId = localStorage.getItem('visitorId');
-  if (visitorId) {
-    config.headers['X-Visitor-Id'] = visitorId;
-  }
-  return config;
-});
+import { JPush, type ReceiveNotificationData } from 'capacitor-plugin-jpush';
+import { httpClient } from './api';
 
 interface PushMessage {
   id: string;
@@ -49,6 +12,7 @@ interface PushMessage {
   read: boolean;
   forceRead: boolean;
   forceReadDeadline?: string;
+  displayType?: 'banner' | 'dot';
 }
 
 interface MessageDetail {
@@ -62,6 +26,7 @@ interface MessageDetail {
   readAt?: string;
   forceRead?: boolean;
   forceReadDeadline?: string;
+  displayType?: 'banner' | 'dot';
   workspaceInfo?: {
     id: string;
     name: string;
@@ -91,10 +56,28 @@ interface MessageListResponse {
   unreadCount: number;
 }
 
+/**
+ * 通知点击事件的扩展数据类型
+ * 在 ReceiveNotificationData 基础上增加业务用于定位消息的 messageId 字段
+ */
+interface NotificationOpenedData extends ReceiveNotificationData {
+  /** 消息唯一标识，可能直接位于数据根节点 */
+  messageId?: string;
+  /** 扩展信息，部分场景下 messageId 会放在 extras 中 */
+  extras?: {
+    messageId?: string;
+  };
+}
+
 class PushClientService {
   private isInitialized = false;
   private registrationId: string | null = null;
 
+  /**
+   * 初始化极光推送服务
+   * 仅在原生平台执行，依次为：启动服务、注册监听器、获取注册 ID、检查/申请通知权限
+   * 每个步骤独立捕获异常，避免单点失败导致后续逻辑中断
+   */
   async initialize(): Promise<void> {
     if (!Capacitor.isNativePlatform() || this.isInitialized) {
       return;
@@ -103,34 +86,46 @@ class PushClientService {
     try {
       await JPush.startJPush();
       this.isInitialized = true;
-      console.log('[JPush] 初始化成功');
+    } catch (error) {
+      console.error('[JPush] 启动失败:', error);
+      return;
+    }
 
-      JPush.addListener('notificationReceived', (data) => {
-        console.log('[JPush] 收到通知:', data);
+    try {
+      await JPush.addListener('notificationReceived', () => {
       });
+    } catch (error) {
+      console.warn('[JPush] 注册通知接收监听器失败:', error);
+    }
 
-      JPush.addListener('notificationOpened', (data: any) => {
-        console.log('[JPush] 用户点击通知:', data);
+    try {
+      await JPush.addListener('notificationOpened', (data: NotificationOpenedData) => {
         const messageId = data?.extras?.messageId || data?.messageId;
         if (messageId) {
           this.handleNotificationClick(messageId);
         }
       });
+    } catch (error) {
+      console.warn('[JPush] 注册通知点击监听器失败:', error);
+    }
 
+    try {
       const { registrationId } = await JPush.getRegistrationID();
       if (registrationId) {
         this.registrationId = registrationId;
         await this.registerDevice(registrationId);
       }
-
-      JPush.checkPermissions().then(async ({ permission }) => {
-        console.log('[JPush] 当前权限状态:', permission);
-        if (permission !== 'granted') {
-          await JPush.requestPermissions();
-        }
-      });
     } catch (error) {
-      console.error('[JPush] 初始化失败:', error);
+      console.warn('[JPush] 获取注册 ID 或上报设备失败:', error);
+    }
+
+    try {
+      const { permission } = await JPush.checkPermissions();
+      if (permission !== 'granted') {
+        await JPush.requestPermissions();
+      }
+    } catch (error) {
+      console.warn('[JPush] 检查或申请通知权限失败:', error);
     }
   }
 
@@ -142,11 +137,11 @@ class PushClientService {
 
   async registerDevice(registrationId: string): Promise<boolean> {
     try {
-      const response = await pushApi.post('/push/register', {
+      const response = await httpClient.post('/push/register', {
         registrationId,
         platform: Capacitor.getPlatform(),
-      });
-      return response.data.success === true;
+      }) as unknown as { success: boolean };
+      return response.success === true;
     } catch (error) {
       console.error('[PushClient] 设备注册失败:', error);
       return false;
@@ -155,10 +150,10 @@ class PushClientService {
 
   async getMessageList(page: number = 1, limit: number = 20, type: string = 'all'): Promise<MessageListResponse> {
     try {
-      const response = await pushApi.get('/push/messages', {
+      const response = await httpClient.get('/push/messages', {
         params: { page, limit, type },
-      });
-      return response.data.data;
+      }) as unknown as { success: boolean; data: MessageListResponse };
+      return response.data;
     } catch (error) {
       console.error('[PushClient] 获取消息列表失败:', error);
       throw error;
@@ -167,8 +162,8 @@ class PushClientService {
 
   async getMessageDetail(messageId: string): Promise<MessageDetail> {
     try {
-      const response = await pushApi.get(`/push/messages/${messageId}`);
-      return response.data.data;
+      const response = await httpClient.get(`/push/messages/${messageId}`) as unknown as { success: boolean; data: MessageDetail };
+      return response.data;
     } catch (error) {
       console.error('[PushClient] 获取消息详情失败:', error);
       throw error;
@@ -177,8 +172,8 @@ class PushClientService {
 
   async markAsRead(messageId: string): Promise<boolean> {
     try {
-      const response = await pushApi.post(`/push/messages/${messageId}/read`);
-      return response.data.success === true;
+      const response = await httpClient.post(`/push/messages/${messageId}/read`) as unknown as { success: boolean };
+      return response.success === true;
     } catch (error) {
       console.error('[PushClient] 标记已读失败:', error);
       throw error;
@@ -187,8 +182,8 @@ class PushClientService {
 
   async markAllAsRead(): Promise<number> {
     try {
-      const response = await pushApi.post('/push/messages/read-all');
-      return response.data.data?.markedCount || 0;
+      const response = await httpClient.post('/push/messages/read-all') as unknown as { success: boolean; data: { markedCount?: number } };
+      return response.data?.markedCount || 0;
     } catch (error) {
       console.error('[PushClient] 全部标记已读失败:', error);
       throw error;
@@ -197,11 +192,30 @@ class PushClientService {
 
   async getUnreadCount(): Promise<UnreadCount> {
     try {
-      const response = await pushApi.get('/push/messages/unread-count');
-      return response.data.data;
+      const response = await httpClient.get('/push/messages/unread-count') as unknown as { success: boolean; data: UnreadCount };
+      return response.data;
     } catch (error) {
       console.error('[PushClient] 获取未读数量失败:', error);
       return { total: 0, broadcast: 0, workspace: 0, forceReadPending: 0 };
+    }
+  }
+
+  /**
+   * 获取 banner 类型的未读消息列表
+   * 调用 GET /api/push/messages 接口，筛选 displayType='banner' 且未读的消息
+   * @returns banner 类型的未读消息列表
+   */
+  async getBannerMessages(): Promise<PushMessage[]> {
+    try {
+      const response = await httpClient.get('/push/messages', {
+        params: { page: 1, limit: 10, type: 'broadcast' },
+      }) as unknown as { success: boolean; data: MessageListResponse };
+      const data = response.data;
+      const messages = data?.messages || [];
+      return messages.filter((msg) => msg.displayType === 'banner' && !msg.read);
+    } catch (error) {
+      console.error('[PushClient] 获取 banner 消息失败:', error);
+      return [];
     }
   }
 

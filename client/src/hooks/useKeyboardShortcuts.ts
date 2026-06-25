@@ -50,7 +50,13 @@ const isEditableElement = (target: EventTarget | null): boolean => {
  */
 function useKeyboardShortcuts(handlers: KeyboardShortcutHandlers): void {
   const handlersRef = useRef<KeyboardShortcutHandlers>(handlers);
-  handlersRef.current = handlers;
+
+  /**
+   * 在 effect 中更新 ref，避免在 render 阶段直接访问/修改 ref 导致规则警告
+   */
+  useEffect(() => {
+    handlersRef.current = handlers;
+  });
 
   const handleKeyDown = useCallback((event: KeyboardEvent) => {
     const { onSearch, onUndo, onRedo, onDelete, onSave, onEscape } = handlersRef.current;

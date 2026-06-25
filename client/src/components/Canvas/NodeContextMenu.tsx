@@ -1,5 +1,6 @@
 import React, { useEffect, useRef, useState } from 'react';
 import { Pencil, GitBranch, Copy, Trash2 } from 'lucide-react';
+import { useTranslation } from 'react-i18next';
 
 interface NodeContextMenuProps {
   x: number;
@@ -29,12 +30,21 @@ export const NodeContextMenu: React.FC<NodeContextMenuProps> = ({
   onDelete,
   onClose,
 }) => {
+  const { t } = useTranslation('canvas');
   const menuRef = useRef<HTMLDivElement>(null);
   const [deleteConfirm, setDeleteConfirm] = useState(false);
 
   useEffect(() => {
-    const handleClickOutside = (e: MouseEvent) => {
-      if (menuRef.current && !menuRef.current.contains(e.target as Node)) {
+    /**
+     * 点击/触摸菜单外部时关闭菜单
+     *
+     * 核心逻辑：
+     * - 同时监听 mousedown 与 touchstart，确保桌面鼠标右键/左键点击和触屏手指点击外部都能可靠关闭菜单。
+     * - 统一事件目标类型，兼容 MouseEvent 与 TouchEvent。
+     */
+    const handleClickOutside = (e: MouseEvent | TouchEvent) => {
+      const target = e.target as Node;
+      if (menuRef.current && !menuRef.current.contains(target)) {
         onClose();
       }
     };
@@ -44,9 +54,11 @@ export const NodeContextMenu: React.FC<NodeContextMenuProps> = ({
       }
     };
     document.addEventListener('mousedown', handleClickOutside);
+    document.addEventListener('touchstart', handleClickOutside);
     document.addEventListener('keydown', handleEscape);
     return () => {
       document.removeEventListener('mousedown', handleClickOutside);
+      document.removeEventListener('touchstart', handleClickOutside);
       document.removeEventListener('keydown', handleEscape);
     };
   }, [onClose]);
@@ -69,22 +81,22 @@ export const NodeContextMenu: React.FC<NodeContextMenuProps> = ({
   const menuItems: MenuItem[] = [
     {
       icon: <Pencil className="w-4 h-4" />,
-      label: '编辑节点',
+      label: t('editNode'),
       action: () => { onEdit(nodeId); onClose(); },
     },
     {
       icon: <GitBranch className="w-4 h-4" />,
-      label: '创建分支',
+      label: t('createBranch'),
       action: () => { onCreateBranch(nodeId); onClose(); },
     },
     {
       icon: <Copy className="w-4 h-4" />,
-      label: '复制节点',
+      label: t('copyNode'),
       action: () => { onCopy(nodeId); onClose(); },
     },
     {
       icon: <Trash2 className="w-4 h-4" />,
-      label: '删除节点',
+      label: t('deleteNode'),
       action: () => { setDeleteConfirm(true); },
       danger: true,
     },
@@ -98,7 +110,7 @@ export const NodeContextMenu: React.FC<NodeContextMenuProps> = ({
     >
       {deleteConfirm ? (
         <div className="px-3 py-2">
-          <p className="text-sm text-dark-200 mb-2">确定删除该节点？</p>
+          <p className="text-sm text-dark-200 mb-2">{t('confirmDelete')}</p>
           <div className="flex gap-2">
             <button
               onClick={() => { onDelete(nodeId); onClose(); }}

@@ -1,5 +1,6 @@
 import React from 'react';
 import { Undo2, Redo2, Clock, RotateCcw } from 'lucide-react';
+import { useTranslation } from 'react-i18next';
 import { useAppStore } from '../../stores/appStore';
 
 interface HistoryPanelProps {
@@ -25,7 +26,8 @@ const getCommandIcon = (description: string): string => {
  * 历史版本管理面板
  * 显示undoStack中的操作描述列表，支持点击撤销到指定状态
  */
-const HistoryPanel: React.FC<HistoryPanelProps> = ({ isOpen, onClose: _onClose }) => {
+const HistoryPanel: React.FC<HistoryPanelProps> = ({ isOpen }) => {
+  const { t } = useTranslation('history');
   const undoStack = useAppStore(state => state.undoStack);
   const redoStack = useAppStore(state => state.redoStack);
   const canUndo = useAppStore(state => state.canUndo);
@@ -49,7 +51,7 @@ const HistoryPanel: React.FC<HistoryPanelProps> = ({ isOpen, onClose: _onClose }
       <div className="flex items-center justify-between px-4 py-3 border-b border-dark-700">
         <div className="flex items-center gap-2">
           <Clock className="w-4 h-4 text-primary-400" />
-          <h3 className="text-white font-medium">操作历史</h3>
+          <h3 className="text-white font-medium">{t('actionHistory')}</h3>
         </div>
       </div>
 
@@ -76,7 +78,7 @@ const HistoryPanel: React.FC<HistoryPanelProps> = ({ isOpen, onClose: _onClose }
         {undoStack.length === 0 && redoStack.length === 0 ? (
           <div className="px-4 py-8 text-center text-dark-400">
             <RotateCcw className="w-8 h-8 mx-auto mb-2 opacity-50" />
-            <p className="text-sm">暂无操作历史</p>
+            <p className="text-sm">{t('noHistory')}</p>
           </div>
         ) : (
           <div className="divide-y divide-dark-700">
@@ -136,7 +138,7 @@ const HistoryPanel: React.FC<HistoryPanelProps> = ({ isOpen, onClose: _onClose }
 
       <div className="px-4 py-3 border-t border-dark-700 bg-dark-900">
         <p className="text-xs text-dark-400">
-          可撤销 {undoStack.length} 步 • 可重做 {redoStack.length} 步
+          {t('undoSteps', { count: undoStack.length })} • {t('redoSteps', { count: redoStack.length })}
         </p>
       </div>
     </div>

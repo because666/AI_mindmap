@@ -1,4 +1,5 @@
 import React, { useRef, useEffect, useCallback, useState } from 'react';
+import { useTranslation } from 'react-i18next';
 import { Search, X, MapPin, Clock, Trash2 } from 'lucide-react';
 import { useAppStore } from '../../stores/appStore';
 import useIsMobile from '../../hooks/useIsMobile';
@@ -120,16 +121,22 @@ function removeSearchHistoryItem(query: string): string[] {
  * 包含搜索防抖、关键词高亮、搜索历史、点击定位等功能
  */
 const SearchPanel: React.FC<SearchPanelProps> = ({ isOpen, onClose, onNodeSelect }) => {
+  const { t } = useTranslation('search');
   const { searchQuery, setSearchQuery, searchResults, nodes, selectNode } = useAppStore();
   const inputRef = useRef<HTMLInputElement>(null);
   const debounceTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
   const isMobile = useIsMobile();
   const [searchHistory, setSearchHistory] = useState<string[]>([]);
 
+  /**
+   * 搜索面板打开时加载搜索历史
+   * 使用微任务延迟 setState，避免在 effect body 中同步调用 setState 触发级联渲染
+   */
   useEffect(() => {
     if (isOpen) {
-      const history = loadSearchHistory();
-      setSearchHistory(history);
+      Promise.resolve().then(() => {
+        setSearchHistory(loadSearchHistory());
+      });
     }
   }, [isOpen]);
 
@@ -189,6 +196,7 @@ const SearchPanel: React.FC<SearchPanelProps> = ({ isOpen, onClose, onNodeSelect
    */
   const handleResultClick = useCallback((result: { nodeId: string; matches: string[] }) => {
     selectNode(result.nodeId);
+    onNodeSelect(result.nodeId);
     window.dispatchEvent(new CustomEvent('focus-node', { detail: { nodeId: result.nodeId } }));
 
     if (searchQuery.trim() && searchResults.length > 0) {
@@ -197,7 +205,7 @@ const SearchPanel: React.FC<SearchPanelProps> = ({ isOpen, onClose, onNodeSelect
 
     onClose();
     setSearchQuery('');
-  }, [selectNode, searchQuery, searchResults, onClose, setSearchQuery]);
+  }, [selectNode, onNodeSelect, searchQuery, searchResults, onClose, setSearchQuery]);
 
   /**
    * 点击历史记录项的处理函数
@@ -237,7 +245,7 @@ const SearchPanel: React.FC<SearchPanelProps> = ({ isOpen, onClose, onNodeSelect
           type="text"
           defaultValue={searchQuery}
           onChange={handleInputChange}
-          placeholder="搜索节点标题、摘要、对话内容..."
+          placeholder={t('searchPlaceholder')}
           className="flex-1 bg-transparent text-white placeholder-dark-400 focus:outline-none text-base"
         />
         <button
@@ -253,7 +261,7 @@ const SearchPanel: React.FC<SearchPanelProps> = ({ isOpen, onClose, onNodeSelect
           <div className="divide-y divide-dark-700">
             <div className="px-6 py-2 text-xs text-dark-500 flex items-center gap-1.5">
               <Clock className="w-3.5 h-3.5" />
-              <span>搜索历史</span>
+              <span>{t('searchHistory')}</span>
             </div>
             {searchHistory.map((query) => (
               <button
@@ -274,13 +282,13 @@ const SearchPanel: React.FC<SearchPanelProps> = ({ isOpen, onClose, onNodeSelect
         ) : searchQuery.trim() === '' ? (
           <div className="px-6 py-8 text-center text-dark-400">
             <Search className="w-12 h-12 mx-auto mb-3 opacity-50" />
-            <p>输入关键词开始搜索</p>
-            <p className="text-sm mt-1">支持搜索节点标题、摘要和对话内容</p>
+            <p>{t('enterKeywordsToSearch')}</p>
+            <p className="text-sm mt-1">{t('searchSupportHint')}</p>
           </div>
         ) : searchResults.length === 0 ? (
           <div className="px-6 py-8 text-center text-dark-400">
-            <p>未找到匹配的结果</p>
-            <p className="text-sm mt-1">尝试使用不同的关键词</p>
+            <p>{t('noResultsFound')}</p>
+            <p className="text-sm mt-1">{t('tryDifferentKeywords')}</p>
           </div>
         ) : (
           <div className="divide-y divide-dark-700">
@@ -309,7 +317,7 @@ const SearchPanel: React.FC<SearchPanelProps> = ({ isOpen, onClose, onNodeSelect
                     </div>
                     <div className="flex items-center gap-2 text-dark-400 flex-shrink-0">
                       <MapPin className="w-4 h-4" />
-                      <span className="text-xs">定位</span>
+                      <span className="text-xs">{t('locate')}</span>
                     </div>
                   </div>
                 </button>
@@ -321,7 +329,7 @@ const SearchPanel: React.FC<SearchPanelProps> = ({ isOpen, onClose, onNodeSelect
 
       <div className="px-6 py-3 border-t border-dark-700 bg-dark-900">
         <p className="text-xs text-dark-400">
-          找到 {searchResults.length} 个结果{!isMobile && ' • 按 ESC 关闭'}
+          {t('resultsFound', { count: searchResults.length })}{!isMobile && ` • ${t('pressEscToClose')}`}
         </p>
       </div>
     </>

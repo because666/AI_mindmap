@@ -1,5 +1,6 @@
 import React, { useState, useEffect, useCallback } from 'react';
-import { Settings, FolderOpen, Search, MessageSquare, Network, X, Clock, Undo2, Redo2, Globe, Lock, LogOut, Users, Plus, Menu, RefreshCw, Bell, AlertTriangle, MessageCircle } from 'lucide-react';
+import { useTranslation } from 'react-i18next';
+import { Settings, FolderOpen, Search, MessageSquare, Network, X, Clock, Undo2, Redo2, Globe, Lock, LogOut, Users, Plus, Menu, RefreshCw, Bell, AlertTriangle, MessageCircle, Languages } from 'lucide-react';
 import SettingsModal from '../Settings/SettingsModal';
 import ChatPanel from '../Chat/ChatPanel';
 import SearchPanel from '../Search/SearchPanel';
@@ -12,6 +13,7 @@ import { useAppStore } from '../../stores/appStore';
 import { useUISettingsStore } from '../../stores/uiSettingsStore';
 import { useVisitorWorkspaceStore } from '../../stores/visitorWorkspaceStore';
 import useIsMobile from '../../hooks/useIsMobile';
+import useBackButton from '../../hooks/useBackButton';
 
 /**
  * 全局状态提示接口
@@ -22,10 +24,54 @@ interface GlobalAlert {
 }
 
 /**
+ * 备案信息组件属性
+ */
+interface BeianFooterProps {
+  /** 是否使用紧凑模式（用于移动端侧边栏） */
+  compact?: boolean;
+  /** 额外的样式类名 */
+  className?: string;
+}
+
+/**
+ * 备案信息组件
+ * 展示 ICP 备案号和公安备案号
+ */
+const BeianFooter: React.FC<BeianFooterProps> = ({ compact = false, className = '' }) => (
+  <div
+    className={`flex items-center justify-center gap-2 rounded-lg bg-dark-900/60 backdrop-blur-sm border border-dark-700/40 ${
+      compact ? 'px-2 py-1.5 flex-col' : 'px-2.5 py-1'
+    } ${className}`}
+  >
+    <a
+      href="https://beian.miit.gov.cn"
+      target="_blank"
+      rel="noopener noreferrer"
+      className="text-dark-500 hover:text-dark-300 transition-colors"
+      style={{ fontSize: compact ? '10px' : '11px' }}
+    >
+      桂ICP备2026005821号
+    </a>
+    {!compact && <span className="text-dark-700" style={{ fontSize: '11px' }}>|</span>}
+    <a
+      href="http://www.beian.gov.cn/portal/registerSystemInfo?recordcode=45090202000535"
+      target="_blank"
+      rel="noopener noreferrer"
+      className="text-dark-500 hover:text-dark-300 transition-colors inline-flex items-center gap-1"
+      style={{ fontSize: compact ? '10px' : '11px' }}
+    >
+      <img src="https://www.beian.gov.cn/img/ghs.png" alt="公安备案" style={{ width: compact ? '10px' : '12px', height: compact ? '10px' : '12px' }} />
+      桂公网安备45090202000535号
+    </a>
+  </div>
+);
+
+/**
  * 主布局组件
  * 支持桌面端和移动端响应式布局
  */
 const MainLayout: React.FC<{ children: React.ReactNode }> = ({ children }) => {
+  const { t, i18n } = useTranslation('nav');
   const [isSettingsOpen, setIsSettingsOpen] = useState(false);
   const [settingsInitialTab, setSettingsInitialTab] = useState<'api' | 'ui' | 'guide' | undefined>(undefined);
   const [isChatOpen, setIsChatOpen] = useState(false);
@@ -62,6 +108,143 @@ const MainLayout: React.FC<{ children: React.ReactNode }> = ({ children }) => {
     }, 250);
   }, []);
 
+  // 返回键处理优先级常量：数值越大优先级越高，面板关闭优先于 App 级退出逻辑
+  const BACK_PRIORITY_MODAL = 100;
+  const BACK_PRIORITY_FULLSCREEN = 110;
+  const BACK_PRIORITY_WORKSPACE_INFO = 120;
+  const BACK_PRIORITY_DRAWER = 130;
+
+  /**
+   * 按层级注册返回键处理器
+   * 每个处理器只判断自己负责的状态，遵循“后注册先执行”的栈式语义
+   * 整体优先级（从高到低）：抽屉 > 工作区信息 > 全屏页面 > 弹窗
+   */
+
+  // 4. 弹窗：设置、反馈、工作区设置
+  useBackButton(
+    () => {
+      if (isSettingsOpen) {
+        setIsSettingsOpen(false);
+        setSettingsInitialTab(undefined);
+        return true;
+      }
+      return false;
+    },
+    isSettingsOpen,
+    BACK_PRIORITY_MODAL
+  );
+
+  useBackButton(
+    () => {
+      if (isFeedbackOpen) {
+        setIsFeedbackOpen(false);
+        return true;
+      }
+      return false;
+    },
+    isFeedbackOpen,
+    BACK_PRIORITY_MODAL
+  );
+
+  useBackButton(
+    () => {
+      if (isWorkspaceSettingsOpen) {
+        setIsWorkspaceSettingsOpen(false);
+        return true;
+      }
+      return false;
+    },
+    isWorkspaceSettingsOpen,
+    BACK_PRIORITY_MODAL
+  );
+
+  // 3. 全屏页面：聊天、历史、消息中心、搜索、文件
+  useBackButton(
+    () => {
+      if (isChatOpen) {
+        closeChat();
+        return true;
+      }
+      return false;
+    },
+    isChatOpen,
+    BACK_PRIORITY_FULLSCREEN
+  );
+
+  useBackButton(
+    () => {
+      if (isHistoryOpen) {
+        setIsHistoryOpen(false);
+        return true;
+      }
+      return false;
+    },
+    isHistoryOpen,
+    BACK_PRIORITY_FULLSCREEN
+  );
+
+  useBackButton(
+    () => {
+      if (isMessageCenterOpen) {
+        setIsMessageCenterOpen(false);
+        return true;
+      }
+      return false;
+    },
+    isMessageCenterOpen,
+    BACK_PRIORITY_FULLSCREEN
+  );
+
+  useBackButton(
+    () => {
+      if (isSearchOpen) {
+        setIsSearchOpen(false);
+        return true;
+      }
+      return false;
+    },
+    isSearchOpen,
+    BACK_PRIORITY_FULLSCREEN
+  );
+
+  useBackButton(
+    () => {
+      if (isFilePanelOpen) {
+        setIsFilePanelOpen(false);
+        return true;
+      }
+      return false;
+    },
+    isFilePanelOpen,
+    BACK_PRIORITY_FULLSCREEN
+  );
+
+  // 2. 工作区信息浮层
+  useBackButton(
+    () => {
+      if (showWorkspaceInfo) {
+        setShowWorkspaceInfo(false);
+        return true;
+      }
+      return false;
+    },
+    showWorkspaceInfo,
+    BACK_PRIORITY_WORKSPACE_INFO
+  );
+
+  // 1. 侧边栏抽屉
+  useBackButton(
+    () => {
+      if (isDrawerOpen) {
+        handleMobileDrawerClose();
+        return true;
+      }
+      return false;
+    },
+    isDrawerOpen,
+    BACK_PRIORITY_DRAWER
+  );
+
   /**
    * 处理用户被封禁事件
    * 清除本地身份信息并显示封禁提示
@@ -70,9 +253,9 @@ const MainLayout: React.FC<{ children: React.ReactNode }> = ({ children }) => {
     const detail = (event as CustomEvent).detail as { error: string; code: string };
     setGlobalAlert({
       type: 'banned',
-      message: detail.error || '账号已被封禁，如有疑问请联系管理员',
+      message: detail.error || t('accountBanned'),
     });
-  }, []);
+  }, [t]);
 
   /**
    * 处理工作区被关闭事件
@@ -82,17 +265,17 @@ const MainLayout: React.FC<{ children: React.ReactNode }> = ({ children }) => {
     const detail = (event as CustomEvent).detail as { error: string; code: string };
     setGlobalAlert({
       type: 'workspace-closed',
-      message: detail.error || '该工作区已被管理员关闭',
+      message: detail.error || t('workspaceClosedDesc'),
     });
-  }, []);
+  }, [t]);
 
   const handleIpBanned = useCallback((event: Event) => {
     const detail = (event as CustomEvent).detail as { error: string; code: string };
     setGlobalAlert({
       type: 'ip-banned',
-      message: detail.error || '当前IP已被封禁',
+      message: detail.error || t('ipBanned'),
     });
-  }, []);
+  }, [t]);
 
   useEffect(() => {
     window.addEventListener('auth:banned', handleBanned);
@@ -211,7 +394,7 @@ const MainLayout: React.FC<{ children: React.ReactNode }> = ({ children }) => {
 
       <div className="flex-1 overflow-y-auto py-2">
         <div className="px-3 mb-2">
-          <span className="text-xs text-dark-500 uppercase tracking-wider">导航</span>
+          <span className="text-xs text-dark-500 uppercase tracking-wider">{t('navigation')}</span>
         </div>
 
         <button
@@ -223,7 +406,7 @@ const MainLayout: React.FC<{ children: React.ReactNode }> = ({ children }) => {
           }`}
         >
           <Network className="w-5 h-5" />
-          <span>思维画布</span>
+          <span>{t('mindCanvas')}</span>
         </button>
 
         <button
@@ -235,11 +418,11 @@ const MainLayout: React.FC<{ children: React.ReactNode }> = ({ children }) => {
           }`}
         >
           <MessageSquare className="w-5 h-5" />
-          <span>AI 对话</span>
+          <span>{t('aiChat')}</span>
         </button>
 
         <div className="px-3 mt-4 mb-2">
-          <span className="text-xs text-dark-500 uppercase tracking-wider">操作</span>
+          <span className="text-xs text-dark-500 uppercase tracking-wider">{t('operations')}</span>
         </div>
 
         <button
@@ -252,7 +435,7 @@ const MainLayout: React.FC<{ children: React.ReactNode }> = ({ children }) => {
           }`}
         >
           <Undo2 className="w-5 h-5" />
-          <span>撤销</span>
+          <span>{t('undo')}</span>
         </button>
 
         <button
@@ -265,11 +448,11 @@ const MainLayout: React.FC<{ children: React.ReactNode }> = ({ children }) => {
           }`}
         >
           <Redo2 className="w-5 h-5" />
-          <span>重做</span>
+          <span>{t('redo')}</span>
         </button>
 
         <div className="px-3 mt-4 mb-2">
-          <span className="text-xs text-dark-500 uppercase tracking-wider">工具</span>
+          <span className="text-xs text-dark-500 uppercase tracking-wider">{t('tools')}</span>
         </div>
 
         <button
@@ -277,7 +460,7 @@ const MainLayout: React.FC<{ children: React.ReactNode }> = ({ children }) => {
           className="w-full flex items-center gap-3 px-4 py-3 text-left text-dark-300 hover:text-white hover:bg-dark-800 transition-colors"
         >
           <Search className="w-5 h-5" />
-          <span>搜索</span>
+          <span>{t('search')}</span>
         </button>
 
         <button
@@ -289,7 +472,7 @@ const MainLayout: React.FC<{ children: React.ReactNode }> = ({ children }) => {
           }`}
         >
           <Bell className="w-5 h-5" />
-          <span>消息</span>
+          <span>{t('messages')}</span>
         </button>
 
         <button
@@ -301,7 +484,7 @@ const MainLayout: React.FC<{ children: React.ReactNode }> = ({ children }) => {
           }`}
         >
           <Clock className="w-5 h-5" />
-          <span>历史</span>
+          <span>{t('history')}</span>
         </button>
 
         <button
@@ -309,11 +492,11 @@ const MainLayout: React.FC<{ children: React.ReactNode }> = ({ children }) => {
           className="w-full flex items-center gap-3 px-4 py-3 text-left text-dark-300 hover:text-white hover:bg-dark-800 transition-colors"
         >
           <FolderOpen className="w-5 h-5" />
-          <span>文件</span>
+          <span>{t('file')}</span>
         </button>
 
         <div className="px-3 mt-4 mb-2">
-          <span className="text-xs text-dark-500 uppercase tracking-wider">设置</span>
+          <span className="text-xs text-dark-500 uppercase tracking-wider">{t('settings')}</span>
         </div>
 
         <button
@@ -321,7 +504,19 @@ const MainLayout: React.FC<{ children: React.ReactNode }> = ({ children }) => {
           className="w-full flex items-center gap-3 px-4 py-3 text-left text-dark-300 hover:text-white hover:bg-dark-800 transition-colors"
         >
           <MessageCircle className="w-5 h-5" />
-          <span>反馈</span>
+          <span>{t('feedback')}</span>
+        </button>
+
+        <button
+          onClick={() => {
+            const newLng = i18n.language?.startsWith('zh') ? 'en' : 'zh';
+            i18n.changeLanguage(newLng);
+            handleMobileDrawerClose();
+          }}
+          className="w-full flex items-center gap-3 px-4 py-3 text-left text-dark-300 hover:text-white hover:bg-dark-800 transition-colors"
+        >
+          <Languages className="w-5 h-5" />
+          <span>{i18n.language?.startsWith('zh') ? 'English' : '中文'}</span>
         </button>
 
         <button
@@ -329,7 +524,7 @@ const MainLayout: React.FC<{ children: React.ReactNode }> = ({ children }) => {
           className="w-full flex items-center gap-3 px-4 py-3 text-left text-dark-300 hover:text-white hover:bg-dark-800 transition-colors"
         >
           <Settings className="w-5 h-5" />
-          <span>设置</span>
+          <span>{t('settings')}</span>
         </button>
       </div>
 
@@ -349,6 +544,13 @@ const MainLayout: React.FC<{ children: React.ReactNode }> = ({ children }) => {
           </button>
         </div>
       )}
+
+      {/* 移动端侧边栏底部备案信息 */}
+      {isMobile && (
+        <div className="p-3 border-t border-dark-700/50">
+          <BeianFooter compact className="w-full" />
+        </div>
+      )}
     </>
   );
 
@@ -366,7 +568,7 @@ const MainLayout: React.FC<{ children: React.ReactNode }> = ({ children }) => {
         )}
         <div className={`relative ${isMobile ? 'w-72 h-full' : 'h-full'} bg-dark-900/80 backdrop-blur-md rounded-2xl border border-dark-600/30 shadow-2xl flex flex-col overflow-hidden`}>
           <div className="flex items-center justify-between p-4 border-b border-dark-600/30">
-            <h3 className="text-white font-medium text-sm">工作区</h3>
+            <h3 className="text-white font-medium text-sm">{t('workspace')}</h3>
             <button
               onClick={() => setShowWorkspaceInfo(false)}
               className="p-1 text-dark-400 hover:text-white rounded-xl transition-colors"
@@ -388,11 +590,11 @@ const MainLayout: React.FC<{ children: React.ReactNode }> = ({ children }) => {
                 </div>
                 <div className="flex items-center gap-1 text-dark-500 text-xs">
                   <Users className="w-3 h-3" />
-                  <span>{currentWorkspace.members.length} 位成员</span>
+                  <span>{t('memberCount', { count: currentWorkspace.members.length })}</span>
                 </div>
                 {currentWorkspace.inviteCode && (
                   <div className="mt-2 text-xs text-dark-400">
-                    邀请码: <span className="text-primary-400 font-mono">{currentWorkspace.inviteCode}</span>
+                    {t('inviteCodeLabel')}: <span className="text-primary-400 font-mono">{currentWorkspace.inviteCode}</span>
                   </div>
                 )}
                 <button
@@ -400,7 +602,7 @@ const MainLayout: React.FC<{ children: React.ReactNode }> = ({ children }) => {
                   className="mt-2 w-full flex items-center justify-center gap-1.5 px-3 py-1.5 text-primary-400 hover:text-primary-300 rounded-xl hover:bg-dark-700 transition-colors text-xs border border-primary-500/20"
                 >
                   <Settings className="w-3 h-3" />
-                  工作区设置
+                  {t('workspaceSettings')}
                 </button>
               </div>
             </div>
@@ -408,11 +610,11 @@ const MainLayout: React.FC<{ children: React.ReactNode }> = ({ children }) => {
 
           {visitor && (
             <div className="px-4 text-xs text-dark-400">
-              当前身份: <span className="text-dark-300">{visitor.nickname}</span>
+              {t('currentIdentity')}: <span className="text-dark-300">{visitor.nickname}</span>
             </div>
           )}
 
-          <div className="px-4 py-2 text-xs text-dark-400">切换工作区</div>
+          <div className="px-4 py-2 text-xs text-dark-400">{t('switchWorkspace')}</div>
           <div className="flex-1 overflow-y-auto px-2">
             {workspaces.length > 1 ? (
               workspaces.filter(ws => ws.id !== currentWorkspace?.id).map(ws => (
@@ -431,7 +633,7 @@ const MainLayout: React.FC<{ children: React.ReactNode }> = ({ children }) => {
               ))
             ) : (
               <div className="px-2 py-2 text-xs text-dark-500">
-                暂无其他工作区
+                {t('noOtherWorkspaces')}
               </div>
             )}
           </div>
@@ -442,7 +644,7 @@ const MainLayout: React.FC<{ children: React.ReactNode }> = ({ children }) => {
               className="w-full flex items-center gap-2 px-3 py-2 text-primary-400 hover:text-primary-300 rounded-xl hover:bg-dark-800 transition-colors text-sm"
             >
               <Plus className="w-3.5 h-3.5" />
-              创建或加入新工作区
+              {t('createOrJoinWorkspace')}
             </button>
           </div>
 
@@ -452,7 +654,7 @@ const MainLayout: React.FC<{ children: React.ReactNode }> = ({ children }) => {
               className="w-full flex items-center gap-2 px-3 py-2 text-dark-400 hover:text-red-400 rounded-xl hover:bg-dark-800 transition-colors text-sm"
             >
               <LogOut className="w-3.5 h-3.5" />
-              离开工作区
+              {t('leaveWorkspace')}
             </button>
           </div>
         </div>
@@ -484,7 +686,7 @@ const MainLayout: React.FC<{ children: React.ReactNode }> = ({ children }) => {
           onClick={handleSyncData}
           disabled={isSyncing}
           className={`p-2 rounded-xl transition-colors ${isSyncing ? 'text-primary-400' : 'text-dark-400 hover:text-white'}`}
-          title="同步数据"
+          title={t('syncData')}
         >
           <RefreshCw className={`w-5 h-5 ${isSyncing ? 'animate-spin' : ''}`} />
         </button>
@@ -540,7 +742,7 @@ const MainLayout: React.FC<{ children: React.ReactNode }> = ({ children }) => {
           <button
             onClick={() => setShowWorkspaceInfo(!showWorkspaceInfo)}
             className="w-10 h-10 rounded-xl flex items-center justify-center transition-colors bg-dark-800 border border-dark-600 hover:border-primary-500"
-            title={currentWorkspace?.name || '工作区'}
+            title={currentWorkspace?.name || t('workspace')}
           >
             {currentWorkspace?.type === 'public' ? (
               <Globe className="w-4 h-4 text-primary-400" />
@@ -549,7 +751,7 @@ const MainLayout: React.FC<{ children: React.ReactNode }> = ({ children }) => {
             )}
           </button>
           <span className="absolute left-full ml-2 px-2 py-1 bg-dark-800 text-dark-200 text-xs rounded-lg whitespace-nowrap pointer-events-none opacity-0 group-hover:opacity-100 transition-opacity duration-200">
-            工作区
+            {t('workspace')}
           </span>
         </div>
 
@@ -564,12 +766,12 @@ const MainLayout: React.FC<{ children: React.ReactNode }> = ({ children }) => {
                 ? 'text-primary-400 bg-primary-600/20'
                 : 'text-dark-400 hover:text-white hover:bg-dark-700'
             }`}
-            title="同步数据"
+            title={t('syncData')}
           >
             <RefreshCw className={`w-4 h-4 ${isSyncing ? 'animate-spin' : ''}`} />
           </button>
           <span className="absolute left-full ml-2 px-2 py-1 bg-dark-800 text-dark-200 text-xs rounded-lg whitespace-nowrap pointer-events-none opacity-0 group-hover:opacity-100 transition-opacity duration-200">
-            同步
+            {t('sync')}
           </span>
         </div>
 
@@ -581,12 +783,12 @@ const MainLayout: React.FC<{ children: React.ReactNode }> = ({ children }) => {
                 ? 'bg-primary-600 text-white'
                 : 'text-dark-400 hover:text-white hover:bg-dark-700'
             }`}
-            title="思维画布"
+            title={t('mindCanvas')}
           >
             <Network className="w-5 h-5" />
           </button>
           <span className="absolute left-full ml-2 px-2 py-1 bg-dark-800 text-dark-200 text-xs rounded-lg whitespace-nowrap pointer-events-none opacity-0 group-hover:opacity-100 transition-opacity duration-200">
-            画布
+            {t('canvas')}
           </span>
         </div>
 
@@ -598,12 +800,12 @@ const MainLayout: React.FC<{ children: React.ReactNode }> = ({ children }) => {
                 ? 'bg-primary-600 text-white'
                 : 'text-dark-400 hover:text-white hover:bg-dark-700'
             }`}
-            title="对话"
+            title={t('aiChat')}
           >
             <MessageSquare className="w-5 h-5" />
           </button>
           <span className="absolute left-full ml-2 px-2 py-1 bg-dark-800 text-dark-200 text-xs rounded-lg whitespace-nowrap pointer-events-none opacity-0 group-hover:opacity-100 transition-opacity duration-200">
-            对话
+            {t('chat')}
           </span>
         </div>
 
@@ -619,7 +821,7 @@ const MainLayout: React.FC<{ children: React.ReactNode }> = ({ children }) => {
             }`}
           />
           <span className="absolute left-full ml-2 px-2 py-1 bg-dark-800 text-dark-200 text-xs rounded-lg whitespace-nowrap pointer-events-none opacity-0 group-hover:opacity-100 transition-opacity duration-200">
-            消息
+            {t('messages')}
           </span>
         </div>
 
@@ -634,12 +836,12 @@ const MainLayout: React.FC<{ children: React.ReactNode }> = ({ children }) => {
                 ? 'text-dark-400 hover:text-white hover:bg-dark-700'
                 : 'text-dark-600 cursor-not-allowed'
             }`}
-            title="撤销"
+            title={t('undo')}
           >
             <Undo2 className="w-4 h-4" />
           </button>
           <span className="absolute left-full ml-2 px-2 py-1 bg-dark-800 text-dark-200 text-xs rounded-lg whitespace-nowrap pointer-events-none opacity-0 group-hover:opacity-100 transition-opacity duration-200">
-            撤销
+            {t('undo')}
           </span>
         </div>
 
@@ -652,12 +854,12 @@ const MainLayout: React.FC<{ children: React.ReactNode }> = ({ children }) => {
                 ? 'text-dark-400 hover:text-white hover:bg-dark-700'
                 : 'text-dark-600 cursor-not-allowed'
             }`}
-            title="重做"
+            title={t('redo')}
           >
             <Redo2 className="w-4 h-4" />
           </button>
           <span className="absolute left-full ml-2 px-2 py-1 bg-dark-800 text-dark-200 text-xs rounded-lg whitespace-nowrap pointer-events-none opacity-0 group-hover:opacity-100 transition-opacity duration-200">
-            重做
+            {t('redo')}
           </span>
         </div>
 
@@ -667,12 +869,12 @@ const MainLayout: React.FC<{ children: React.ReactNode }> = ({ children }) => {
           <button
             onClick={() => setIsSearchOpen(true)}
             className="w-10 h-10 rounded-xl flex items-center justify-center text-dark-400 hover:text-white hover:bg-dark-700 transition-colors"
-            title="搜索"
+            title={t('search')}
           >
             <Search className="w-5 h-5" />
           </button>
           <span className="absolute left-full ml-2 px-2 py-1 bg-dark-800 text-dark-200 text-xs rounded-lg whitespace-nowrap pointer-events-none opacity-0 group-hover:opacity-100 transition-opacity duration-200">
-            搜索
+            {t('search')}
           </span>
         </div>
 
@@ -684,12 +886,12 @@ const MainLayout: React.FC<{ children: React.ReactNode }> = ({ children }) => {
                 ? 'bg-primary-600 text-white'
                 : 'text-dark-400 hover:text-white hover:bg-dark-700'
             }`}
-            title="历史"
+            title={t('history')}
           >
             <Clock className="w-5 h-5" />
           </button>
           <span className="absolute left-full ml-2 px-2 py-1 bg-dark-800 text-dark-200 text-xs rounded-lg whitespace-nowrap pointer-events-none opacity-0 group-hover:opacity-100 transition-opacity duration-200">
-            历史
+            {t('history')}
           </span>
         </div>
 
@@ -697,12 +899,12 @@ const MainLayout: React.FC<{ children: React.ReactNode }> = ({ children }) => {
           <button
             onClick={() => setIsFilePanelOpen(true)}
             className="w-10 h-10 rounded-xl flex items-center justify-center text-dark-400 hover:text-white hover:bg-dark-700 transition-colors"
-            title="文件"
+            title={t('file')}
           >
             <FolderOpen className="w-5 h-5" />
           </button>
           <span className="absolute left-full ml-2 px-2 py-1 bg-dark-800 text-dark-200 text-xs rounded-lg whitespace-nowrap pointer-events-none opacity-0 group-hover:opacity-100 transition-opacity duration-200">
-            文件
+            {t('file')}
           </span>
         </div>
 
@@ -710,12 +912,28 @@ const MainLayout: React.FC<{ children: React.ReactNode }> = ({ children }) => {
           <button
             onClick={() => setIsFeedbackOpen(true)}
             className="w-10 h-10 rounded-xl flex items-center justify-center text-dark-400 hover:text-white hover:bg-dark-700 transition-colors"
-            title="反馈"
+            title={t('feedback')}
           >
             <MessageCircle className="w-5 h-5" />
           </button>
           <span className="absolute left-full ml-2 px-2 py-1 bg-dark-800 text-dark-200 text-xs rounded-lg whitespace-nowrap pointer-events-none opacity-0 group-hover:opacity-100 transition-opacity duration-200">
-            反馈
+            {t('feedback')}
+          </span>
+        </div>
+
+        <div className="relative group">
+          <button
+            onClick={() => {
+              const newLng = i18n.language?.startsWith('zh') ? 'en' : 'zh';
+              i18n.changeLanguage(newLng);
+            }}
+            className="w-10 h-10 rounded-xl flex items-center justify-center text-dark-400 hover:text-white hover:bg-dark-700 transition-colors"
+            title={i18n.language?.startsWith('zh') ? 'Switch to English' : '切换到中文'}
+          >
+            <Languages className="w-5 h-5" />
+          </button>
+          <span className="absolute left-full ml-2 px-2 py-1 bg-dark-800 text-dark-200 text-xs rounded-lg whitespace-nowrap pointer-events-none opacity-0 group-hover:opacity-100 transition-opacity duration-200">
+            {i18n.language?.startsWith('zh') ? 'EN' : '中'}
           </span>
         </div>
 
@@ -723,12 +941,12 @@ const MainLayout: React.FC<{ children: React.ReactNode }> = ({ children }) => {
           <button
             onClick={() => setIsSettingsOpen(true)}
             className="w-10 h-10 rounded-xl flex items-center justify-center text-dark-400 hover:text-white hover:bg-dark-700 transition-colors"
-            title="设置"
+            title={t('settings')}
           >
             <Settings className="w-5 h-5" />
           </button>
           <span className="absolute left-full ml-2 px-2 py-1 bg-dark-800 text-dark-200 text-xs rounded-lg whitespace-nowrap pointer-events-none opacity-0 group-hover:opacity-100 transition-opacity duration-200">
-            设置
+            {t('settings')}
           </span>
         </div>
       </aside>
@@ -751,32 +969,7 @@ const MainLayout: React.FC<{ children: React.ReactNode }> = ({ children }) => {
 
           {!isMobile && (
             <div
-              className={`border-l border-dark-700/30 flex flex-col bg-dark-950/30 backdrop-blur-sm transition-[width] duration-300 ease-out overflow-hidden ${
-                isChatOpen ? '' : 'pointer-events-none'
-              }`}
-              style={{ width: isChatOpen ? chatPanelWidth : 0 }}
-            >
-              <div className="flex items-center justify-between px-4 py-2 border-b border-dark-700/30">
-                <div className="flex items-center gap-2">
-                  <MessageSquare className="w-4 h-4 text-primary-400" />
-                  <span className="text-white font-medium">AI 对话</span>
-                </div>
-                <button
-                  onClick={closeChat}
-                  className="p-1.5 text-dark-300 bg-dark-700/90 hover:text-white hover:bg-dark-600 rounded-xl transition-colors border border-dark-600/50"
-                >
-                  <X className="w-4 h-4" />
-                </button>
-              </div>
-              <div className="flex-1 overflow-hidden">
-                <ChatPanel nodeId={selectedNodeId} />
-              </div>
-            </div>
-          )}
-
-          {!isMobile && (
-            <div
-              className="transition-all duration-300 ease-out overflow-hidden h-full"
+              className={`shrink-0 transition-all duration-300 ease-out overflow-hidden h-full`}
               style={{ width: isHistoryOpen ? '320px' : 0, opacity: isHistoryOpen ? 1 : 0 }}
             >
               <HistoryPanel
@@ -788,7 +981,7 @@ const MainLayout: React.FC<{ children: React.ReactNode }> = ({ children }) => {
 
           {!isMobile && (
             <div
-              className={`border-l border-dark-700/30 flex flex-col bg-dark-950/30 backdrop-blur-sm transition-[width] duration-300 ease-out overflow-hidden ${
+              className={`shrink-0 border-l border-dark-700/30 flex flex-col bg-dark-950/30 backdrop-blur-sm transition-[width] duration-300 ease-out overflow-hidden ${
                 isMessageCenterOpen ? '' : 'pointer-events-none'
               }`}
               style={{ width: isMessageCenterOpen ? '384px' : 0 }}
@@ -796,7 +989,7 @@ const MainLayout: React.FC<{ children: React.ReactNode }> = ({ children }) => {
               <div className="flex items-center justify-between px-4 py-3 border-b border-dark-700/30">
                 <div className="flex items-center gap-2">
                   <Bell className="w-4 h-4 text-primary-400" />
-                  <span className="text-white font-medium">消息中心</span>
+                  <span className="text-white font-medium">{t('messageCenter')}</span>
                 </div>
                 <button
                   onClick={() => setIsMessageCenterOpen(false)}
@@ -810,6 +1003,31 @@ const MainLayout: React.FC<{ children: React.ReactNode }> = ({ children }) => {
               </div>
             </div>
           )}
+
+          {!isMobile && (
+            <div
+              className={`shrink-0 border-l border-dark-700/30 flex flex-col bg-dark-950/30 backdrop-blur-sm transition-[width] duration-300 ease-out overflow-hidden ${
+                isChatOpen ? '' : 'pointer-events-none'
+              }`}
+              style={{ width: isChatOpen ? chatPanelWidth : 0 }}
+            >
+              <div className="flex items-center justify-between px-4 py-2 border-b border-dark-700/30">
+                <div className="flex items-center gap-2">
+                  <MessageSquare className="w-4 h-4 text-primary-400" />
+                  <span className="text-white font-medium">{t('aiChat')}</span>
+                </div>
+                <button
+                  onClick={closeChat}
+                  className="p-1.5 text-dark-300 bg-dark-700/90 hover:text-white hover:bg-dark-600 rounded-xl transition-colors border border-dark-600/50"
+                >
+                  <X className="w-4 h-4" />
+                </button>
+              </div>
+              <div className="flex-1 overflow-hidden">
+                <ChatPanel nodeId={selectedNodeId} />
+              </div>
+            </div>
+          )}
         </main>
       </div>
 
@@ -818,7 +1036,7 @@ const MainLayout: React.FC<{ children: React.ReactNode }> = ({ children }) => {
           <div className="h-14 bg-dark-900 border-b border-dark-700 flex items-center justify-between px-4">
             <div className="flex items-center gap-2">
               <MessageSquare className="w-4 h-4 text-primary-400" />
-              <span className="text-white font-medium">AI 对话</span>
+              <span className="text-white font-medium">{t('aiChat')}</span>
             </div>
             <button
               onClick={closeChat}
@@ -838,7 +1056,7 @@ const MainLayout: React.FC<{ children: React.ReactNode }> = ({ children }) => {
           <div className="h-14 bg-dark-900 border-b border-dark-700 flex items-center justify-between px-4">
             <div className="flex items-center gap-2">
               <Clock className="w-4 h-4 text-primary-400" />
-              <span className="text-white font-medium">操作历史</span>
+              <span className="text-white font-medium">{t('actionHistory')}</span>
             </div>
             <button
               onClick={() => setIsHistoryOpen(false)}
@@ -858,7 +1076,7 @@ const MainLayout: React.FC<{ children: React.ReactNode }> = ({ children }) => {
           <div className="h-14 bg-dark-900 border-b border-dark-700 flex items-center justify-between px-4">
             <div className="flex items-center gap-2">
               <Bell className="w-4 h-4 text-primary-400" />
-              <span className="text-white font-medium">消息中心</span>
+              <span className="text-white font-medium">{t('messageCenter')}</span>
             </div>
             <button
               onClick={() => setIsMessageCenterOpen(false)}
@@ -874,6 +1092,7 @@ const MainLayout: React.FC<{ children: React.ReactNode }> = ({ children }) => {
       )}
 
       <SettingsModal
+        key={settingsInitialTab || 'default'}
         isOpen={isSettingsOpen}
         onClose={() => {
           setIsSettingsOpen(false);
@@ -903,31 +1122,12 @@ const MainLayout: React.FC<{ children: React.ReactNode }> = ({ children }) => {
         onClose={() => setIsFilePanelOpen(false)}
       />
 
-      {/* ICP备案号、公安备案号 - 右下角紧凑标签 */}
-      <footer className="fixed bottom-2 left-1/2 -translate-x-1/2 z-40">
-        <div className="flex items-center gap-2 px-2.5 py-1 rounded-lg bg-dark-900/60 backdrop-blur-sm border border-dark-700/40">
-          <a
-            href="https://beian.miit.gov.cn"
-            target="_blank"
-            rel="noopener noreferrer"
-            className="text-dark-500 hover:text-dark-300 transition-colors"
-            style={{ fontSize: '11px' }}
-          >
-            桂ICP备2026005821号
-          </a>
-          <span className="text-dark-700" style={{ fontSize: '11px' }}>|</span>
-          <a
-            href="http://www.beian.gov.cn/portal/registerSystemInfo?recordcode=45090202000535"
-            target="_blank"
-            rel="noopener noreferrer"
-            className="text-dark-500 hover:text-dark-300 transition-colors inline-flex items-center gap-1"
-            style={{ fontSize: '11px' }}
-          >
-            <img src="https://www.beian.gov.cn/img/ghs.png" alt="公安备案" style={{ width: '12px', height: '12px' }} />
-            桂公网安备45090202000535号
-          </a>
-        </div>
-      </footer>
+      {/* ICP备案号、公安备案号 - 仅桌面端底部显示 */}
+      {!isMobile && (
+        <footer className="fixed bottom-2 left-1/2 -translate-x-1/2 z-40">
+          <BeianFooter />
+        </footer>
+      )}
 
       {/* 全局封禁/关闭状态提示弹窗 */}
       {globalAlert && (
@@ -939,10 +1139,10 @@ const MainLayout: React.FC<{ children: React.ReactNode }> = ({ children }) => {
               </div>
               <div>
                 <h3 className="text-white font-semibold text-lg">
-                  {globalAlert.type === 'banned' ? '账号已被封禁' : globalAlert.type === 'ip-banned' ? 'IP已被封禁' : '工作区已关闭'}
+                  {globalAlert.type === 'banned' ? t('accountBanned') : globalAlert.type === 'ip-banned' ? t('ipBanned') : t('workspaceClosed')}
                 </h3>
                 <p className="text-dark-400 text-sm mt-1">
-                  {globalAlert.type === 'banned' ? '您的账号已被管理员封禁' : globalAlert.type === 'ip-banned' ? '您当前使用的IP地址已被管理员封禁' : '该工作区已被管理员关闭'}
+                  {globalAlert.type === 'banned' ? t('accountBannedDesc') : globalAlert.type === 'ip-banned' ? t('ipBannedDesc') : t('workspaceClosedDesc')}
                 </p>
               </div>
             </div>
@@ -960,7 +1160,7 @@ const MainLayout: React.FC<{ children: React.ReactNode }> = ({ children }) => {
               }}
               className="w-full py-2.5 bg-dark-700 hover:bg-dark-600 text-white rounded-xl transition-colors text-sm font-medium"
             >
-              确定
+              {t('confirm')}
             </button>
           </div>
         </div>

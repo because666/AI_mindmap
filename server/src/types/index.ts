@@ -56,6 +56,12 @@ export interface Visitor {
   banExpiresAt?: Date;
   lastIp?: string;
   ipHistory?: string[];
+  /**
+   * 访客签名密钥
+   * 用于 HMAC-SHA256 签名校验，注册时由 crypto.randomBytes(32).toString('hex') 生成
+   * 仅在注册/更新接口返回给客户端，查询接口需脱敏
+   */
+  visitorSecret?: string;
 }
 
 /**

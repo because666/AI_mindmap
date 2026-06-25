@@ -1,12 +1,147 @@
 import { Router, Request, Response } from 'express';
 import { adminDB } from '../config/database';
-import { WorkspaceListItem, PaginationResult } from '../types';
+import { WorkspaceListItem, PaginationResult, RankingSortBy, WorkspaceRankingItem } from '../types';
 import { requireAuth } from '../middleware/auth';
 import { auditLog } from '../middleware/auditLog';
 import { escapeRegex, sanitizePagination } from '../utils/validators';
 import { notifyWorkspaceCacheClear } from '../services/cacheNotify';
 
 const router = Router();
+
+/**
+ * 排行排序维度校验集合
+ * 仅允许 nodeCount / conversationCount / exportCount 三种排序维度
+ */
+const VALID_SORT_BY: ReadonlySet<string> = new Set(['nodeCount', 'conversationCount', 'exportCount']);
+
+/**
+ * 获取工作区排行榜
+ * 使用 MongoDB 聚合管道从 workspaces 集合关联 nodes/conversations/export_tasks 集合计数
+ * 支持按节点数、对话量、导出量排序，特别关注的工作区置顶显示
+ * @query sortBy - 排序维度，默认 nodeCount
+ * @query limit - 返回数量，默认 20
+ * @returns WorkspaceRankingItem[] 排行列表
+ */
+router.get('/ranking', requireAuth, async (req: Request, res: Response) => {
+  try {
+    const rawSortBy = (req.query.sortBy as string) || 'nodeCount';
+    const sortBy: RankingSortBy = VALID_SORT_BY.has(rawSortBy) ? (rawSortBy as RankingSortBy) : 'nodeCount';
+    const rawLimit = parseInt(req.query.limit as string, 10);
+    const limit = Number.isNaN(rawLimit) || rawLimit <= 0 ? 20 : Math.min(rawLimit, 100);
+
+    const workspaces = await adminDB.find('workspaces', {} as never, {
+      sort: { createdAt: -1 },
+      limit: 10000,
+    });
+
+    if (workspaces.length === 0) {
+      res.json({ success: true, data: [] });
+      return;
+    }
+
+    const wsIds = workspaces.map((w: Record<string, unknown>) => w.id as string);
+
+    let nodeCountMap = new Map<string, number>();
+    try {
+      const nodeCounts = await adminDB.aggregate('nodes', [
+        { $match: { workspaceId: { $in: wsIds } } },
+        { $group: { _id: '$workspaceId', count: { $sum: 1 } } },
+      ]);
+      for (const nc of nodeCounts) {
+        nodeCountMap.set((nc as Record<string, unknown>)._id as string, (nc as Record<string, unknown>).count as number);
+      }
+    } catch {
+      // nodes 集合可能不存在
+    }
+
+    let conversationCountMap = new Map<string, number>();
+    try {
+      const convCounts = await adminDB.aggregate('conversations', [
+        { $match: { workspaceId: { $in: wsIds } } },
+        { $group: { _id: '$workspaceId', count: { $sum: 1 } } },
+      ]);
+      for (const cc of convCounts) {
+        conversationCountMap.set((cc as Record<string, unknown>)._id as string, (cc as Record<string, unknown>).count as number);
+      }
+    } catch {
+      // conversations 集合可能不存在
+    }
+
+    let exportCountMap = new Map<string, number>();
+    try {
+      const exportCounts = await adminDB.aggregate('export_tasks', [
+        { $match: { workspaceId: { $in: wsIds } } },
+        { $group: { _id: '$workspaceId', count: { $sum: 1 } } },
+      ]);
+      for (const ec of exportCounts) {
+        exportCountMap.set((ec as Record<string, unknown>)._id as string, (ec as Record<string, unknown>).count as number);
+      }
+    } catch {
+      // export_tasks 集合可能不存在
+    }
+
+    const items: WorkspaceRankingItem[] = workspaces.map((w: Record<string, unknown>) => ({
+      workspaceId: w.id as string,
+      name: (w.name as string) || '未命名工作区',
+      nodeCount: nodeCountMap.get(w.id as string) || 0,
+      conversationCount: conversationCountMap.get(w.id as string) || 0,
+      exportCount: exportCountMap.get(w.id as string) || 0,
+      starred: (w.starred as boolean) || false,
+    }));
+
+    items.sort((a, b) => {
+      if (a.starred !== b.starred) {
+        return a.starred ? -1 : 1;
+      }
+      return (b[sortBy] as number) - (a[sortBy] as number);
+    });
+
+    const result = items.slice(0, limit);
+
+    res.json({ success: true, data: result });
+  } catch (error) {
+    console.error('获取工作区排行失败:', error);
+    res.status(500).json({ success: false, error: '获取工作区排行失败' });
+  }
+});
+
+/**
+ * 切换工作区特别关注标记
+ * 更新 workspaces 集合文档的 starred 字段
+ * @param id - 工作区 ID
+ * @body starred - 是否特别关注
+ */
+router.put('/:id/star', requireAuth, async (req: Request, res: Response) => {
+  try {
+    const { id } = req.params;
+    const { starred } = req.body;
+
+    if (typeof starred !== 'boolean') {
+      res.status(400).json({ success: false, error: 'starred 参数必须为布尔值' });
+      return;
+    }
+
+    const workspace = await adminDB.findOne('workspaces', { id } as never);
+    if (!workspace) {
+      res.status(404).json({ success: false, error: '工作区不存在' });
+      return;
+    }
+
+    const success = await adminDB.updateOne('workspaces', { id } as never, {
+      $set: { starred },
+    });
+
+    if (!success) {
+      res.status(500).json({ success: false, error: '更新特别关注状态失败' });
+      return;
+    }
+
+    res.json({ success: true, message: starred ? '已标记为特别关注' : '已取消特别关注' });
+  } catch (error) {
+    console.error('切换特别关注失败:', error);
+    res.status(500).json({ success: false, error: '切换特别关注失败' });
+  }
+});
 
 /**
  * 获取工作区列表

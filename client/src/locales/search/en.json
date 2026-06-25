@@ -1,0 +1,11 @@
+{
+  "searchPlaceholder": "Search node titles, summaries, conversations...",
+  "searchHistory": "Search History",
+  "enterKeywordsToSearch": "Enter keywords to start searching",
+  "searchSupportHint": "Supports searching node titles, summaries, and conversation content",
+  "noResultsFound": "No matching results found",
+  "tryDifferentKeywords": "Try using different keywords",
+  "resultsFound": "{{count}} result(s) found",
+  "locate": "Locate",
+  "pressEscToClose": "Press ESC to close"
+}

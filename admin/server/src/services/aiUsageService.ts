@@ -13,6 +13,12 @@ export interface AIUsageStats {
   successRate: number;
   todayTokens: number;
   todayCalls: number;
+  changes: {
+    totalTokens: number;
+    totalCalls: number;
+    avgResponseTime: number;
+    successRate: number;
+  };
 }
 
 /**
@@ -140,6 +146,7 @@ class AIUsageService {
    */
   async getStats(startDate?: string, endDate?: string, model?: string): Promise<AIUsageStats> {
     const collection = this.getCollection();
+    const defaultChanges = { totalTokens: 0, totalCalls: 0, avgResponseTime: 0, successRate: 0 };
     if (!collection) {
       return {
         totalTokens: 0,
@@ -148,6 +155,7 @@ class AIUsageService {
         successRate: 0,
         todayTokens: 0,
         todayCalls: 0,
+        changes: defaultChanges,
       };
     }
 
@@ -155,6 +163,9 @@ class AIUsageService {
 
     const today = new Date();
     today.setHours(0, 0, 0, 0);
+
+    const yesterday = new Date(today);
+    yesterday.setDate(yesterday.getDate() - 1);
 
     try {
       const pipeline: Document[] = [
@@ -185,9 +196,25 @@ class AIUsageService {
 
       const todayResults = await collection.aggregate<{ _id: null; todayTokens: number; todayCalls: number }>(todayPipeline).toArray();
 
+      const yesterdayPipeline: Document[] = [
+        { $match: { createdAt: { $gte: yesterday, $lt: today } } },
+        {
+          $group: {
+            _id: null,
+            totalTokens: { $sum: '$totalTokens' },
+            totalCalls: { $sum: 1 },
+            avgResponseTime: { $avg: '$responseTimeMs' },
+            successCount: { $sum: { $cond: ['$isSuccess', 1, 0] } },
+          },
+        },
+      ];
+
+      const yesterdayResults = await collection.aggregate<StatsAggregationResult>(yesterdayPipeline).toArray();
+
+      const todayTokens = todayResults.length > 0 ? todayResults[0].todayTokens : 0;
+      const todayCalls = todayResults.length > 0 ? todayResults[0].todayCalls : 0;
+
       if (results.length === 0) {
-        const todayTokens = todayResults.length > 0 ? todayResults[0].todayTokens : 0;
-        const todayCalls = todayResults.length > 0 ? todayResults[0].todayCalls : 0;
         return {
           totalTokens: 0,
           totalCalls: 0,
@@ -195,20 +222,31 @@ class AIUsageService {
           successRate: 0,
           todayTokens,
           todayCalls,
+          changes: defaultChanges,
         };
       }
 
       const stat = results[0];
-      const todayTokens = todayResults.length > 0 ? todayResults[0].todayTokens : 0;
-      const todayCalls = todayResults.length > 0 ? todayResults[0].todayCalls : 0;
+      const currentTotalTokens = stat.totalTokens || 0;
+      const currentTotalCalls = stat.totalCalls || 0;
+      const currentAvgResponseTime = Math.round(stat.avgResponseTime || 0);
+      const currentSuccessRate = stat.totalCalls > 0 ? Math.round((stat.successCount / stat.totalCalls) * 10000) / 100 : 0;
+
+      const changes = this.computeChanges(yesterdayResults, {
+        totalTokens: currentTotalTokens,
+        totalCalls: currentTotalCalls,
+        avgResponseTime: currentAvgResponseTime,
+        successRate: currentSuccessRate,
+      });
 
       return {
-        totalTokens: stat.totalTokens || 0,
-        totalCalls: stat.totalCalls || 0,
-        avgResponseTime: Math.round(stat.avgResponseTime || 0),
-        successRate: stat.totalCalls > 0 ? Math.round((stat.successCount / stat.totalCalls) * 10000) / 100 : 0,
+        totalTokens: currentTotalTokens,
+        totalCalls: currentTotalCalls,
+        avgResponseTime: currentAvgResponseTime,
+        successRate: currentSuccessRate,
         todayTokens,
         todayCalls,
+        changes,
       };
     } catch (error) {
       console.error('获取AI用量统计失败:', error);
@@ -219,8 +257,37 @@ class AIUsageService {
         successRate: 0,
         todayTokens: 0,
         todayCalls: 0,
+        changes: defaultChanges,
       };
     }
+  }
+
+  /**
+   * 计算当前周期与昨日数据的百分比变化
+   * @param yesterdayResults - 昨日聚合结果
+   * @param current - 当前周期数据
+   * @returns 各指标的百分比变化值
+   */
+  private computeChanges(
+    yesterdayResults: StatsAggregationResult[],
+    current: { totalTokens: number; totalCalls: number; avgResponseTime: number; successRate: number }
+  ): { totalTokens: number; totalCalls: number; avgResponseTime: number; successRate: number } {
+    if (yesterdayResults.length === 0) {
+      return { totalTokens: 0, totalCalls: 0, avgResponseTime: 0, successRate: 0 };
+    }
+
+    const y = yesterdayResults[0];
+    const yTokens = y.totalTokens || 0;
+    const yCalls = y.totalCalls || 0;
+    const yAvgTime = Math.round(y.avgResponseTime || 0);
+    const ySuccessRate = y.totalCalls > 0 ? Math.round((y.successCount / y.totalCalls) * 10000) / 100 : 0;
+
+    return {
+      totalTokens: yTokens > 0 ? Math.round(((current.totalTokens - yTokens) / yTokens) * 10000) / 100 : 0,
+      totalCalls: yCalls > 0 ? Math.round(((current.totalCalls - yCalls) / yCalls) * 10000) / 100 : 0,
+      avgResponseTime: yAvgTime > 0 ? Math.round(((current.avgResponseTime - yAvgTime) / yAvgTime) * 10000) / 100 : 0,
+      successRate: ySuccessRate > 0 ? Math.round(((current.successRate - ySuccessRate) / ySuccessRate) * 10000) / 100 : 0,
+    };
   }
 
   /**
@@ -384,7 +451,7 @@ class AIUsageService {
 
     try {
       const response = await axios.get<{ success: boolean; data?: QueueStatus }>(
-        'http://localhost:3001/api/ai/queue/stats',
+        'http://127.0.0.1:3001/api/ai/queue/stats',
         { timeout: 3000 }
       );
 

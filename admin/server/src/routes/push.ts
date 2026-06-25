@@ -13,7 +13,7 @@ const router = Router();
  */
 router.post('/broadcast', requireAuth, auditLog('BROADCAST_PUSH', 'push'), async (req: Request, res: Response) => {
   try {
-    const { title, content, targetType, targetUserIds, forceRead } = req.body;
+    const { title, content, targetType, targetUserIds, forceRead, displayType } = req.body;
 
     if (!title || !content) {
       res.status(400).json({ success: false, error: '请提供标题和内容' });
@@ -45,6 +45,7 @@ router.post('/broadcast', requireAuth, auditLog('BROADCAST_PUSH', 'push'), async
       forceReadDeadline: forceRead !== false
         ? new Date(Date.now() + 7 * 24 * 60 * 60 * 1000)
         : undefined,
+      displayType: displayType || 'dot',
     };
 
     const messageId = await adminDB.insertOne('push_messages', pushMessage);

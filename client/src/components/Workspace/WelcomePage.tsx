@@ -1,10 +1,12 @@
 import React, { useState } from 'react';
+import { useTranslation } from 'react-i18next';
 import { Network, Plus, LogIn, Globe, Lock, Copy, Check, Search, Users, Sparkles } from 'lucide-react';
 import { useVisitorWorkspaceStore } from '../../stores/visitorWorkspaceStore';
 import useMobile from '../../hooks/useMobile';
 import type { WorkspaceType, IWorkspace } from '../../types';
 
 const WelcomePage: React.FC = () => {
+  const { t } = useTranslation('workspace');
   const {
     visitor,
     currentWorkspace,
@@ -109,16 +111,16 @@ const WelcomePage: React.FC = () => {
               <div className="absolute -top-1 -right-1 w-4 h-4 bg-primary-400 rounded-full animate-pulse" />
             </div>
           </div>
-          <h1 className="text-2xl font-bold text-white text-center mb-1 tracking-tight">思流图</h1>
-          <p className="text-dark-400 text-center mb-8 text-sm">对话驱动的结构化思维协作平台</p>
+          <h1 className="text-2xl font-bold text-white text-center mb-1 tracking-tight">{t('deepMindMap')}</h1>
+          <p className="text-dark-400 text-center mb-8 text-sm">{t('platformSlogan')}</p>
 
           <form onSubmit={handleNicknameSubmit}>
-            <label className="block text-sm font-medium text-dark-300 mb-2">输入你的昵称</label>
+            <label className="block text-sm font-medium text-dark-300 mb-2">{t('enterNickname')}</label>
             <input
               type="text"
               value={nickname}
               onChange={(e) => setNickname(e.target.value)}
-              placeholder="请输入昵称..."
+              placeholder={t('nicknamePlaceholder')}
               className="input-field"
               maxLength={20}
               autoFocus
@@ -129,7 +131,7 @@ const WelcomePage: React.FC = () => {
               className="btn-primary w-full mt-4 py-3"
             >
               <Sparkles className="w-4 h-4" />
-              开始使用
+              {t('getStarted')}
             </button>
           </form>
 
@@ -154,14 +156,14 @@ const WelcomePage: React.FC = () => {
               <Network className="w-6 h-6 text-white" />
             </div>
             <div>
-              <h1 className="text-xl font-bold text-white tracking-tight">欢迎，{visitor.nickname}</h1>
-              <p className="text-dark-400 text-sm">选择或创建一个工作区开始</p>
+              <h1 className="text-xl font-bold text-white tracking-tight">{t('welcomeUser', { nickname: visitor.nickname })}</h1>
+              <p className="text-dark-400 text-sm">{t('selectOrCreateWorkspace')}</p>
             </div>
           </div>
 
           {workspaces.length > 0 && (
             <div className="mb-6 animate-in-delay-1">
-              <h3 className="text-xs font-semibold text-dark-400 uppercase tracking-wider mb-3">我的工作区</h3>
+              <h3 className="text-xs font-semibold text-dark-400 uppercase tracking-wider mb-3">{t('myWorkspaces')}</h3>
               <div className="space-y-1.5">
                 {workspaces.map((ws) => (
                   <div
@@ -180,14 +182,14 @@ const WelcomePage: React.FC = () => {
                       <div className="text-white font-medium text-sm truncate group-hover:text-primary-300 transition-colors">{ws.name}</div>
                       <div className="text-dark-500 text-xs flex items-center gap-1">
                         <Users className="w-3 h-3" />
-                        {ws.members.length} 位成员
+                        {t('memberCount', { count: ws.members.length })}
                       </div>
                     </div>
                     {ws.inviteCode && (
                       <button
                         onClick={(e) => { e.stopPropagation(); copyInviteCode(ws.inviteCode!, ws.id); }}
                         className="p-1.5 text-dark-500 hover:text-primary-400 rounded-xl hover:bg-dark-600 transition-all"
-                        title="复制邀请码"
+                        title={t('copyInviteCode')}
                       >
                         {copiedId === ws.id ? <Check className="w-3.5 h-3.5 text-green-400" /> : <Copy className="w-3.5 h-3.5" />}
                       </button>
@@ -204,39 +206,39 @@ const WelcomePage: React.FC = () => {
               className="btn-primary flex-1"
             >
               <Plus className="w-4 h-4" />
-              创建
+              {t('createBtn')}
             </button>
             <button
               onClick={() => { haptic('light'); setShowJoin(true); setShowCreate(false); setShowPublic(false); }}
               className="btn-ghost flex-1"
             >
               <LogIn className="w-4 h-4" />
-              邀请码
+              {t('inviteCodeBtn')}
             </button>
             <button
               onClick={handleShowPublic}
               className="btn-ghost flex-1"
             >
               <Search className="w-4 h-4" />
-              发现
+              {t('discoverBtn')}
             </button>
           </div>
 
           {showCreate && (
             <form onSubmit={handleCreateWorkspace} className="mt-4 p-4 glass-light rounded-2xl animate-in">
-              <h3 className="text-white font-medium mb-3 text-sm">创建新工作区</h3>
+              <h3 className="text-white font-medium mb-3 text-sm">{t('createNewWorkspace')}</h3>
               <input
                 type="text"
                 value={workspaceName}
                 onChange={(e) => setWorkspaceName(e.target.value)}
-                placeholder="工作区名称"
+                placeholder={t('workspaceNamePlaceholder')}
                 className="input-field mb-3"
                 maxLength={50}
               />
               <textarea
                 value={workspaceDescription}
                 onChange={(e) => setWorkspaceDescription(e.target.value)}
-                placeholder="工作区描述（可选）"
+                placeholder={t('workspaceDescPlaceholder')}
                 className="input-field mb-3 resize-none"
                 rows={2}
                 maxLength={200}
@@ -252,7 +254,7 @@ const WelcomePage: React.FC = () => {
                   }`}
                 >
                   <Globe className="w-3.5 h-3.5" />
-                  公开
+                  {t('public')}
                 </button>
                 <button
                   type="button"
@@ -264,19 +266,19 @@ const WelcomePage: React.FC = () => {
                   }`}
                 >
                   <Lock className="w-3.5 h-3.5" />
-                  私密
+                  {t('private')}
                 </button>
               </div>
               <div className="flex gap-2">
                 <button type="submit" disabled={!workspaceName.trim() || isLoading} className="btn-primary flex-1">
-                  创建
+                  {t('createBtn')}
                 </button>
                 <button
                   type="button"
                   onClick={() => setShowCreate(false)}
                   className="btn-ghost"
                 >
-                  取消
+                  {t('cancel', { ns: 'common' })}
                 </button>
               </div>
             </form>
@@ -284,21 +286,21 @@ const WelcomePage: React.FC = () => {
 
           {showJoin && (
             <form onSubmit={handleJoinByCode} className="mt-4 p-4 glass-light rounded-2xl animate-in">
-              <h3 className="text-white font-medium mb-3 text-sm">通过邀请码加入</h3>
+              <h3 className="text-white font-medium mb-3 text-sm">{t('joinByInviteCode')}</h3>
               <input
                 type="text"
                 value={inviteCode}
                 onChange={(e) => setInviteCode(e.target.value.toUpperCase())}
-                placeholder="输入6位邀请码"
+                placeholder={t('inviteCodePlaceholder')}
                 className="input-field tracking-[0.3em] text-center mb-3 font-mono"
                 maxLength={6}
               />
               <div className="flex gap-2">
                 <button type="submit" disabled={!inviteCode.trim() || isLoading} className="btn-primary flex-1">
-                  加入
+                  {t('joinBtn')}
                 </button>
                 <button type="button" onClick={() => setShowJoin(false)} className="btn-ghost">
-                  取消
+                  {t('cancel', { ns: 'common' })}
                 </button>
               </div>
             </form>
@@ -307,21 +309,21 @@ const WelcomePage: React.FC = () => {
           {showPublic && (
             <div className="mt-4 p-4 glass-light rounded-2xl animate-in">
               <div className="flex items-center justify-between mb-3">
-                <h3 className="text-white font-medium text-sm">发现公开工作区</h3>
+                <h3 className="text-white font-medium text-sm">{t('discoverPublicWorkspaces')}</h3>
                 <button
                   onClick={async () => { setPublicLoading(true); const list = await fetchPublicWorkspaces(); setPublicWorkspaces(list); setPublicLoading(false); }}
                   className="text-primary-400 hover:text-primary-300 text-xs transition-colors"
                 >
-                  刷新
+                  {t('refresh', { ns: 'common' })}
                 </button>
               </div>
               {publicLoading ? (
                 <div className="text-center py-6">
                   <div className="w-6 h-6 border-2 border-primary-500/30 border-t-primary-400 rounded-full mx-auto mb-2" style={{ animation: 'spin-slow 1s linear infinite' }} />
-                  <div className="text-dark-400 text-sm">加载中...</div>
+                  <div className="text-dark-400 text-sm">{t('loading', { ns: 'common' })}</div>
                 </div>
               ) : publicWorkspaces.length === 0 ? (
-                <div className="text-center py-6 text-dark-500 text-sm">暂无公开工作区</div>
+                <div className="text-center py-6 text-dark-500 text-sm">{t('noPublicWorkspaces')}</div>
               ) : (
                 <div className="space-y-1.5 max-h-60 overflow-y-auto">
                   {publicWorkspaces.map((ws) => (
@@ -344,14 +346,14 @@ const WelcomePage: React.FC = () => {
                         disabled={isLoading}
                         className="px-3 py-1.5 bg-primary-600/20 text-primary-400 rounded-xl text-xs font-medium hover:bg-primary-600/30 border border-primary-500/30 transition-all disabled:opacity-50 flex-shrink-0"
                       >
-                        加入
+                        {t('joinBtn')}
                       </button>
                     </div>
                   ))}
                 </div>
               )}
               <button type="button" onClick={() => setShowPublic(false)} className="btn-ghost w-full mt-3">
-                关闭
+                {t('close', { ns: 'common' })}
               </button>
             </div>
           )}

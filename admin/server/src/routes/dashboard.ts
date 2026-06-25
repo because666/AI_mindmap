@@ -58,4 +58,40 @@ router.get('/trends', requireAuth, async (req: Request, res: Response) => {
   }
 });
 
+/**
+ * 获取留存趋势数据
+ * 返回 DAU/WAU/MAU 及次日/7日/30日留存率
+ * @query days - 统计天数，默认30天，范围1-90
+ */
+router.get('/retention', requireAuth, async (req: Request, res: Response) => {
+  try {
+    const days = parseInt(req.query.days as string) || 30;
+
+    if (days < 1 || days > 90) {
+      res.status(400).json({ success: false, error: '天数范围应为1-90' });
+      return;
+    }
+
+    const data = await dashboardService.getRetentionTrends(days);
+    res.json({ success: true, data });
+  } catch (error) {
+    console.error('获取留存趋势数据失败:', error);
+    res.status(500).json({ success: false, error: '获取留存趋势数据失败' });
+  }
+});
+
+/**
+ * 获取转化漏斗数据
+ * 返回注册→对话→结论→导出的转化步骤及转化率
+ */
+router.get('/funnel', requireAuth, async (_req: Request, res: Response) => {
+  try {
+    const data = await dashboardService.getConversionFunnel();
+    res.json({ success: true, data });
+  } catch (error) {
+    console.error('获取转化漏斗数据失败:', error);
+    res.status(500).json({ success: false, error: '获取转化漏斗数据失败' });
+  }
+});
+
 export default router;

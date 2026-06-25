@@ -1,0 +1,1612 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>DeepMindMap 新配色体系预览</title>
+  <style>
+    /* ========== 全局重置与基础样式 ========== */
+    *, *::before, *::after {
+      margin: 0;
+      padding: 0;
+      box-sizing: border-box;
+    }
+
+    body {
+      background: #0c0a09;
+      color: #e7e5e4;
+      font-family: system-ui, -apple-system, "Segoe UI", Roboto, sans-serif;
+      line-height: 1.6;
+      min-height: 100vh;
+    }
+
+    /* ========== 主容器 ========== */
+    .container {
+      max-width: 1400px;
+      margin: 0 auto;
+      padding: 0 24px 80px;
+    }
+
+    /* ========== 顶部导航 ========== */
+    .top-nav {
+      position: sticky;
+      top: 0;
+      z-index: 100;
+      background: rgba(12, 10, 9, 0.85);
+      backdrop-filter: blur(16px);
+      border-bottom: 1px solid rgba(87, 83, 78, 0.4);
+      padding: 12px 0;
+    }
+
+    .top-nav .container {
+      display: flex;
+      align-items: center;
+      gap: 32px;
+      padding-bottom: 0;
+    }
+
+    .nav-brand {
+      font-size: 18px;
+      font-weight: 700;
+      color: #2dd4bf;
+      white-space: nowrap;
+    }
+
+    .nav-links {
+      display: flex;
+      gap: 8px;
+      flex-wrap: wrap;
+    }
+
+    .nav-links a {
+      color: #a8a29e;
+      text-decoration: none;
+      font-size: 13px;
+      padding: 6px 14px;
+      border-radius: 8px;
+      transition: all 0.2s;
+      background: rgba(41, 37, 36, 0.5);
+      border: 1px solid rgba(87, 83, 78, 0.3);
+    }
+
+    .nav-links a:hover {
+      color: #2dd4bf;
+      background: rgba(13, 148, 136, 0.15);
+      border-color: rgba(20, 184, 166, 0.3);
+    }
+
+    /* ========== 页面标题 ========== */
+    .page-header {
+      text-align: center;
+      padding: 64px 0 48px;
+    }
+
+    .page-header h1 {
+      font-size: 40px;
+      font-weight: 800;
+      background: linear-gradient(135deg, #2dd4bf, #14b8a6, #0d9488);
+      -webkit-background-clip: text;
+      -webkit-text-fill-color: transparent;
+      background-clip: text;
+      margin-bottom: 12px;
+    }
+
+    .page-header p {
+      color: #a8a29e;
+      font-size: 16px;
+    }
+
+    /* ========== 章节通用样式 ========== */
+    .section {
+      margin-bottom: 64px;
+    }
+
+    .section-title {
+      font-size: 28px;
+      font-weight: 700;
+      color: #e7e5e4;
+      margin-bottom: 8px;
+      padding-bottom: 16px;
+      border-bottom: 1px solid rgba(87, 83, 78, 0.4);
+      position: relative;
+    }
+
+    .section-title::after {
+      content: '';
+      position: absolute;
+      bottom: -1px;
+      left: 0;
+      width: 80px;
+      height: 2px;
+      background: linear-gradient(90deg, #14b8a6, transparent);
+    }
+
+    .section-desc {
+      color: #a8a29e;
+      font-size: 14px;
+      margin-bottom: 32px;
+    }
+
+    .subsection-title {
+      font-size: 18px;
+      font-weight: 600;
+      color: #d6d3d1;
+      margin: 32px 0 16px;
+      padding-left: 12px;
+      border-left: 3px solid #14b8a6;
+    }
+
+    /* ========== 色板展示 ========== */
+    .palette-row {
+      display: flex;
+      border-radius: 12px;
+      overflow: hidden;
+      margin-bottom: 16px;
+      box-shadow: 0 2px 12px rgba(0, 0, 0, 0.3);
+    }
+
+    .palette-swatch {
+      flex: 1;
+      padding: 20px 12px;
+      text-align: center;
+      transition: transform 0.2s, box-shadow 0.2s;
+      cursor: default;
+      min-width: 0;
+    }
+
+    .palette-swatch:hover {
+      transform: scaleY(1.08);
+      z-index: 1;
+      box-shadow: 0 4px 20px rgba(0, 0, 0, 0.4);
+    }
+
+    .swatch-name {
+      font-size: 12px;
+      font-weight: 600;
+      margin-bottom: 4px;
+      white-space: nowrap;
+      overflow: hidden;
+      text-overflow: ellipsis;
+    }
+
+    .swatch-hex {
+      font-size: 11px;
+      font-family: "Cascadia Code", "Fira Code", "Consolas", monospace;
+      opacity: 0.85;
+    }
+
+    .swatch-usage {
+      font-size: 10px;
+      margin-top: 4px;
+      opacity: 0.7;
+    }
+
+    /* 语义色网格 */
+    .semantic-grid {
+      display: grid;
+      grid-template-columns: repeat(auto-fill, minmax(160px, 1fr));
+      gap: 12px;
+    }
+
+    .semantic-card {
+      border-radius: 12px;
+      padding: 16px;
+      text-align: center;
+      border: 1px solid rgba(87, 83, 78, 0.3);
+      transition: transform 0.2s;
+    }
+
+    .semantic-card:hover {
+      transform: translateY(-2px);
+    }
+
+    .semantic-card .swatch-name {
+      font-size: 13px;
+    }
+
+    .semantic-card .swatch-hex {
+      font-size: 12px;
+    }
+
+    /* ========== UI组件展示 ========== */
+    .component-showcase {
+      background: #0c0a09;
+      border-radius: 16px;
+      padding: 32px;
+      border: 1px solid rgba(87, 83, 78, 0.3);
+    }
+
+    .component-group {
+      margin-bottom: 32px;
+    }
+
+    .component-group:last-child {
+      margin-bottom: 0;
+    }
+
+    .component-label {
+      font-size: 13px;
+      color: #78716c;
+      margin-bottom: 12px;
+      text-transform: uppercase;
+      letter-spacing: 1px;
+    }
+
+    .component-row {
+      display: flex;
+      flex-wrap: wrap;
+      gap: 12px;
+      align-items: flex-start;
+    }
+
+    /* 按钮样式 */
+    .btn-primary {
+      background: #0d9488;
+      color: #fff;
+      border: none;
+      padding: 10px 24px;
+      border-radius: 10px;
+      font-size: 14px;
+      font-weight: 600;
+      cursor: pointer;
+      transition: all 0.2s;
+      box-shadow: 0 0 20px rgba(13, 148, 136, 0.25);
+    }
+
+    .btn-primary:hover {
+      background: #0f766e;
+      box-shadow: 0 0 30px rgba(13, 148, 136, 0.4);
+    }
+
+    .btn-ghost {
+      background: rgba(41, 37, 36, 0.5);
+      color: #a8a29e;
+      border: 1px solid rgba(87, 83, 78, 0.5);
+      padding: 10px 24px;
+      border-radius: 10px;
+      font-size: 14px;
+      cursor: pointer;
+      transition: all 0.2s;
+    }
+
+    .btn-ghost:hover {
+      color: #d6d3d1;
+      border-color: rgba(87, 83, 78, 0.8);
+    }
+
+    .btn-icon {
+      background: rgba(41, 37, 36, 0.6);
+      color: #a8a29e;
+      border: 1px solid rgba(87, 83, 78, 0.4);
+      width: 40px;
+      height: 40px;
+      border-radius: 10px;
+      display: inline-flex;
+      align-items: center;
+      justify-content: center;
+      font-size: 18px;
+      cursor: pointer;
+      transition: all 0.2s;
+    }
+
+    .btn-icon:hover {
+      color: #2dd4bf;
+      border-color: rgba(20, 184, 166, 0.4);
+    }
+
+    /* 卡片样式 */
+    .demo-card {
+      background: rgba(41, 37, 36, 0.6);
+      border: 1px solid rgba(68, 64, 60, 0.5);
+      border-radius: 16px;
+      padding: 24px;
+      width: 280px;
+      transition: all 0.3s;
+    }
+
+    .demo-card:hover {
+      border-color: rgba(20, 184, 166, 0.3);
+      box-shadow: 0 0 24px rgba(13, 148, 136, 0.15);
+    }
+
+    .demo-card h4 {
+      font-size: 16px;
+      color: #e7e5e4;
+      margin-bottom: 8px;
+    }
+
+    .demo-card p {
+      font-size: 13px;
+      color: #a8a29e;
+    }
+
+    /* 输入框样式 */
+    .demo-input {
+      background: rgba(41, 37, 36, 0.8);
+      border: 1px solid rgba(87, 83, 78, 0.5);
+      border-radius: 10px;
+      padding: 10px 16px;
+      color: #e7e5e4;
+      font-size: 14px;
+      width: 260px;
+      outline: none;
+      transition: all 0.2s;
+    }
+
+    .demo-input::placeholder {
+      color: #78716c;
+    }
+
+    .demo-input:focus {
+      border-color: rgba(20, 184, 166, 0.7);
+      box-shadow: 0 0 0 3px rgba(13, 148, 136, 0.15);
+    }
+
+    /* 毛玻璃面板 */
+    .glass-panel {
+      border-radius: 16px;
+      padding: 24px;
+      width: 300px;
+    }
+
+    .glass {
+      background: rgba(28, 25, 23, 0.7);
+      border: 1px solid rgba(87, 83, 78, 0.5);
+      backdrop-filter: blur(16px);
+      -webkit-backdrop-filter: blur(16px);
+    }
+
+    .glass-light {
+      background: rgba(41, 37, 36, 0.5);
+      border: 1px solid rgba(87, 83, 78, 0.3);
+    }
+
+    .glass-panel h4 {
+      font-size: 15px;
+      color: #e7e5e4;
+      margin-bottom: 6px;
+    }
+
+    .glass-panel p {
+      font-size: 13px;
+      color: #a8a29e;
+    }
+
+    /* 聊天消息 */
+    .chat-demo {
+      display: flex;
+      flex-direction: column;
+      gap: 12px;
+      max-width: 480px;
+    }
+
+    .chat-bubble {
+      padding: 12px 18px;
+      border-radius: 16px;
+      font-size: 14px;
+      max-width: 80%;
+      position: relative;
+    }
+
+    .chat-user {
+      background: #0d9488;
+      color: #fff;
+      align-self: flex-end;
+      border-bottom-right-radius: 4px;
+    }
+
+    .chat-ai {
+      background: rgba(41, 37, 36, 0.5);
+      color: #e7e5e4;
+      align-self: flex-start;
+      border-bottom-left-radius: 4px;
+    }
+
+    .chat-thinking {
+      background: rgba(217, 119, 6, 0.15);
+      border: 1px solid rgba(245, 158, 11, 0.3);
+      color: #fbbf24;
+      align-self: flex-start;
+      border-bottom-left-radius: 4px;
+      font-style: italic;
+    }
+
+    /* 标签/徽章 */
+    .badge {
+      display: inline-block;
+      padding: 4px 12px;
+      border-radius: 8px;
+      font-size: 12px;
+      font-weight: 600;
+    }
+
+    .badge-primary {
+      background: rgba(13, 148, 136, 0.2);
+      color: #2dd4bf;
+    }
+
+    .badge-warning {
+      background: rgba(217, 119, 6, 0.15);
+      color: #fbbf24;
+    }
+
+    .badge-error {
+      background: rgba(239, 68, 68, 0.15);
+      color: #f87171;
+    }
+
+    /* ========== 新旧对比 ========== */
+    .compare-wrapper {
+      display: grid;
+      grid-template-columns: 1fr 1fr;
+      gap: 24px;
+    }
+
+    .compare-side {
+      border-radius: 16px;
+      padding: 28px;
+      border: 1px solid rgba(87, 83, 78, 0.3);
+    }
+
+    .compare-side h3 {
+      font-size: 16px;
+      font-weight: 700;
+      margin-bottom: 20px;
+      padding-bottom: 12px;
+      border-bottom: 1px solid rgba(87, 83, 78, 0.3);
+    }
+
+    .compare-side.old h3 {
+      color: #38bdf8;
+    }
+
+    .compare-side.new h3 {
+      color: #2dd4bf;
+    }
+
+    .compare-item {
+      display: flex;
+      align-items: center;
+      gap: 12px;
+      margin-bottom: 16px;
+    }
+
+    .compare-item-label {
+      font-size: 13px;
+      color: #a8a29e;
+      min-width: 80px;
+    }
+
+    .compare-color-block {
+      width: 48px;
+      height: 32px;
+      border-radius: 8px;
+      border: 1px solid rgba(255, 255, 255, 0.1);
+      flex-shrink: 0;
+    }
+
+    .compare-color-hex {
+      font-size: 12px;
+      font-family: "Cascadia Code", "Fira Code", "Consolas", monospace;
+      color: #d6d3d1;
+    }
+
+    .compare-glow {
+      padding: 16px;
+      border-radius: 12px;
+      text-align: center;
+      font-size: 14px;
+      font-weight: 600;
+      margin-bottom: 16px;
+    }
+
+    .compare-glow.old-glow {
+      box-shadow: 0 0 30px rgba(14, 165, 233, 0.3), inset 0 0 20px rgba(14, 165, 233, 0.1);
+      border: 1px solid rgba(14, 165, 233, 0.3);
+      color: #38bdf8;
+    }
+
+    .compare-glow.new-glow {
+      box-shadow: 0 0 30px rgba(13, 148, 136, 0.3), inset 0 0 20px rgba(13, 148, 136, 0.1);
+      border: 1px solid rgba(20, 184, 166, 0.3);
+      color: #2dd4bf;
+    }
+
+    /* 对比组件 */
+    .compare-component-group {
+      margin-top: 20px;
+      padding-top: 16px;
+      border-top: 1px solid rgba(87, 83, 78, 0.2);
+    }
+
+    .old-btn {
+      background: #0284c7;
+      color: #fff;
+      border: none;
+      padding: 10px 24px;
+      border-radius: 10px;
+      font-size: 14px;
+      font-weight: 600;
+      cursor: pointer;
+      box-shadow: 0 0 20px rgba(2, 132, 199, 0.25);
+      margin-bottom: 12px;
+    }
+
+    .new-btn {
+      background: #0d9488;
+      color: #fff;
+      border: none;
+      padding: 10px 24px;
+      border-radius: 10px;
+      font-size: 14px;
+      font-weight: 600;
+      cursor: pointer;
+      box-shadow: 0 0 20px rgba(13, 148, 136, 0.25);
+      margin-bottom: 12px;
+    }
+
+    .old-card {
+      background: #1e293b;
+      border: 1px solid #334155;
+      border-radius: 16px;
+      padding: 20px;
+      margin-bottom: 12px;
+    }
+
+    .new-card {
+      background: rgba(41, 37, 36, 0.6);
+      border: 1px solid rgba(68, 64, 60, 0.5);
+      border-radius: 16px;
+      padding: 20px;
+      margin-bottom: 12px;
+    }
+
+    .old-card h4, .new-card h4 {
+      font-size: 15px;
+      margin-bottom: 6px;
+    }
+
+    .old-card p, .new-card p {
+      font-size: 13px;
+      color: #94a3b8;
+    }
+
+    .new-card p {
+      color: #a8a29e;
+    }
+
+    .old-input {
+      background: #1e293b;
+      border: 1px solid #334155;
+      border-radius: 10px;
+      padding: 10px 16px;
+      color: #e2e8f0;
+      font-size: 14px;
+      width: 100%;
+      outline: none;
+    }
+
+    .new-input {
+      background: rgba(41, 37, 36, 0.8);
+      border: 1px solid rgba(87, 83, 78, 0.5);
+      border-radius: 10px;
+      padding: 10px 16px;
+      color: #e7e5e4;
+      font-size: 14px;
+      width: 100%;
+      outline: none;
+    }
+
+    /* ========== 粒子背景 ========== */
+    .particle-section {
+      position: relative;
+      border-radius: 16px;
+      overflow: hidden;
+      border: 1px solid rgba(87, 83, 78, 0.3);
+      height: 400px;
+    }
+
+    #particleCanvas {
+      width: 100%;
+      height: 100%;
+      display: block;
+    }
+
+    .particle-overlay {
+      position: absolute;
+      bottom: 20px;
+      left: 20px;
+      background: rgba(28, 25, 23, 0.7);
+      backdrop-filter: blur(12px);
+      border: 1px solid rgba(87, 83, 78, 0.4);
+      border-radius: 12px;
+      padding: 16px 20px;
+    }
+
+    .particle-overlay h4 {
+      font-size: 14px;
+      color: #2dd4bf;
+      margin-bottom: 8px;
+    }
+
+    .particle-overlay p {
+      font-size: 12px;
+      color: #a8a29e;
+      line-height: 1.8;
+    }
+
+    .particle-overlay code {
+      font-family: "Cascadia Code", "Fira Code", "Consolas", monospace;
+      font-size: 11px;
+      color: #d6d3d1;
+    }
+
+    /* ========== 思维导图 ========== */
+    .mindmap-section {
+      border-radius: 16px;
+      overflow: hidden;
+      border: 1px solid rgba(87, 83, 78, 0.3);
+      background: #0c0a09;
+      padding: 32px;
+    }
+
+    .mindmap-container {
+      display: flex;
+      gap: 32px;
+      align-items: flex-start;
+    }
+
+    .mindmap-canvas-wrap {
+      flex: 1;
+      min-width: 0;
+    }
+
+    #mindmapCanvas {
+      width: 100%;
+      height: 420px;
+      display: block;
+      border-radius: 12px;
+    }
+
+    .mindmap-legend {
+      width: 240px;
+      flex-shrink: 0;
+    }
+
+    .legend-title {
+      font-size: 14px;
+      font-weight: 600;
+      color: #d6d3d1;
+      margin-bottom: 16px;
+    }
+
+    .legend-item {
+      display: flex;
+      align-items: center;
+      gap: 10px;
+      margin-bottom: 10px;
+      font-size: 13px;
+      color: #a8a29e;
+    }
+
+    .legend-line {
+      width: 32px;
+      height: 3px;
+      border-radius: 2px;
+      flex-shrink: 0;
+    }
+
+    .legend-line.dashed {
+      background: repeating-linear-gradient(
+        90deg,
+        currentColor 0,
+        currentColor 6px,
+        transparent 6px,
+        transparent 10px
+      );
+      height: 2px;
+    }
+
+    .legend-node {
+      display: flex;
+      align-items: center;
+      gap: 10px;
+      margin-bottom: 10px;
+      font-size: 13px;
+      color: #a8a29e;
+    }
+
+    .legend-node-sample {
+      width: 28px;
+      height: 20px;
+      border-radius: 6px;
+      flex-shrink: 0;
+      border: 2px solid transparent;
+    }
+
+    /* ========== 响应式 ========== */
+    @media (max-width: 900px) {
+      .compare-wrapper {
+        grid-template-columns: 1fr;
+      }
+
+      .mindmap-container {
+        flex-direction: column;
+      }
+
+      .mindmap-legend {
+        width: 100%;
+      }
+
+      .page-header h1 {
+        font-size: 28px;
+      }
+    }
+
+    @media (max-width: 600px) {
+      .palette-swatch {
+        padding: 14px 6px;
+      }
+
+      .swatch-name {
+        font-size: 10px;
+      }
+
+      .swatch-hex {
+        font-size: 9px;
+      }
+
+      .swatch-usage {
+        display: none;
+      }
+
+      .component-row {
+        flex-direction: column;
+      }
+
+      .demo-card, .glass-panel {
+        width: 100%;
+      }
+
+      .demo-input {
+        width: 100%;
+      }
+    }
+  </style>
+</head>
+<body>
+
+  <!-- 顶部导航 -->
+  <nav class="top-nav">
+    <div class="container">
+      <span class="nav-brand">🎨 DeepMindMap 配色预览</span>
+      <div class="nav-links">
+        <a href="#palette">色板展示</a>
+        <a href="#components">UI组件</a>
+        <a href="#compare">新旧对比</a>
+        <a href="#particles">粒子背景</a>
+        <a href="#mindmap">思维导图</a>
+      </div>
+    </div>
+  </nav>
+
+  <!-- 页面标题 -->
+  <div class="container">
+    <header class="page-header">
+      <h1>DeepMindMap 新配色体系预览</h1>
+      <p>Warm Teal + Stone 暖青色与暖灰配色方案 · 完整视觉参考</p>
+    </header>
+
+    <!-- ==================== 第1部分：完整色板展示 ==================== -->
+    <section class="section" id="palette">
+      <h2 class="section-title">1. 完整色板展示</h2>
+      <p class="section-desc">新配色体系包含 Primary（暖青色 Teal）、Dark（暖灰 Stone）和语义色三大类，覆盖从极浅到极深的完整色阶。</p>
+
+      <!-- Primary 色板 -->
+      <h3 class="subsection-title">Primary 色板（暖青色 Teal）</h3>
+      <div class="palette-row">
+        <div class="palette-swatch" style="background:#f0fdfa;">
+          <div class="swatch-name" style="color:#115e59;">primary-50</div>
+          <div class="swatch-hex" style="color:#115e59;">#f0fdfa</div>
+          <div class="swatch-usage" style="color:#0f766e;">极浅背景</div>
+        </div>
+        <div class="palette-swatch" style="background:#ccfbf1;">
+          <div class="swatch-name" style="color:#115e59;">primary-100</div>
+          <div class="swatch-hex" style="color:#115e59;">#ccfbf1</div>
+          <div class="swatch-usage" style="color:#0f766e;">浅背景</div>
+        </div>
+        <div class="palette-swatch" style="background:#99f6e4;">
+          <div class="swatch-name" style="color:#115e59;">primary-200</div>
+          <div class="swatch-hex" style="color:#115e59;">#99f6e4</div>
+          <div class="swatch-usage" style="color:#0f766e;">浅色文字/边框</div>
+        </div>
+        <div class="palette-swatch" style="background:#5eead4;">
+          <div class="swatch-name" style="color:#115e59;">primary-300</div>
+          <div class="swatch-hex" style="color:#115e59;">#5eead4</div>
+          <div class="swatch-usage" style="color:#0f766e;">次要高亮</div>
+        </div>
+        <div class="palette-swatch" style="background:#2dd4bf;">
+          <div class="swatch-name" style="color:#115e59;">primary-400</div>
+          <div class="swatch-hex" style="color:#115e59;">#2dd4bf</div>
+          <div class="swatch-usage" style="color:#0f766e;">核心强调色</div>
+        </div>
+        <div class="palette-swatch" style="background:#14b8a6;">
+          <div class="swatch-name" style="color:#fff;">primary-500</div>
+          <div class="swatch-hex" style="color:#fff;">#14b8a6</div>
+          <div class="swatch-usage" style="color:rgba(255,255,255,0.8);">主色</div>
+        </div>
+        <div class="palette-swatch" style="background:#0d9488;">
+          <div class="swatch-name" style="color:#fff;">primary-600</div>
+          <div class="swatch-hex" style="color:#fff;">#0d9488</div>
+          <div class="swatch-usage" style="color:rgba(255,255,255,0.8);">按钮主色</div>
+        </div>
+        <div class="palette-swatch" style="background:#0f766e;">
+          <div class="swatch-name" style="color:#fff;">primary-700</div>
+          <div class="swatch-hex" style="color:#fff;">#0f766e</div>
+          <div class="swatch-usage" style="color:rgba(255,255,255,0.8);">按钮hover深色</div>
+        </div>
+        <div class="palette-swatch" style="background:#115e59;">
+          <div class="swatch-name" style="color:#fff;">primary-800</div>
+          <div class="swatch-hex" style="color:#fff;">#115e59</div>
+          <div class="swatch-usage" style="color:rgba(255,255,255,0.8);">深色辅助</div>
+        </div>
+        <div class="palette-swatch" style="background:#134e4a;">
+          <div class="swatch-name" style="color:#fff;">primary-900</div>
+          <div class="swatch-hex" style="color:#fff;">#134e4a</div>
+          <div class="swatch-usage" style="color:rgba(255,255,255,0.8);">极深辅助</div>
+        </div>
+      </div>
+
+      <!-- Dark 色板 -->
+      <h3 class="subsection-title">Dark 色板（暖灰 Stone）</h3>
+      <div class="palette-row">
+        <div class="palette-swatch" style="background:#fafaf9;">
+          <div class="swatch-name" style="color:#292524;">dark-50</div>
+          <div class="swatch-hex" style="color:#292524;">#fafaf9</div>
+          <div class="swatch-usage" style="color:#57534e;">极浅文字</div>
+        </div>
+        <div class="palette-swatch" style="background:#f5f5f4;">
+          <div class="swatch-name" style="color:#292524;">dark-100</div>
+          <div class="swatch-hex" style="color:#292524;">#f5f5f4</div>
+          <div class="swatch-usage" style="color:#57534e;">浅色文字</div>
+        </div>
+        <div class="palette-swatch" style="background:#e7e5e4;">
+          <div class="swatch-name" style="color:#292524;">dark-200</div>
+          <div class="swatch-hex" style="color:#292524;">#e7e5e4</div>
+          <div class="swatch-usage" style="color:#57534e;">次要文字</div>
+        </div>
+        <div class="palette-swatch" style="background:#d6d3d1;">
+          <div class="swatch-name" style="color:#292524;">dark-300</div>
+          <div class="swatch-hex" style="color:#292524;">#d6d3d1</div>
+          <div class="swatch-usage" style="color:#57534e;">辅助文字</div>
+        </div>
+        <div class="palette-swatch" style="background:#a8a29e;">
+          <div class="swatch-name" style="color:#292524;">dark-400</div>
+          <div class="swatch-hex" style="color:#292524;">#a8a29e</div>
+          <div class="swatch-usage" style="color:#57534e;">次级文字</div>
+        </div>
+        <div class="palette-swatch" style="background:#78716c;">
+          <div class="swatch-name" style="color:#fff;">dark-500</div>
+          <div class="swatch-hex" style="color:#fff;">#78716c</div>
+          <div class="swatch-usage" style="color:rgba(255,255,255,0.8);">暗淡文字</div>
+        </div>
+        <div class="palette-swatch" style="background:#57534e;">
+          <div class="swatch-name" style="color:#fff;">dark-600</div>
+          <div class="swatch-hex" style="color:#fff;">#57534e</div>
+          <div class="swatch-usage" style="color:rgba(255,255,255,0.8);">边框/分隔线</div>
+        </div>
+        <div class="palette-swatch" style="background:#44403c;">
+          <div class="swatch-name" style="color:#fff;">dark-700</div>
+          <div class="swatch-hex" style="color:#fff;">#44403c</div>
+          <div class="swatch-usage" style="color:rgba(255,255,255,0.8);">卡片/输入框背景</div>
+        </div>
+        <div class="palette-swatch" style="background:#292524;">
+          <div class="swatch-name" style="color:#fff;">dark-800</div>
+          <div class="swatch-hex" style="color:#fff;">#292524</div>
+          <div class="swatch-usage" style="color:rgba(255,255,255,0.8);">面板背景</div>
+        </div>
+        <div class="palette-swatch" style="background:#1c1917;">
+          <div class="swatch-name" style="color:#fff;">dark-900</div>
+          <div class="swatch-hex" style="color:#fff;">#1c1917</div>
+          <div class="swatch-usage" style="color:rgba(255,255,255,0.8);">侧边栏/弹窗背景</div>
+        </div>
+        <div class="palette-swatch" style="background:#0c0a09;">
+          <div class="swatch-name" style="color:#fff;">dark-950</div>
+          <div class="swatch-hex" style="color:#fff;">#0c0a09</div>
+          <div class="swatch-usage" style="color:rgba(255,255,255,0.8);">最深层背景</div>
+        </div>
+      </div>
+
+      <!-- 语义色 -->
+      <h3 class="subsection-title">语义色</h3>
+      <div class="semantic-grid">
+        <div class="semantic-card" style="background:rgba(251,191,36,0.15); border-color:rgba(251,191,36,0.3);">
+          <div class="swatch-name" style="color:#fbbf24;">amber-400</div>
+          <div class="swatch-hex" style="color:#fbbf24;">#fbbf24</div>
+        </div>
+        <div class="semantic-card" style="background:rgba(245,158,11,0.15); border-color:rgba(245,158,11,0.3);">
+          <div class="swatch-name" style="color:#f59e0b;">amber-500</div>
+          <div class="swatch-hex" style="color:#f59e0b;">#f59e0b</div>
+        </div>
+        <div class="semantic-card" style="background:rgba(217,119,6,0.15); border-color:rgba(217,119,6,0.3);">
+          <div class="swatch-name" style="color:#d97706;">amber-600</div>
+          <div class="swatch-hex" style="color:#d97706;">#d97706</div>
+        </div>
+        <div class="semantic-card" style="background:rgba(248,113,113,0.15); border-color:rgba(248,113,113,0.3);">
+          <div class="swatch-name" style="color:#f87171;">red-400</div>
+          <div class="swatch-hex" style="color:#f87171;">#f87171</div>
+        </div>
+        <div class="semantic-card" style="background:rgba(239,68,68,0.15); border-color:rgba(239,68,68,0.3);">
+          <div class="swatch-name" style="color:#ef4444;">red-500</div>
+          <div class="swatch-hex" style="color:#ef4444;">#ef4444</div>
+        </div>
+        <div class="semantic-card" style="background:rgba(52,211,153,0.15); border-color:rgba(52,211,153,0.3);">
+          <div class="swatch-name" style="color:#34d399;">emerald-400</div>
+          <div class="swatch-hex" style="color:#34d399;">#34d399</div>
+        </div>
+        <div class="semantic-card" style="background:rgba(74,222,128,0.15); border-color:rgba(74,222,128,0.3);">
+          <div class="swatch-name" style="color:#4ade80;">green-400</div>
+          <div class="swatch-hex" style="color:#4ade80;">#4ade80</div>
+        </div>
+        <div class="semantic-card" style="background:rgba(192,132,252,0.15); border-color:rgba(192,132,252,0.3);">
+          <div class="swatch-name" style="color:#c084fc;">purple-400</div>
+          <div class="swatch-hex" style="color:#c084fc;">#c084fc</div>
+        </div>
+        <div class="semantic-card" style="background:rgba(139,92,246,0.15); border-color:rgba(139,92,246,0.3);">
+          <div class="swatch-name" style="color:#8b5cf6;">violet-500</div>
+          <div class="swatch-hex" style="color:#8b5cf6;">#8b5cf6</div>
+        </div>
+        <div class="semantic-card" style="background:rgba(34,211,238,0.15); border-color:rgba(34,211,238,0.3);">
+          <div class="swatch-name" style="color:#22d3ee;">cyan-400</div>
+          <div class="swatch-hex" style="color:#22d3ee;">#22d3ee</div>
+        </div>
+      </div>
+    </section>
+
+    <!-- ==================== 第2部分：典型UI组件效果 ==================== -->
+    <section class="section" id="components">
+      <h2 class="section-title">2. 典型UI组件效果</h2>
+      <p class="section-desc">在 dark-950 (#0c0a09) 背景上展示新配色体系下的各类UI组件效果。</p>
+
+      <div class="component-showcase">
+        <!-- 按钮 -->
+        <div class="component-group">
+          <div class="component-label">按钮 Buttons</div>
+          <div class="component-row">
+            <button class="btn-primary">主按钮 Primary</button>
+            <button class="btn-ghost">幽灵按钮 Ghost</button>
+            <button class="btn-icon" title="图标按钮">✦</button>
+            <button class="btn-icon" title="图标按钮">⚙</button>
+            <button class="btn-icon" title="图标按钮">⋯</button>
+          </div>
+        </div>
+
+        <!-- 卡片 -->
+        <div class="component-group">
+          <div class="component-label">卡片 Cards</div>
+          <div class="component-row">
+            <div class="demo-card">
+              <h4>普通卡片</h4>
+              <p>背景 rgba(41,37,36,0.6)，边框 rgba(68,64,60,0.5)，圆角16px。鼠标悬停查看发光效果。</p>
+            </div>
+            <div class="demo-card" style="border-color:rgba(20,184,166,0.3); box-shadow:0 0 24px rgba(13,148,136,0.15);">
+              <h4>悬停卡片</h4>
+              <p>边框 rgba(20,184,166,0.3)，带发光阴影 box-shadow: 0 0 24px rgba(13,148,136,0.15)。</p>
+            </div>
+          </div>
+        </div>
+
+        <!-- 输入框 -->
+        <div class="component-group">
+          <div class="component-label">输入框 Inputs</div>
+          <div class="component-row">
+            <input class="demo-input" type="text" placeholder="普通输入框 - 点击查看聚焦效果">
+            <input class="demo-input" type="text" placeholder="聚焦输入框" style="border-color:rgba(20,184,166,0.7); box-shadow:0 0 0 3px rgba(13,148,136,0.15);">
+          </div>
+        </div>
+
+        <!-- 毛玻璃面板 -->
+        <div class="component-group">
+          <div class="component-label">毛玻璃面板 Glass Panels</div>
+          <div class="component-row">
+            <div class="glass-panel glass">
+              <h4>Glass 面板</h4>
+              <p>背景 rgba(28,25,23,0.7)，边框 rgba(87,83,78,0.5)，backdrop-filter: blur(16px)</p>
+            </div>
+            <div class="glass-panel glass-light">
+              <h4>Glass-Light 面板</h4>
+              <p>背景 rgba(41,37,36,0.5)，边框 rgba(87,83,78,0.3)</p>
+            </div>
+          </div>
+        </div>
+
+        <!-- 聊天消息 -->
+        <div class="component-group">
+          <div class="component-label">聊天消息 Chat Messages</div>
+          <div class="chat-demo">
+            <div class="chat-bubble chat-user">用户消息：帮我分析一下这个思维导图的结构</div>
+            <div class="chat-bubble chat-ai">AI消息：我来帮你分析这个思维导图，首先从根节点开始...</div>
+            <div class="chat-bubble chat-thinking">💭 思考中：正在分析节点关系和逻辑结构...</div>
+          </div>
+        </div>
+
+        <!-- 标签/徽章 -->
+        <div class="component-group">
+          <div class="component-label">标签/徽章 Badges</div>
+          <div class="component-row">
+            <span class="badge badge-primary">主色标签</span>
+            <span class="badge badge-warning">警告标签</span>
+            <span class="badge badge-error">错误标签</span>
+          </div>
+        </div>
+      </div>
+    </section>
+
+    <!-- ==================== 第3部分：新旧配色对比 ==================== -->
+    <section class="section" id="compare">
+      <h2 class="section-title">3. 新旧配色对比</h2>
+      <p class="section-desc">左侧为旧配色（Sky Blue + Slate 冷色调），右侧为新配色（Warm Teal + Stone 暖色调），直观对比两者差异。</p>
+
+      <div class="compare-wrapper">
+        <!-- 旧配色 -->
+        <div class="compare-side old" style="background:#020617;">
+          <h3>旧配色 · Sky Blue + Slate</h3>
+
+          <div class="compare-item">
+            <span class="compare-item-label">主色</span>
+            <div class="compare-color-block" style="background:#0ea5e9;"></div>
+            <span class="compare-color-hex">#0ea5e9</span>
+          </div>
+          <div class="compare-item">
+            <span class="compare-item-label">按钮色</span>
+            <div class="compare-color-block" style="background:#0284c7;"></div>
+            <span class="compare-color-hex">#0284c7</span>
+          </div>
+          <div class="compare-item">
+            <span class="compare-item-label">背景色</span>
+            <div class="compare-color-block" style="background:#020617;"></div>
+            <span class="compare-color-hex">#020617</span>
+          </div>
+          <div class="compare-item">
+            <span class="compare-item-label">面板色</span>
+            <div class="compare-color-block" style="background:#1e293b;"></div>
+            <span class="compare-color-hex">#1e293b</span>
+          </div>
+          <div class="compare-item">
+            <span class="compare-item-label">强调色</span>
+            <div class="compare-color-block" style="background:#38bdf8;"></div>
+            <span class="compare-color-hex">#38bdf8</span>
+          </div>
+
+          <div class="compare-glow old-glow">蓝色光晕效果</div>
+
+          <div class="compare-component-group">
+            <button class="old-btn">旧按钮样式</button>
+            <div class="old-card">
+              <h4 style="color:#e2e8f0;">旧卡片</h4>
+              <p>Slate 冷灰色面板风格</p>
+            </div>
+            <input class="old-input" type="text" placeholder="旧输入框样式">
+          </div>
+        </div>
+
+        <!-- 新配色 -->
+        <div class="compare-side new" style="background:#0c0a09;">
+          <h3>新配色 · Warm Teal + Stone</h3>
+
+          <div class="compare-item">
+            <span class="compare-item-label">主色</span>
+            <div class="compare-color-block" style="background:#14b8a6;"></div>
+            <span class="compare-color-hex">#14b8a6</span>
+          </div>
+          <div class="compare-item">
+            <span class="compare-item-label">按钮色</span>
+            <div class="compare-color-block" style="background:#0d9488;"></div>
+            <span class="compare-color-hex">#0d9488</span>
+          </div>
+          <div class="compare-item">
+            <span class="compare-item-label">背景色</span>
+            <div class="compare-color-block" style="background:#0c0a09;"></div>
+            <span class="compare-color-hex">#0c0a09</span>
+          </div>
+          <div class="compare-item">
+            <span class="compare-item-label">面板色</span>
+            <div class="compare-color-block" style="background:#292524;"></div>
+            <span class="compare-color-hex">#292524</span>
+          </div>
+          <div class="compare-item">
+            <span class="compare-item-label">强调色</span>
+            <div class="compare-color-block" style="background:#2dd4bf;"></div>
+            <span class="compare-color-hex">#2dd4bf</span>
+          </div>
+
+          <div class="compare-glow new-glow">青绿光晕效果</div>
+
+          <div class="compare-component-group">
+            <button class="new-btn">新按钮样式</button>
+            <div class="new-card">
+              <h4 style="color:#e7e5e4;">新卡片</h4>
+              <p>Stone 暖灰色面板风格</p>
+            </div>
+            <input class="new-input" type="text" placeholder="新输入框样式">
+          </div>
+        </div>
+      </div>
+    </section>
+
+    <!-- ==================== 第4部分：粒子背景效果 ==================== -->
+    <section class="section" id="particles">
+      <h2 class="section-title">4. 粒子背景效果</h2>
+      <p class="section-desc">使用 Canvas 实现的简化版粒子背景，展示新配色在动态场景中的视觉效果。</p>
+
+      <div class="particle-section">
+        <canvas id="particleCanvas"></canvas>
+        <div class="particle-overlay">
+          <h4>粒子参数</h4>
+          <p>
+            背景：<code>#0c0a09</code><br>
+            粒子：<code>rgb(13,148,136)</code><br>
+            连线：<code>rgba(13,148,136,0.15)</code><br>
+            流光1：<code>rgb(13,148,136)</code> 青绿<br>
+            流光2：<code>rgb(217,119,6)</code> 琥珀<br>
+            流光3：<code>rgb(45,212,191)</code> 浅青
+          </p>
+        </div>
+      </div>
+    </section>
+
+    <!-- ==================== 第5部分：思维导图节点和关系线 ==================== -->
+    <section class="section" id="mindmap">
+      <h2 class="section-title">5. 思维导图节点和关系线</h2>
+      <p class="section-desc">展示思维导图中各类节点样式和关系线配色，直观呈现新配色在图谱场景中的表现。</p>
+
+      <div class="mindmap-section">
+        <div class="mindmap-container">
+          <div class="mindmap-canvas-wrap">
+            <canvas id="mindmapCanvas"></canvas>
+          </div>
+          <div class="mindmap-legend">
+            <div class="legend-title">节点类型</div>
+            <div class="legend-node">
+              <div class="legend-node-sample" style="background:linear-gradient(135deg,#14b8a6,#0f766e);"></div>
+              <span>根节点</span>
+            </div>
+            <div class="legend-node">
+              <div class="legend-node-sample" style="background:#44403c; border-color:#57534e;"></div>
+              <span>普通节点</span>
+            </div>
+            <div class="legend-node">
+              <div class="legend-node-sample" style="background:rgba(251,191,36,0.1); border-color:#fbbf24;"></div>
+              <span>结论节点</span>
+            </div>
+            <div class="legend-node">
+              <div class="legend-node-sample" style="background:transparent; border:2px dashed #8b5cf6;"></div>
+              <span>复合节点</span>
+            </div>
+
+            <div class="legend-title" style="margin-top:20px;">关系线类型</div>
+            <div class="legend-item">
+              <div class="legend-line" style="background:#2dd4bf;"></div>
+              <span>父子关系</span>
+            </div>
+            <div class="legend-item">
+              <div class="legend-line" style="background:#34d399;"></div>
+              <span>支持关系</span>
+            </div>
+            <div class="legend-item">
+              <div class="legend-line" style="background:#f87171;"></div>
+              <span>矛盾关系</span>
+            </div>
+            <div class="legend-item">
+              <div class="legend-line" style="background:#fbbf24;"></div>
+              <span>前置关系</span>
+            </div>
+            <div class="legend-item">
+              <div class="legend-line" style="background:#0d9488;"></div>
+              <span>阐述关系</span>
+            </div>
+            <div class="legend-item">
+              <div class="legend-line" style="background:#c084fc;"></div>
+              <span>引用关系</span>
+            </div>
+            <div class="legend-item">
+              <div class="legend-line" style="background:#22d3ee;"></div>
+              <span>结论关系</span>
+            </div>
+          </div>
+        </div>
+      </div>
+    </section>
+
+  </div>
+
+  <script>
+    /* ========== 粒子背景效果 ========== */
+    (function initParticles() {
+      /** @type {HTMLCanvasElement} */
+      var canvas = document.getElementById('particleCanvas');
+      if (!canvas) return;
+      var ctx = canvas.getContext('2d');
+
+      /* 粒子数量 */
+      var PARTICLE_COUNT = 50;
+      /* 连线最大距离 */
+      var LINK_DISTANCE = 150;
+      /* 粒子数组 */
+      var particles = [];
+
+      /* 流光颜色 */
+      var streamColors = [
+        { r: 13, g: 148, b: 136 },   /* 青绿 #0d9488 */
+        { r: 217, g: 119, b: 6 },    /* 琥珀 #d97706 */
+        { r: 45, g: 212, b: 191 }    /* 浅青 #2dd4bf */
+      ];
+
+      /**
+       * 调整画布尺寸以匹配容器
+       */
+      function resize() {
+        var rect = canvas.parentElement.getBoundingClientRect();
+        canvas.width = rect.width;
+        canvas.height = rect.height;
+      }
+
+      /**
+       * 创建单个粒子
+       * @returns {Object} 粒子对象
+       */
+      function createParticle() {
+        var colorIdx = Math.floor(Math.random() * streamColors.length);
+        var c = streamColors[colorIdx];
+        return {
+          x: Math.random() * canvas.width,
+          y: Math.random() * canvas.height,
+          vx: (Math.random() - 0.5) * 0.6,
+          vy: (Math.random() - 0.5) * 0.6,
+          r: c.r,
+          g: c.g,
+          b: c.b,
+          size: Math.random() * 2 + 1,
+          alpha: Math.random() * 0.5 + 0.3
+        };
+      }
+
+      /**
+       * 初始化粒子
+       */
+      function init() {
+        resize();
+        particles = [];
+        for (var i = 0; i < PARTICLE_COUNT; i++) {
+          particles.push(createParticle());
+        }
+      }
+
+      /**
+       * 动画帧：更新与绘制
+       */
+      function animate() {
+        ctx.fillStyle = '#0c0a09';
+        ctx.fillRect(0, 0, canvas.width, canvas.height);
+
+        /* 更新粒子位置 */
+        for (var i = 0; i < particles.length; i++) {
+          var p = particles[i];
+          p.x += p.vx;
+          p.y += p.vy;
+
+          /* 边界反弹 */
+          if (p.x < 0 || p.x > canvas.width) p.vx *= -1;
+          if (p.y < 0 || p.y > canvas.height) p.vy *= -1;
+
+          /* 绘制粒子 */
+          ctx.beginPath();
+          ctx.arc(p.x, p.y, p.size, 0, Math.PI * 2);
+          ctx.fillStyle = 'rgba(' + p.r + ',' + p.g + ',' + p.b + ',' + p.alpha + ')';
+          ctx.fill();
+        }
+
+        /* 绘制连线 */
+        for (var i = 0; i < particles.length; i++) {
+          for (var j = i + 1; j < particles.length; j++) {
+            var dx = particles[i].x - particles[j].x;
+            var dy = particles[i].y - particles[j].y;
+            var dist = Math.sqrt(dx * dx + dy * dy);
+            if (dist < LINK_DISTANCE) {
+              var alpha = (1 - dist / LINK_DISTANCE) * 0.15;
+              ctx.beginPath();
+              ctx.moveTo(particles[i].x, particles[i].y);
+              ctx.lineTo(particles[j].x, particles[j].y);
+              ctx.strokeStyle = 'rgba(13,148,136,' + alpha + ')';
+              ctx.lineWidth = 0.8;
+              ctx.stroke();
+            }
+          }
+        }
+
+        requestAnimationFrame(animate);
+      }
+
+      /* 监听窗口大小变化 */
+      window.addEventListener('resize', function() {
+        resize();
+      });
+
+      init();
+      animate();
+    })();
+
+    /* ========== 思维导图绘制 ========== */
+    (function initMindmap() {
+      /** @type {HTMLCanvasElement} */
+      var canvas = document.getElementById('mindmapCanvas');
+      if (!canvas) return;
+      var ctx = canvas.getContext('2d');
+
+      /**
+       * 调整画布尺寸
+       */
+      function resize() {
+        var rect = canvas.parentElement.getBoundingClientRect();
+        canvas.width = rect.width;
+        canvas.height = 420;
+      }
+
+      /**
+       * 绘制圆角矩形
+       * @param {number} x - 左上角x
+       * @param {number} y - 左上角y
+       * @param {number} w - 宽度
+       * @param {number} h - 高度
+       * @param {number} r - 圆角半径
+       */
+      function roundRect(x, y, w, h, r) {
+        ctx.beginPath();
+        ctx.moveTo(x + r, y);
+        ctx.lineTo(x + w - r, y);
+        ctx.arcTo(x + w, y, x + w, y + r, r);
+        ctx.lineTo(x + w, y + h - r);
+        ctx.arcTo(x + w, y + h, x + w - r, y + h, r);
+        ctx.lineTo(x + r, y + h);
+        ctx.arcTo(x, y + h, x, y + h - r, r);
+        ctx.lineTo(x, y + r);
+        ctx.arcTo(x, y, x + r, y, r);
+        ctx.closePath();
+      }
+
+      /**
+       * 绘制贝塞尔曲线关系线
+       * @param {number} x1 - 起点x
+       * @param {number} y1 - 起点y
+       * @param {number} x2 - 终点x
+       * @param {number} y2 - 终点y
+       * @param {string} color - 线条颜色
+       * @param {string} label - 关系标签
+       * @param {boolean} dashed - 是否虚线
+       */
+      function drawRelationLine(x1, y1, x2, y2, color, label, dashed) {
+        ctx.save();
+        ctx.strokeStyle = color;
+        ctx.lineWidth = 2.5;
+        if (dashed) {
+          ctx.setLineDash([8, 5]);
+        }
+
+        /* 计算贝塞尔控制点 */
+        var midX = (x1 + x2) / 2;
+        var cp1x = midX;
+        var cp1y = y1;
+        var cp2x = midX;
+        var cp2y = y2;
+
+        ctx.beginPath();
+        ctx.moveTo(x1, y1);
+        ctx.bezierCurveTo(cp1x, cp1y, cp2x, cp2y, x2, y2);
+        ctx.stroke();
+        ctx.setLineDash([]);
+
+        /* 绘制关系标签 */
+        if (label) {
+          var labelX = midX;
+          var labelY = (y1 + y2) / 2;
+          ctx.font = '11px system-ui';
+          ctx.fillStyle = color;
+          ctx.textAlign = 'center';
+          ctx.textBaseline = 'middle';
+
+          /* 标签背景 */
+          var metrics = ctx.measureText(label);
+          var padX = 6;
+          var padY = 3;
+          roundRect(
+            labelX - metrics.width / 2 - padX,
+            labelY - 8 - padY,
+            metrics.width + padX * 2,
+            16 + padY * 2,
+            4
+          );
+          ctx.fillStyle = 'rgba(12,10,9,0.85)';
+          ctx.fill();
+          ctx.strokeStyle = color;
+          ctx.lineWidth = 1;
+          ctx.stroke();
+
+          ctx.fillStyle = color;
+          ctx.fillText(label, labelX, labelY);
+        }
+
+        ctx.restore();
+      }
+
+      /**
+       * 绘制节点
+       * @param {number} x - 中心x
+       * @param {number} y - 中心y
+       * @param {string} text - 节点文字
+       * @param {string} type - 节点类型：root/normal/conclusion/composite
+       */
+      function drawNode(x, y, text, type) {
+        ctx.save();
+
+        var w = 140;
+        var h = 44;
+        var rx = x - w / 2;
+        var ry = y - h / 2;
+
+        if (type === 'root') {
+          /* 根节点：渐变背景 */
+          var grad = ctx.createLinearGradient(rx, ry, rx + w, ry + h);
+          grad.addColorStop(0, '#14b8a6');
+          grad.addColorStop(1, '#0f766e');
+          roundRect(rx, ry, w, h, 12);
+          ctx.fillStyle = grad;
+          ctx.fill();
+          /* 发光效果 */
+          ctx.shadowColor = 'rgba(13,148,136,0.4)';
+          ctx.shadowBlur = 20;
+          ctx.fill();
+          ctx.shadowBlur = 0;
+
+          ctx.fillStyle = '#fff';
+          ctx.font = 'bold 14px system-ui';
+          ctx.textAlign = 'center';
+          ctx.textBaseline = 'middle';
+          ctx.fillText(text, x, y);
+        } else if (type === 'normal') {
+          /* 普通节点 */
+          roundRect(rx, ry, w, h, 10);
+          ctx.fillStyle = '#44403c';
+          ctx.fill();
+          ctx.strokeStyle = '#57534e';
+          ctx.lineWidth = 1.5;
+          ctx.stroke();
+
+          ctx.fillStyle = '#d6d3d1';
+          ctx.font = '13px system-ui';
+          ctx.textAlign = 'center';
+          ctx.textBaseline = 'middle';
+          ctx.fillText(text, x, y);
+        } else if (type === 'conclusion') {
+          /* 结论节点 */
+          roundRect(rx, ry, w, h, 10);
+          ctx.fillStyle = 'rgba(251,191,36,0.1)';
+          ctx.fill();
+          ctx.strokeStyle = '#fbbf24';
+          ctx.lineWidth = 2;
+          ctx.stroke();
+
+          ctx.fillStyle = '#fbbf24';
+          ctx.font = 'bold 13px system-ui';
+          ctx.textAlign = 'center';
+          ctx.textBaseline = 'middle';
+          ctx.fillText(text, x, y);
+        } else if (type === 'composite') {
+          /* 复合节点：虚线边框 */
+          roundRect(rx, ry, w, h, 10);
+          ctx.fillStyle = 'rgba(139,92,246,0.08)';
+          ctx.fill();
+          ctx.setLineDash([6, 4]);
+          ctx.strokeStyle = '#8b5cf6';
+          ctx.lineWidth = 2;
+          ctx.stroke();
+          ctx.setLineDash([]);
+
+          ctx.fillStyle = '#c084fc';
+          ctx.font = '13px system-ui';
+          ctx.textAlign = 'center';
+          ctx.textBaseline = 'middle';
+          ctx.fillText(text, x, y);
+        }
+
+        ctx.restore();
+      }
+
+      /**
+       * 绘制完整思维导图
+       */
+      function drawMindmap() {
+        resize();
+        ctx.clearRect(0, 0, canvas.width, canvas.height);
+
+        /* 背景 */
+        ctx.fillStyle = '#0c0a09';
+        ctx.fillRect(0, 0, canvas.width, canvas.height);
+
+        var cw = canvas.width;
+        var ch = canvas.height;
+
+        /* 根节点位置 */
+        var rootX = cw * 0.35;
+        var rootY = ch * 0.5;
+
+        /* 子节点位置 */
+        var nodes = [
+          { x: cw * 0.7, y: ch * 0.15, text: '核心概念', type: 'normal' },
+          { x: cw * 0.72, y: ch * 0.45, text: '关键结论', type: 'conclusion' },
+          { x: cw * 0.68, y: ch * 0.75, text: '复合分析', type: 'composite' },
+          { x: cw * 0.15, y: ch * 0.2, text: '前置知识', type: 'normal' }
+        ];
+
+        /* 关系线定义 */
+        var relations = [
+          { from: 0, to: 1, color: '#2dd4bf', label: '父子', dashed: false },
+          { from: 0, to: 2, color: '#34d399', label: '支持', dashed: false },
+          { from: 0, to: 3, color: '#fbbf24', label: '前置', dashed: false },
+          { from: 4, to: 0, color: '#0d9488', label: '阐述', dashed: false }
+        ];
+
+        /* 绘制关系线（先画线再画节点，确保节点在上层） */
+        for (var i = 0; i < relations.length; i++) {
+          var rel = relations[i];
+          var fromNode, fromX, fromY;
+          if (rel.from === 0) {
+            fromX = rootX;
+            fromY = rootY;
+          } else {
+            fromX = nodes[rel.from - 1].x;
+            fromY = nodes[rel.from - 1].y;
+          }
+          var toX = nodes[rel.to - 1].x;
+          var toY = nodes[rel.to - 1].y;
+          drawRelationLine(fromX, fromY, toX, toY, rel.color, rel.label, rel.dashed);
+        }
+
+        /* 绘制矛盾关系线（从"核心概念"到"复合分析"） */
+        drawRelationLine(
+          nodes[0].x, nodes[0].y,
+          nodes[2].x, nodes[2].y,
+          '#f87171', '矛盾', false
+        );
+
+        /* 绘制引用关系线（从"前置知识"到"关键结论"） */
+        drawRelationLine(
+          nodes[3].x, nodes[3].y,
+          nodes[1].x, nodes[1].y,
+          '#c084fc', '引用', true
+        );
+
+        /* 绘制结论关系线（从"关键结论"到"复合分析"） */
+        drawRelationLine(
+          nodes[1].x, nodes[1].y,
+          nodes[2].x, nodes[2].y,
+          '#22d3ee', '结论', false
+        );
+
+        /* 绘制节点 */
+        drawNode(rootX, rootY, '思维导图', 'root');
+        for (var i = 0; i < nodes.length; i++) {
+          drawNode(nodes[i].x, nodes[i].y, nodes[i].text, nodes[i].type);
+        }
+      }
+
+      /* 监听窗口大小变化 */
+      window.addEventListener('resize', function() {
+        drawMindmap();
+      });
+
+      drawMindmap();
+    })();
+  </script>
+
+</body>
+</html>

@@ -2,6 +2,59 @@ import dotenv from 'dotenv';
 
 dotenv.config();
 
+/**
+ * AI 服务商配置接口
+ * 定义单个 AI 服务商的连接信息与优先级
+ */
+export interface AIProvider {
+  /** 服务商唯一标识，如 "zhipu"、"deepseek" */
+  id: string;
+  /** 服务商显示名称，如 "智谱GLM" */
+  name: string;
+  /** API 基础 URL */
+  url: string;
+  /** API 密钥 */
+  apiKey: string;
+  /** 默认模型名称 */
+  model: string;
+  /** 优先级，数值越小优先级越高 */
+  priority: number;
+}
+
+/**
+ * 解析 AI_PROVIDERS 环境变量
+ * 环境变量格式为 JSON 字符串数组，如：[{"id":"zhipu","name":"智谱GLM","url":"...","apiKey":"...","model":"glm-4-flash","priority":0}]
+ * 如果环境变量未设置，则基于现有 ZHIPU_API_KEY 构造默认 provider
+ * @returns AIProvider 数组
+ */
+function parseAIProviders(): AIProvider[] {
+  const envValue = process.env.AI_PROVIDERS;
+  if (envValue) {
+    try {
+      const parsed = JSON.parse(envValue) as AIProvider[];
+      if (Array.isArray(parsed) && parsed.length > 0) {
+        return parsed;
+      }
+    } catch (error: unknown) {
+      console.warn('⚠️ AI_PROVIDERS 环境变量解析失败，将使用默认配置:', error instanceof Error ? error.message : String(error));
+    }
+  }
+
+  const zhipuApiKey = process.env.ZHIPU_API_KEY || '';
+  if (zhipuApiKey) {
+    return [{
+      id: 'zhipu',
+      name: '智谱GLM',
+      url: 'https://open.bigmodel.cn/api/paas/v4',
+      apiKey: zhipuApiKey,
+      model: process.env.DEFAULT_MODEL || 'glm-4-flash',
+      priority: 0,
+    }];
+  }
+
+  return [];
+}
+
 export const config = {
   server: {
     port: parseInt(process.env.PORT || '3001', 10),
@@ -36,6 +89,7 @@ export const config = {
     embeddingModel: process.env.EMBEDDING_MODEL || 'text-embedding-3-small',
     systemPrompt: process.env.SYSTEM_PROMPT || '',
     fallbackChain: (process.env.AI_FALLBACK_CHAIN || 'zhipu,deepseek,openai').split(',').map(s => s.trim()).filter(s => s.length > 0),
+    aiProviders: parseAIProviders(),
   },
   
   redis: {

@@ -192,14 +192,15 @@ router.get('/export', workspaceMemberAuth, async (req: Request, res: Response) =
       workspaceId,
       nodes: nodes.map(({ workspaceId: _ws, createdBy: _cb, ...rest }) => rest),
       relations: relations.map(({ workspaceId: _ws, ...rest }) => rest),
-      conversations: conversations.map(conv => ({
+      // 异步从独立 messages 集合查询每个对话的消息，不再读取 conversation 文档的 messages 数组
+      conversations: await Promise.all(conversations.map(async (conv) => ({
         id: conv.id,
         nodeId: conv.nodeId,
-        messages: conv.messages,
+        messages: await conversationService.getConversationMessages(conv.id),
         contextConfig: conv.contextConfig,
         createdAt: conv.createdAt,
         updatedAt: conv.updatedAt,
-      })),
+      }))),
     };
 
     res.setHeader('Content-Type', 'application/json; charset=utf-8');

@@ -1,4 +1,5 @@
 import React, { useState, useCallback, useMemo, useEffect, useRef } from 'react';
+import { useTranslation } from 'react-i18next';
 import { 
   ReactFlow, 
   ReactFlowProvider,
@@ -9,15 +10,15 @@ import {
   useEdgesState,
   useReactFlow,
   BaseEdge,
-  getSmoothStepPath,
+  getBezierPath,
   Handle,
   Position,
   ConnectionLineType
 } from '@xyflow/react';
 import type { Connection, Node, Edge, NodeProps, EdgeProps } from '@xyflow/react';
 import '@xyflow/react/dist/style.css';
-import { Plus, MessageSquare, MessageSquarePlus, Edit3, Link, Layers, Trash2, Undo2, Redo2, GitBranch, LayoutGrid, Maximize2, Minimize2, RefreshCw, MousePointer2, Combine, MoreHorizontal } from 'lucide-react';
-import { useAppStore, RELATION_TYPE_LABELS } from '../../stores/appStore';
+import { Plus, MessageSquare, MessageSquarePlus, Edit3, Link, Layers, Trash2, Undo2, Redo2, GitBranch, LayoutGrid, Maximize2, Minimize2, RefreshCw, MousePointer2, Combine, MoreHorizontal, Lightbulb } from 'lucide-react';
+import { useAppStore, getRelationTypeLabels } from '../../stores/appStore';
 import { useToastStore } from '../../stores/toastStore';
 import NodeEditor from '../Node/NodeEditor';
 import RelationEditor from '../Node/RelationEditor';
@@ -32,14 +33,14 @@ import useKeyboardShortcuts from '../../hooks/useKeyboardShortcuts';
  * 关系类型颜色映射
  */
 const RELATION_COLORS: Record<string, string> = {
-  'parent-child': '#22c55e',
-  'supports': '#22c55e',
-  'contradicts': '#ef4444',
-  'prerequisite': '#f59e0b',
-  'elaborates': '#3b82f6',
-  'references': '#a855f7',
-  'conclusion': '#06b6d4',
-  'custom': '#eab308'
+  'parent-child': '#2dd4bf',
+  'supports': '#34d399',
+  'contradicts': '#f87171',
+  'prerequisite': '#fbbf24',
+  'elaborates': '#0d9488',
+  'references': '#c084fc',
+  'conclusion': '#22d3ee',
+  'custom': '#f59e0b'
 };
 
 interface CustomNodeData extends Record<string, unknown> {
@@ -60,7 +61,7 @@ type CustomNodeType = Node<CustomNodeData>;
 
 /**
  * 自定义边组件 - 显示关系标签
- * 使用 smoothstep 路径类型
+ * 使用 bezier 路径类型
  */
 const RelationEdge: React.FC<EdgeProps> = ({
   id,
@@ -74,17 +75,16 @@ const RelationEdge: React.FC<EdgeProps> = ({
   markerEnd,
   label
 }) => {
-  const [edgePath, labelX, labelY] = getSmoothStepPath({
+  const [edgePath, labelX, labelY] = getBezierPath({
     sourceX,
     sourceY,
     sourcePosition,
     targetX,
     targetY,
     targetPosition,
-    borderRadius: 16,
   });
 
-  const edgeColor = (style as React.CSSProperties).stroke as string || '#22c55e';
+  const edgeColor = (style as React.CSSProperties).stroke as string || '#2dd4bf';
   const strokeWidth = (style as React.CSSProperties).strokeWidth as number || 2;
   const strokeDasharray = (style as React.CSSProperties).strokeDasharray as string | undefined;
 
@@ -130,6 +130,7 @@ const RelationEdge: React.FC<EdgeProps> = ({
  * 自定义节点组件 - 包含连接点
  */
 const CustomNodeComponent: React.FC<NodeProps<CustomNodeType>> = ({ id, data, selected }) => {
+  const { t } = useTranslation('canvas');
   const nodeData = data as CustomNodeData;
   const isMobile = useIsMobile();
   const selectedNodeId = useAppStore(state => state.selectedNodeId);
@@ -143,8 +144,8 @@ const CustomNodeComponent: React.FC<NodeProps<CustomNodeType>> = ({ id, data, se
   const baseHandleStyle: React.CSSProperties = {
     width: handleSize,
     height: handleSize,
-    background: '#1e293b',
-    border: isConclusion ? '2px solid #f59e0b' : '2px solid #22c55e',
+    background: '#292524',
+    border: isConclusion ? '2px solid #fbbf24' : '2px solid #2dd4bf',
     borderRadius: '50%',
     opacity: handleOpacity,
     transition: 'opacity 0.2s ease',
@@ -174,6 +175,12 @@ const CustomNodeComponent: React.FC<NodeProps<CustomNodeType>> = ({ id, data, se
                 ? 'bg-dark-700 border-primary-500/50 hover:border-primary-400'
                 : 'bg-dark-700 border-dark-600 hover:border-primary-500'
       }`}
+      style={{
+        userSelect: 'none',
+        WebkitUserSelect: 'none',
+        WebkitTouchCallout: 'none',
+        touchAction: 'none',
+      }}
       {...longPressHandlers}
     >
       <Handle
@@ -189,7 +196,7 @@ const CustomNodeComponent: React.FC<NodeProps<CustomNodeType>> = ({ id, data, se
         position={Position.Left}
         id="left"
         className={isSelected ? 'selected' : ''}
-        style={{ ...baseHandleStyle, borderColor: '#3b82f6' }}
+        style={{ ...baseHandleStyle, borderColor: '#0d9488' }}
       />
 
       <Handle
@@ -197,7 +204,7 @@ const CustomNodeComponent: React.FC<NodeProps<CustomNodeType>> = ({ id, data, se
         position={Position.Right}
         id="right"
         className={isSelected ? 'selected' : ''}
-        style={{ ...baseHandleStyle, borderColor: '#3b82f6' }}
+        style={{ ...baseHandleStyle, borderColor: '#0d9488' }}
       />
 
       <Handle
@@ -221,7 +228,7 @@ const CustomNodeComponent: React.FC<NodeProps<CustomNodeType>> = ({ id, data, se
         <span className="text-white font-medium truncate flex-1">{nodeData.label}</span>
         {isConclusion && (
           <span className="text-xs bg-amber-500/20 text-amber-400 px-1.5 py-0.5 rounded-full border border-amber-500/30">
-            结论
+            {t('conclusion')}
           </span>
         )}
         {nodeData.messageCount !== undefined && nodeData.messageCount > 0 && (
@@ -236,7 +243,7 @@ const CustomNodeComponent: React.FC<NodeProps<CustomNodeType>> = ({ id, data, se
       {nodeData.isComposite && (
         <div className="flex items-center justify-between mt-2">
           <p className={`text-xs ${nodeData.isExpanded ? 'text-primary-300' : 'text-primary-400'}`}>
-            {nodeData.isExpanded ? '已展开' : `包含 ${nodeData.childCount} 个节点`}
+            {nodeData.isExpanded ? t('expanded') : t('containsNodes', { count: nodeData.childCount })}
           </p>
           <button
             onClick={(e) => {
@@ -248,7 +255,7 @@ const CustomNodeComponent: React.FC<NodeProps<CustomNodeType>> = ({ id, data, se
                 ? 'text-primary-300 hover:text-primary-200 hover:bg-primary-500/20' 
                 : 'text-primary-400 hover:text-primary-300 hover:bg-primary-600/20'
             }`}
-            title={nodeData.isExpanded ? '折叠节点' : '展开节点'}
+            title={nodeData.isExpanded ? t('collapseNode') : t('expandNode')}
           >
             {nodeData.isExpanded ? (
               <Minimize2 className="w-3.5 h-3.5" />
@@ -259,7 +266,7 @@ const CustomNodeComponent: React.FC<NodeProps<CustomNodeType>> = ({ id, data, se
         </div>
       )}
       {nodeData.isRoot && (
-        <p className="text-xs text-primary-400/70 mt-1">根节点</p>
+        <p className="text-xs text-primary-400/70 mt-1">{t('rootNode')}</p>
       )}
     </div>
   );
@@ -269,6 +276,7 @@ const CustomNodeComponent: React.FC<NodeProps<CustomNodeType>> = ({ id, data, se
  * 思维画布组件
  */
 const CanvasPageInner: React.FC = () => {
+  const { t } = useTranslation('canvas');
   const { 
     nodes: storeNodes, 
     relations, 
@@ -287,8 +295,6 @@ const CanvasPageInner: React.FC = () => {
     conversations,
     reloadWorkspaceData,
     requestOpenChat,
-    pendingSyncCount,
-    processSyncQueue,
     activePanel,
     setActivePanel
   } = useAppStore();
@@ -317,7 +323,7 @@ const CanvasPageInner: React.FC = () => {
   useEffect(() => {
     if (!isMobileMenuOpen) return;
     const handleClickOutside = (e: MouseEvent) => {
-      if (mobileMenuRef.current && !mobileMenuRef.current.contains(e.target as Node)) {
+      if (mobileMenuRef.current && e.target instanceof globalThis.Node && !mobileMenuRef.current.contains(e.target)) {
         setIsMobileMenuOpen(false);
       }
     };
@@ -338,7 +344,7 @@ const CanvasPageInner: React.FC = () => {
           type: 'custom',
           position: node.position || { x: 100, y: 100 },
           data: {
-            label: node.title || '未命名节点',
+            label: node.title || t('untitledNode'),
             summary: node.summary,
             nodeType: node.type || 'default',
             isRoot: node.isRoot,
@@ -359,9 +365,8 @@ const CanvasPageInner: React.FC = () => {
           }
         };
       });
-    console.log('[CanvasPage] flowNodes:', result.length, 'nodes');
     return result;
-  }, [nodesArray, conversations, expandCompositeNode, selectNode, requestOpenChat]);
+  }, [nodesArray, conversations, expandCompositeNode, selectNode, t]);
 
   /**
    * 转换关系为边
@@ -370,33 +375,23 @@ const CanvasPageInner: React.FC = () => {
     const edges: Edge[] = [];
     
     if (!relations || !Array.isArray(relations)) {
-      console.log('[CanvasPage] No relations array');
       return edges;
     }
-    
-    console.log('[CanvasPage] Processing relations:', relations.length);
-    
+
     const visibleNodeIds = new Set(nodesArray.filter(n => !n.hidden).map(n => n.id));
-    console.log('[CanvasPage] Visible node IDs:', Array.from(visibleNodeIds));
-    
+
     relations.forEach((relation) => {
       if (!relation || typeof relation !== 'object') {
-        console.log('[CanvasPage] Invalid relation object');
         return;
       }
-      
+
       if (!relation.type || !relation.id || !relation.sourceId || !relation.targetId) {
-        console.log('[CanvasPage] Missing relation fields:', relation);
         return;
       }
-      
+
       const sourceVisible = visibleNodeIds.has(relation.sourceId);
       const targetVisible = visibleNodeIds.has(relation.targetId);
-      
-      console.log('[CanvasPage] Relation:', relation.id, 
-        'source:', relation.sourceId, sourceVisible ? 'visible' : 'hidden',
-        'target:', relation.targetId, targetVisible ? 'visible' : 'hidden');
-      
+
       if (!sourceVisible || !targetVisible) {
         return;
       }
@@ -408,7 +403,7 @@ const CanvasPageInner: React.FC = () => {
         id: relation.id,
         source: relation.sourceId,
         target: relation.targetId,
-        type: 'smoothstep',
+        type: 'bezier',
         animated: false,
         style: { 
           stroke: color, 
@@ -425,7 +420,7 @@ const CanvasPageInner: React.FC = () => {
       };
       
       if (!isParentChild) {
-        edge.label = RELATION_TYPE_LABELS[relation.type]?.label || relation.type;
+        edge.label = getRelationTypeLabels()[relation.type]?.label || relation.type;
         edge.labelStyle = { fill: '#fff', fontSize: 10, fontWeight: 500 };
         edge.labelBgStyle = { fill: color, fillOpacity: 0.9 };
         edge.labelBgPadding = [4, 2] as [number, number];
@@ -433,7 +428,6 @@ const CanvasPageInner: React.FC = () => {
       }
       
       edges.push(edge);
-      console.log('[CanvasPage] Created edge:', edge.id, 'from', edge.source, 'to', edge.target);
     });
     
     const expandedCompositeNodes = nodesArray.filter(n => n.isComposite && n.expanded && n.compositeChildren);
@@ -446,7 +440,7 @@ const CanvasPageInner: React.FC = () => {
               id: `composite-${compositeNode.id}-${childId}`,
               source: compositeNode.id,
               target: childId,
-              type: 'smoothstep',
+              type: 'bezier',
               sourceHandle: 'bottom',
               targetHandle: 'top',
               style: { 
@@ -464,7 +458,6 @@ const CanvasPageInner: React.FC = () => {
       }
     });
     
-    console.log('[CanvasPage] Total edges created:', edges.length);
     return edges;
   }, [relations, nodesArray]);
 
@@ -475,12 +468,10 @@ const CanvasPageInner: React.FC = () => {
    * 同步store变化到ReactFlow
    */
   useEffect(() => {
-    console.log('[CanvasPage] Syncing nodes:', flowNodes.length);
     setNodes(flowNodes);
   }, [flowNodes, setNodes]);
 
   useEffect(() => {
-    console.log('[CanvasPage] Syncing edges:', flowEdges.length);
     setEdges(flowEdges);
   }, [flowEdges, setEdges]);
 
@@ -517,7 +508,6 @@ const CanvasPageInner: React.FC = () => {
    */
   const onConnect = useCallback(
     (params: Connection) => {
-      console.log('[CanvasPage] onConnect:', params);
       if (params.source && params.target) {
         setPendingConnection({ source: params.source, target: params.target });
         setIsRelationEditorOpen(true);
@@ -530,10 +520,10 @@ const CanvasPageInner: React.FC = () => {
    * 创建根节点
    */
   const handleCreateRootNode = useCallback(() => {
-    const id = createRootNode('新对话');
+    const id = createRootNode(t('newConversation'));
     selectNode(id);
     requestOpenChat(id);
-  }, [createRootNode, selectNode, requestOpenChat]);
+  }, [createRootNode, selectNode, requestOpenChat, t]);
 
   /**
    * 创建子节点
@@ -543,10 +533,10 @@ const CanvasPageInner: React.FC = () => {
       return;
     }
     
-    const id = createChildNode(selectedNodeId, '新分支');
+    const id = createChildNode(selectedNodeId, t('newBranch'));
     selectNode(id);
     requestOpenChat(id);
-  }, [selectedNodeId, createChildNode, selectNode, requestOpenChat]);
+  }, [selectedNodeId, createChildNode, selectNode, requestOpenChat, t]);
 
   /**
    * 节点点击处理
@@ -621,10 +611,10 @@ const CanvasPageInner: React.FC = () => {
    * 上下文菜单操作：创建分支
    */
   const handleContextMenuBranch = useCallback((nodeId: string) => {
-    const id = createChildNode(nodeId, '新分支');
+    const id = createChildNode(nodeId, t('newBranch'));
     selectNode(id);
     requestOpenChat(id);
-  }, [createChildNode, selectNode, requestOpenChat]);
+  }, [createChildNode, selectNode, requestOpenChat, t]);
 
   /**
    * 上下文菜单操作：复制节点
@@ -632,10 +622,10 @@ const CanvasPageInner: React.FC = () => {
   const handleContextMenuCopy = useCallback((nodeId: string) => {
     const storeNode = storeNodes.get(nodeId);
     if (storeNode) {
-      const title = storeNode.title || '未命名节点';
+      const title = storeNode.title || t('untitledNode');
       navigator.clipboard.writeText(title).catch(() => {});
     }
-  }, [storeNodes]);
+  }, [storeNodes, t]);
 
   /**
    * 上下文菜单操作：删除节点
@@ -698,21 +688,18 @@ const CanvasPageInner: React.FC = () => {
     if (isSyncing) return;
     setIsSyncing(true);
     try {
-      if (pendingSyncCount > 0) {
-        await processSyncQueue();
-      }
       const success = await reloadWorkspaceData();
       if (success) {
-        useToastStore.getState().addToast('success', '数据同步成功');
+        useToastStore.getState().addToast('success', t('dataSyncSuccess'));
       } else {
-        useToastStore.getState().addToast('error', '数据同步失败');
+        useToastStore.getState().addToast('error', t('dataSyncFailed'));
       }
     } catch {
-      useToastStore.getState().addToast('error', '数据同步失败');
+      useToastStore.getState().addToast('error', t('dataSyncFailed'));
     } finally {
       setIsSyncing(false);
     }
-  }, [isSyncing, reloadWorkspaceData, pendingSyncCount, processSyncQueue]);
+  }, [isSyncing, reloadWorkspaceData, t]);
 
   /**
    * 打开节点编辑器
@@ -777,7 +764,7 @@ const CanvasPageInner: React.FC = () => {
 
   const nodeTypes = useMemo(() => ({ custom: CustomNodeComponent }), []);
   const edgeTypes = useMemo(() => ({ 
-    smoothstep: RelationEdge,
+    bezier: RelationEdge,
     relation: RelationEdge 
   }), []);
 
@@ -786,11 +773,11 @@ const CanvasPageInner: React.FC = () => {
 
       {isMobile ? (
         <div className="absolute z-10 top-2 left-2 right-2">
-          <div className="flex items-center gap-1 p-2 glass rounded-xl">
+          <div className="flex flex-wrap items-center gap-1 p-2 glass rounded-xl">
             <button
               onClick={handleCreateRootNode}
               className="p-2.5 rounded-lg hover:bg-dark-700/50 text-dark-300 transition-colors"
-              title="新建对话"
+              title={t('newConversationTooltip')}
             >
               <MessageSquarePlus className="w-5 h-5" />
             </button>
@@ -798,7 +785,7 @@ const CanvasPageInner: React.FC = () => {
               onClick={handleCreateChildNode}
               disabled={!selectedNodeId}
               className="p-2.5 rounded-lg hover:bg-dark-700/50 disabled:opacity-40 disabled:cursor-not-allowed text-dark-300 transition-colors"
-              title="创建分支"
+              title={t('createBranch')}
             >
               <GitBranch className="w-5 h-5" />
             </button>
@@ -806,7 +793,7 @@ const CanvasPageInner: React.FC = () => {
               onClick={openNodeEditor}
               disabled={!selectedNodeId}
               className="p-2.5 rounded-lg hover:bg-dark-700/50 disabled:opacity-40 disabled:cursor-not-allowed text-dark-300 transition-colors"
-              title="编辑节点"
+              title={t('editNode')}
             >
               <Edit3 className="w-5 h-5" />
             </button>
@@ -814,7 +801,7 @@ const CanvasPageInner: React.FC = () => {
               onClick={handleDeleteNode}
               disabled={!selectedNodeId}
               className="p-2.5 rounded-lg hover:bg-dark-700/50 disabled:opacity-40 disabled:cursor-not-allowed text-dark-300 transition-colors"
-              title="删除 (Delete)"
+              title={t('deleteWithShortcut')}
             >
               <Trash2 className="w-5 h-5" />
             </button>
@@ -822,20 +809,15 @@ const CanvasPageInner: React.FC = () => {
               onClick={handleSyncData}
               disabled={isSyncing}
               className="p-2.5 rounded-lg hover:bg-dark-700/50 disabled:opacity-40 disabled:cursor-not-allowed text-dark-300 transition-colors relative"
-              title="同步数据 (Ctrl+S)"
+              title={t('syncDataWithShortcut')}
             >
               <RefreshCw className={`w-5 h-5 ${isSyncing ? 'animate-spin' : ''}`} />
-              {pendingSyncCount > 0 && (
-                <span className="absolute -top-1 -right-1 bg-red-500 text-white text-[10px] font-bold min-w-[16px] h-[16px] flex items-center justify-center rounded-full px-0.5 leading-none">
-                  {pendingSyncCount > 99 ? '99+' : pendingSyncCount}
-                </span>
-              )}
             </button>
             <div className="relative ml-auto" ref={mobileMenuRef}>
               <button
                 onClick={() => setIsMobileMenuOpen(prev => !prev)}
                 className={`p-2.5 rounded-lg hover:bg-dark-700/50 text-dark-300 transition-colors ${isMobileMenuOpen ? 'bg-dark-700/50' : ''}`}
-                title="更多操作"
+                title={t('moreActions')}
               >
                 <MoreHorizontal className="w-5 h-5" />
               </button>
@@ -846,14 +828,14 @@ const CanvasPageInner: React.FC = () => {
                     className="w-full flex items-center gap-3 p-2.5 rounded-lg hover:bg-dark-700/50 text-dark-300 transition-colors"
                   >
                     <Link className="w-5 h-5" />
-                    <span className="text-sm">创建关系</span>
+                    <span className="text-sm">{t('createRelation')}</span>
                   </button>
                   <button
                     onClick={() => { toggleSelectMode(); setIsMobileMenuOpen(false); }}
                     className={`w-full flex items-center gap-3 p-2.5 rounded-lg hover:bg-dark-700/50 text-dark-300 transition-colors ${isSelectMode ? 'bg-primary-600/20 text-primary-400' : ''}`}
                   >
                     <MousePointer2 className="w-5 h-5" />
-                    <span className="text-sm">多选模式</span>
+                    <span className="text-sm">{t('multiSelectMode')}</span>
                   </button>
                   <button
                     onClick={() => { handleCreateComposite(); setIsMobileMenuOpen(false); }}
@@ -861,14 +843,14 @@ const CanvasPageInner: React.FC = () => {
                     className="w-full flex items-center gap-3 p-2.5 rounded-lg hover:bg-dark-700/50 disabled:opacity-40 disabled:cursor-not-allowed text-dark-300 transition-colors"
                   >
                     <Combine className="w-5 h-5" />
-                    <span className="text-sm">聚合{isSelectMode && selectedForComposite.length >= 2 ? `(${selectedForComposite.length})` : ''}</span>
+                    <span className="text-sm">{t('aggregate')}{isSelectMode && selectedForComposite.length >= 2 ? `(${selectedForComposite.length})` : ''}</span>
                   </button>
                   <button
                     onClick={() => { autoLayout(); setIsMobileMenuOpen(false); }}
                     className="w-full flex items-center gap-3 p-2.5 rounded-lg hover:bg-dark-700/50 text-dark-300 transition-colors"
                   >
                     <LayoutGrid className="w-5 h-5" />
-                    <span className="text-sm">自动布局</span>
+                    <span className="text-sm">{t('autoLayout')}</span>
                   </button>
                   <div className="my-1 h-px bg-dark-700" />
                   <button
@@ -877,7 +859,7 @@ const CanvasPageInner: React.FC = () => {
                     className="w-full flex items-center gap-3 p-2.5 rounded-lg hover:bg-dark-700/50 disabled:opacity-40 disabled:cursor-not-allowed text-dark-300 transition-colors"
                   >
                     <Undo2 className="w-5 h-5" />
-                    <span className="text-sm">撤销</span>
+                    <span className="text-sm">{t('undo')}</span>
                   </button>
                   <button
                     onClick={() => { redo(); setIsMobileMenuOpen(false); }}
@@ -885,7 +867,7 @@ const CanvasPageInner: React.FC = () => {
                     className="w-full flex items-center gap-3 p-2.5 rounded-lg hover:bg-dark-700/50 disabled:opacity-40 disabled:cursor-not-allowed text-dark-300 transition-colors"
                   >
                     <Redo2 className="w-5 h-5" />
-                    <span className="text-sm">重做</span>
+                    <span className="text-sm">{t('redo')}</span>
                   </button>
                 </div>
               )}
@@ -899,7 +881,7 @@ const CanvasPageInner: React.FC = () => {
               <button
                 onClick={handleCreateRootNode}
                 className="p-2 rounded-lg hover:bg-dark-700/50 text-dark-300 transition-colors"
-                title="新建对话"
+                title={t('newConversationTooltip')}
               >
                 <MessageSquarePlus className="w-[18px] h-[18px]" />
               </button>
@@ -907,7 +889,7 @@ const CanvasPageInner: React.FC = () => {
                 onClick={handleCreateChildNode}
                 disabled={!selectedNodeId}
                 className="p-2 rounded-lg hover:bg-dark-700/50 disabled:opacity-40 disabled:cursor-not-allowed text-dark-300 transition-colors"
-                title="创建分支"
+                title={t('createBranch')}
               >
                 <GitBranch className="w-[18px] h-[18px]" />
               </button>
@@ -918,14 +900,14 @@ const CanvasPageInner: React.FC = () => {
                 onClick={openNodeEditor}
                 disabled={!selectedNodeId}
                 className="p-2 rounded-lg hover:bg-dark-700/50 disabled:opacity-40 disabled:cursor-not-allowed text-dark-300 transition-colors"
-                title="编辑节点"
+                title={t('editNode')}
               >
                 <Edit3 className="w-[18px] h-[18px]" />
               </button>
               <button
                 onClick={() => setIsRelationEditorOpen(true)}
                 className="p-2 rounded-lg hover:bg-dark-700/50 text-dark-300 transition-colors"
-                title="创建关系"
+                title={t('createRelation')}
               >
                 <Link className="w-[18px] h-[18px]" />
               </button>
@@ -933,7 +915,7 @@ const CanvasPageInner: React.FC = () => {
                 onClick={handleDeleteNode}
                 disabled={!selectedNodeId}
                 className="p-2 rounded-lg hover:bg-dark-700/50 disabled:opacity-40 disabled:cursor-not-allowed text-dark-300 transition-colors"
-                title="删除 (Delete)"
+                title={t('deleteWithShortcut')}
               >
                 <Trash2 className="w-[18px] h-[18px]" />
               </button>
@@ -943,7 +925,7 @@ const CanvasPageInner: React.FC = () => {
               <button
                 onClick={toggleSelectMode}
                 className={`p-2 rounded-lg hover:bg-dark-700/50 text-dark-300 transition-colors ${isSelectMode ? 'bg-primary-600/20 text-primary-400' : ''}`}
-                title="多选模式"
+                title={t('multiSelectMode')}
               >
                 <MousePointer2 className="w-[18px] h-[18px]" />
               </button>
@@ -951,14 +933,14 @@ const CanvasPageInner: React.FC = () => {
                 onClick={handleCreateComposite}
                 disabled={!isSelectMode || selectedForComposite.length < 2}
                 className="p-2 rounded-lg hover:bg-dark-700/50 disabled:opacity-40 disabled:cursor-not-allowed text-dark-300 transition-colors"
-                title="聚合"
+                title={t('aggregate')}
               >
                 <Combine className="w-[18px] h-[18px]" />
               </button>
               <button
                 onClick={autoLayout}
                 className="p-2 rounded-lg hover:bg-dark-700/50 text-dark-300 transition-colors"
-                title="自动布局"
+                title={t('autoLayout')}
               >
                 <LayoutGrid className="w-[18px] h-[18px]" />
               </button>
@@ -969,20 +951,15 @@ const CanvasPageInner: React.FC = () => {
                 onClick={handleSyncData}
                 disabled={isSyncing}
                 className="p-2 rounded-lg hover:bg-dark-700/50 disabled:opacity-40 disabled:cursor-not-allowed text-dark-300 transition-colors relative"
-                title="同步数据 (Ctrl+S)"
+                title={t('syncDataWithShortcut')}
               >
                 <RefreshCw className={`w-[18px] h-[18px] ${isSyncing ? 'animate-spin' : ''}`} />
-                {pendingSyncCount > 0 && (
-                  <span className="absolute -top-1 -right-1 bg-red-500 text-white text-[10px] font-bold min-w-[16px] h-[16px] flex items-center justify-center rounded-full px-0.5 leading-none">
-                    {pendingSyncCount > 99 ? '99+' : pendingSyncCount}
-                  </span>
-                )}
               </button>
               <button
                 onClick={undo}
                 disabled={!canUndoValue}
                 className="p-2 rounded-lg hover:bg-dark-700/50 disabled:opacity-40 disabled:cursor-not-allowed text-dark-300 transition-colors"
-                title="撤销 (Ctrl+Z)"
+                title={t('undoWithShortcut')}
               >
                 <Undo2 className="w-[18px] h-[18px]" />
               </button>
@@ -990,7 +967,7 @@ const CanvasPageInner: React.FC = () => {
                 onClick={redo}
                 disabled={!canRedoValue}
                 className="p-2 rounded-lg hover:bg-dark-700/50 disabled:opacity-40 disabled:cursor-not-allowed text-dark-300 transition-colors"
-                title="重做 (Ctrl+Y)"
+                title={t('redoWithShortcut')}
               >
                 <Redo2 className="w-[18px] h-[18px]" />
               </button>
@@ -1016,26 +993,26 @@ const CanvasPageInner: React.FC = () => {
         minZoom={0.1}
         maxZoom={2}
         defaultEdgeOptions={{
-          type: 'smoothstep',
+          type: 'bezier',
           animated: false
         }}
-        connectionLineType={ConnectionLineType.SmoothStep}
+        connectionLineType={ConnectionLineType.Bezier}
         panOnDrag={true}
         zoomOnPinch={true}
         panOnScroll={false}
         preventScrolling={!isMobile}
         style={{ background: 'transparent' }}
       >
-        <Controls className="bg-dark-800 border-dark-700 rounded-xl overflow-hidden [&>button]:bg-dark-700 [&>button]:border-dark-600 [&>button]:text-white [&>button:hover]:bg-dark-600" />
+        <Controls className="bg-dark-800 border-dark-700 rounded-xl overflow-hidden [&>button]:bg-dark-700 [&>button]:border-dark-600 [&>button]:text-white [&>button:hover]:bg-dark-600 !bottom-4 md:!bottom-4" />
         {!isMobile && (
           <MiniMap
             className="bg-dark-800 border-dark-700 rounded-xl overflow-hidden"
             nodeColor={(node) => {
               const data = node.data as CustomNodeData;
-              if (data?.nodeType === 'conclusion') return '#f59e0b';
-              if (data?.isRoot) return '#0ea5e9';
+              if (data?.nodeType === 'conclusion') return '#fbbf24';
+              if (data?.isRoot) return '#14b8a6';
               if (data?.isComposite) return '#8b5cf6';
-              return '#475569';
+              return '#57534e';
             }}
             maskColor="rgba(0, 0, 0, 0.8)"
           />
@@ -1065,18 +1042,17 @@ const CanvasPageInner: React.FC = () => {
               <MessageSquare className="w-12 h-12 text-white" />
             </div>
             <h2 className="text-2xl font-bold text-white mb-3 tracking-tight">
-              开始构建你的思维网络
+              {t('startBuildingMindNetwork')}
             </h2>
             <p className="text-dark-400 mb-6 max-w-md text-sm leading-relaxed">
-              创建对话节点，通过分支展开新的讨论方向，<br />
-              构建属于你的非线性思维导图
+              {t('buildMindNetworkDesc')}
             </p>
             <button
               onClick={handleCreateRootNode}
               className="pointer-events-auto btn-primary px-6 py-3 mx-auto"
             >
               <Plus className="w-5 h-5" />
-              <span>创建第一个对话</span>
+              <span>{t('createFirstConversation')}</span>
             </button>
           </div>
         </div>
@@ -1085,12 +1061,12 @@ const CanvasPageInner: React.FC = () => {
       {/* 工具提示 */}
       {!isMobile && (
         <div className="absolute bottom-4 left-4 text-dark-500 text-xs bg-dark-800/90 px-3 py-2 rounded-lg border border-dark-600/50">
-          <span className="text-dark-400">双击节点开始对话</span>
+          <span className="text-dark-400">{t('doubleClickToChat')}</span>
           <span className="mx-2">•</span>
-          <span className="text-dark-400">右键/长按节点更多操作</span>
+          <span className="text-dark-400">{t('rightClickForMore')}</span>
           <span className="mx-2">•</span>
-          <span className="text-primary-400">点击「创建对话」添加根节点</span>
-          {isSelectMode && <span className="ml-2 text-primary-400">• 多选模式已开启</span>}
+          <span className="text-primary-400">{t('clickToCreateRoot')}</span>
+          {isSelectMode && <span className="ml-2 text-primary-400">• {t('multiSelectEnabled')}</span>}
         </div>
       )}
 
@@ -1099,13 +1075,13 @@ const CanvasPageInner: React.FC = () => {
         <div className={`text-dark-500 text-xs bg-dark-800 px-3 py-2 rounded-lg border border-dark-600/50 ${
           isMobile ? 'absolute bottom-2 left-2 right-2 text-center' : 'absolute bottom-4 right-4'
         }`}>
-          <span className="text-dark-400">节点: {nodes.length}</span>
+          <span className="text-dark-400">{t('nodeCount', { count: nodes.length })}</span>
           <span className="mx-2">•</span>
-          <span className="text-dark-400">关系: {relations.length}</span>
+          <span className="text-dark-400">{t('relationCount', { count: relations.length })}</span>
           {!isMobile && (
             <>
               <span className="mx-2">•</span>
-              <span className="text-dark-400">边: {edges.length}</span>
+              <span className="text-dark-400">{t('edgeCount', { count: edges.length })}</span>
             </>
           )}
         </div>
@@ -1135,10 +1111,10 @@ const CanvasPageInner: React.FC = () => {
 
       <ConfirmDialog
         isOpen={deleteConfirmOpen}
-        title="删除节点"
-        message="确定要删除此节点及其所有子节点吗？此操作不可撤销。"
-        confirmText="删除"
-        cancelText="取消"
+        title={t('deleteNodeTitle')}
+        message={t('deleteNodeMessage')}
+        confirmText={t('delete')}
+        cancelText={t('cancel')}
         onConfirm={handleConfirmDeleteNode}
         onCancel={handleCancelDeleteNode}
       />

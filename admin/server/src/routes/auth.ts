@@ -77,7 +77,7 @@ router.post('/init', async (req: Request, res: Response) => {
       },
       security: {
         secretQuestion: '世界上最帅的人是谁',
-        secretAnswer: '罗楚瑞',
+        secretAnswer: process.env.SECURITY_ANSWER || '',
         enableHoneypot: true,
       },
       updatedAt: new Date(),

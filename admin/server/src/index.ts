@@ -5,9 +5,12 @@ import morgan from 'morgan';
 import helmet from 'helmet';
 import session from 'express-session';
 import bcryptjs from 'bcryptjs';
+import crypto from 'crypto';
 import { config } from './config';
 import { adminDB } from './config/database';
+import { initializeRedis, disconnectRedis } from './data/redis';
 import { apiLimiter } from './middleware/rateLimit';
+import { ipWhitelistMiddleware } from './middleware/ipWhitelist';
 import authRouter from './routes/auth';
 import dashboardRouter from './routes/dashboard';
 import usersRouter from './routes/users';
@@ -20,6 +23,11 @@ import honeypotRouter from './routes/honeypot';
 import ipBansRouter from './routes/ipBans';
 import feedbacksRouter from './routes/feedbacks';
 import aiUsageRouter from './routes/aiUsage';
+import auditLogsRouter from './routes/auditLogs';
+import adminAccountsRouter from './routes/adminAccounts';
+import userSegmentsRouter from './routes/userSegments';
+import searchRouter from './routes/search';
+import announcementsRouter from './routes/announcements';
 
 const app = express();
 
@@ -43,10 +51,21 @@ app.use(session({
   cookie: {
     maxAge: config.session.maxAge,
     httpOnly: true,
-    secure: false,
+    secure: process.env.NODE_ENV === 'production',
     sameSite: 'lax',
   },
 }));
+
+/**
+ * 健康检查端点
+ * 放在 IP 白名单中间件之前，确保健康检查不受白名单限制
+ */
+app.get('/api/health', (_req, res) => {
+  res.json({ status: 'ok', timestamp: new Date().toISOString() });
+});
+
+// IP 白名单中间件：在 session 之后、API 路由之前注册，拦截非白名单 IP
+app.use('/api', ipWhitelistMiddleware);
 
 app.use('/api/auth', authRouter);
 app.use('/api/honeypot', honeypotRouter);
@@ -60,13 +79,11 @@ app.use('/api/admin/export', exportRouter);
 app.use('/api/admin/ip-bans', ipBansRouter);
 app.use('/api/admin/feedbacks', feedbacksRouter);
 app.use('/api/admin/ai-usage', aiUsageRouter);
-
-/**
- * 健康检查端点
- */
-app.get('/api/health', (_req, res) => {
-  res.json({ status: 'ok', timestamp: new Date().toISOString() });
-});
+app.use('/api/admin/audit-logs', auditLogsRouter);
+app.use('/api/admin/admin-accounts', adminAccountsRouter);
+app.use('/api/admin/user-segments', userSegmentsRouter);
+app.use('/api/admin/announcements', announcementsRouter);
+app.use('/api/admin/search', searchRouter);
 
 /**
  * 404 处理 - 返回 JSON 而不是 HTML
@@ -76,13 +93,15 @@ app.use('/api/*', (_req, res) => {
 });
 
 async function start() {
-  if (!config.session.secret || config.session.secret === 'deepmindmap-admin-session-secret') {
-    console.warn('⚠️ 安全警告：SESSION_SECRET未设置或使用默认值，建议配置环境变量');
+  if (!process.env.SESSION_SECRET) {
+    console.warn('⚠️ 安全警告：SESSION_SECRET环境变量未设置，已使用随机密钥（重启后已登录用户session将失效），建议配置SESSION_SECRET环境变量');
   }
 
   try {
     await adminDB.connect();
     console.log('✅ 后台系统数据库连接成功');
+
+    await initializeRedis();
 
     await autoInitAdmin();
 
@@ -97,12 +116,34 @@ async function start() {
   }
 }
 
+process.on('SIGINT', async () => {
+  console.log('🔄 正在关闭后台系统...');
+  await disconnectRedis();
+  await adminDB.disconnect();
+  process.exit(0);
+});
+
+process.on('SIGTERM', async () => {
+  console.log('🔄 正在关闭后台系统...');
+  await disconnectRedis();
+  await adminDB.disconnect();
+  process.exit(0);
+});
+
 async function autoInitAdmin() {
   try {
     const existingConfig = await adminDB.findOne('admin_configs', {});
     if (existingConfig) return;
 
-    const defaultPassword = process.env.ADMIN_INIT_PASSWORD || 'admin123';
+    // 读取管理员初始密码：未配置环境变量时生成随机临时密码（仅用于首次启动），避免使用弱默认密码
+    const envPassword = process.env.ADMIN_INIT_PASSWORD;
+    let defaultPassword: string;
+    if (envPassword) {
+      defaultPassword = envPassword;
+    } else {
+      console.error('❌ 安全警告：ADMIN_INIT_PASSWORD环境变量未配置，已生成随机临时密码，请登录后立即修改！');
+      defaultPassword = crypto.randomBytes(16).toString('hex');
+    }
     const passwordHash = await bcryptjs.hash(defaultPassword, config.security.bcryptRounds);
 
     await adminDB.insertOne('admin_configs', {
@@ -116,7 +157,7 @@ async function autoInitAdmin() {
       },
       security: {
         secretQuestion: process.env.SECRET_QUESTION || '世界上最帅的人是谁',
-        secretAnswer: process.env.SECRET_ANSWER || '罗楚瑞',
+        secretAnswer: process.env.SECURITY_ANSWER || '',
         enableHoneypot: true,
       },
       updatedAt: new Date(),

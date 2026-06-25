@@ -1,4 +1,5 @@
 import { v4 as uuidv4 } from 'uuid';
+import crypto from 'crypto';
 import { mongoDBService } from '../data/mongodb/connection';
 import { Workspace, Visitor, WorkspaceMember, WorkspaceType, MemberRole } from '../types';
 
@@ -31,7 +32,9 @@ class WorkspaceService {
     if (this.initialized) return;
 
     if (!mongoDBService.isConnected()) {
-      console.log('[WorkspaceService] MongoDB未连接，跳过初始化加载');
+      if (process.env.NODE_ENV !== 'production') {
+        console.log('[WorkspaceService] MongoDB未连接，跳过初始化加载');
+      }
       this.initialized = true;
       return;
     }
@@ -41,13 +44,17 @@ class WorkspaceService {
       for (const visitor of visitors) {
         this.visitorCache.set(visitor.id, { data: visitor, loadedAt: Date.now() });
       }
-      console.log(`[WorkspaceService] 从MongoDB加载了 ${visitors.length} 个访客`);
+      if (process.env.NODE_ENV !== 'production') {
+        console.log(`[WorkspaceService] 从MongoDB加载了 ${visitors.length} 个访客`);
+      }
 
       const workspaces = await mongoDBService.find<Workspace>('workspaces', {});
       for (const workspace of workspaces) {
         this.workspaceCache.set(workspace.id, { data: workspace, loadedAt: Date.now() });
       }
-      console.log(`[WorkspaceService] 从MongoDB加载了 ${workspaces.length} 个工作区`);
+      if (process.env.NODE_ENV !== 'production') {
+        console.log(`[WorkspaceService] 从MongoDB加载了 ${workspaces.length} 个工作区`);
+      }
 
       this.initialized = true;
     } catch (error) {
@@ -60,7 +67,7 @@ class WorkspaceService {
    * 注册或更新访客信息
    * @param visitorId - 访客ID（可选，不提供则自动生成）
    * @param nickname - 访客昵称
-   * @returns 访客数据
+   * @returns 访客数据（包含 visitorSecret 字段，用于客户端签名生成）
    */
   async registerVisitor(visitorId?: string, nickname?: string): Promise<Visitor> {
     await this.ensureInitialized();
@@ -72,6 +79,10 @@ class WorkspaceService {
           existing.nickname = nickname;
         }
         existing.lastSeen = new Date();
+        // 兼容历史访客：若缺少 visitorSecret 则补生成并持久化
+        if (!existing.visitorSecret) {
+          existing.visitorSecret = this.generateVisitorSecret();
+        }
         this.visitorCache.set(visitorId, { data: existing, loadedAt: Date.now() });
         await this.persistVisitor(existing);
         return existing;
@@ -84,11 +95,21 @@ class WorkspaceService {
       lastSeen: new Date(),
       workspaces: [],
       createdAt: new Date(),
+      visitorSecret: this.generateVisitorSecret(),
     };
 
     this.visitorCache.set(newVisitor.id, { data: newVisitor, loadedAt: Date.now() });
     await this.persistVisitor(newVisitor);
     return newVisitor;
+  }
+
+  /**
+   * 生成访客签名密钥
+   * 使用 crypto.randomBytes 生成 32 字节随机数，输出为 64 位 hex 字符串
+   * @returns 64 字符长度的 hex 密钥字符串
+   */
+  private generateVisitorSecret(): string {
+    return crypto.randomBytes(32).toString('hex');
   }
 
   /**

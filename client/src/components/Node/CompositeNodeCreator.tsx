@@ -1,5 +1,6 @@
 import React, { useState } from 'react';
 import { X, Layers, Check } from 'lucide-react';
+import { useTranslation } from 'react-i18next';
 import { useAppStore, type NodeData } from '../../stores/appStore';
 import { useToastStore } from '../../stores/toastStore';
 import useIsMobile from '../../hooks/useIsMobile';
@@ -21,6 +22,7 @@ const CompositeNodeCreator: React.FC<CompositeNodeCreatorProps> = ({
   selectedNodeIds,
   allNodes
 }) => {
+  const { t } = useTranslation('canvas');
   const { createCompositeNode } = useAppStore();
   const [title, setTitle] = useState('');
   const isMobile = useIsMobile();
@@ -52,7 +54,7 @@ const CompositeNodeCreator: React.FC<CompositeNodeCreatorProps> = ({
       <div className={`flex items-center justify-between px-6 py-4 border-b border-dark-700 ${isMobile ? 'h-14' : ''}`}>
         <div className="flex items-center gap-2">
           <Layers className="w-5 h-5 text-primary-400" />
-          <h2 className="text-lg font-semibold text-white">创建复合节点</h2>
+          <h2 className="text-lg font-semibold text-white">{t('createCompositeNode')}</h2>
         </div>
         <button
           onClick={onClose}
@@ -64,7 +66,7 @@ const CompositeNodeCreator: React.FC<CompositeNodeCreatorProps> = ({
 
       <div className={`p-6 space-y-5 overflow-y-auto ${isMobile ? 'flex-1' : ''}`}>
         <div className="space-y-2">
-          <label className="text-sm font-medium text-dark-300">复合节点标题</label>
+          <label className="text-sm font-medium text-dark-300">{t('compositeNodeTitle')}</label>
           <input
             type="text"
             value={title}
@@ -111,7 +113,7 @@ const CompositeNodeCreator: React.FC<CompositeNodeCreatorProps> = ({
           className="flex items-center gap-2 px-4 py-2.5 bg-primary-600 text-white rounded-xl hover:bg-primary-700 disabled:opacity-50 disabled:cursor-not-allowed transition-colors min-h-[44px]"
         >
           <Layers className="w-4 h-4" />
-          创建复合节点
+          {t('createCompositeNode')}
         </button>
       </div>
     </>

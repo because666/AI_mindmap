@@ -1,4 +1,5 @@
 import axios from 'axios';
+import type { SegmentRule, GrayRule, AIProvider } from '../types';
 
 const API_BASE_URL = import.meta.env.VITE_API_URL || '/api';
 
@@ -101,12 +102,49 @@ export const dashboardApi = {
   getStats: () => typedGet<unknown>('/dashboard/stats'),
   getTrends: (type: string, days: number) =>
     typedGet<{ dates: string[]; values: number[] }>('/dashboard/trends', { params: { type, days } }),
+  getRetentionTrends: (days: number = 30) =>
+    typedGet<{
+      dates: string[];
+      dau: number[];
+      wau: number[];
+      mau: number[];
+      nextDayRetention: number[];
+      day7Retention: number[];
+      day30Retention: number[];
+    }>('/dashboard/retention', { params: { days } }),
+  getConversionFunnel: () =>
+    typedGet<{
+      steps: Array<{ name: string; count: number; rate: number }>;
+    }>('/dashboard/funnel'),
 };
 
 export const usersApi = {
   getList: (params: { page?: number; limit?: number; status?: string; search?: string }) =>
     typedGet<unknown>('/admin/users', { params }),
   getDetail: (id: string) => typedGet<unknown>(`/admin/users/${id}`),
+  /**
+   * 获取用户消息轨迹时间线
+   * @param id - 用户ID
+   * @param params - 分页参数
+   * @returns 分页的时间线事件列表
+   */
+  getUserTimeline: (id: string, params: { page?: number; limit?: number }) =>
+    typedGet<{
+      items: Array<{
+        type: 'node_created' | 'conversation' | 'conclusion' | 'export';
+        timestamp: string;
+        detail: {
+          nodeId?: string;
+          nodeTitle?: string;
+          messagePreview?: string;
+          exportType?: string;
+        };
+      }>;
+      total: number;
+      page: number;
+      limit: number;
+      totalPages: number;
+    }>(`/admin/users/${id}/timeline`, { params }),
   ban: (id: string, reason: string, duration: number) =>
     typedPost<void>(`/admin/users/${id}/ban`, { reason, duration }),
   unban: (id: string, reason: string) =>
@@ -136,6 +174,21 @@ export const workspacesApi = {
     typedPost<void>(`/admin/workspaces/${id}/close`, { reason }),
   notify: (id: string, title: string, content: string) =>
     typedPost<void>(`/admin/workspaces/${id}/notify`, { title, content }),
+  /**
+   * 获取工作区排行榜数据
+   * @param params.sortBy - 排序维度，默认 nodeCount
+   * @param params.limit - 返回数量，默认 20
+   * @returns WorkspaceRankingItem[] 排行列表
+   */
+  getRanking: (params: { sortBy?: string; limit?: number }) =>
+    typedGet<unknown>('/admin/workspaces/ranking', { params }),
+  /**
+   * 切换工作区特别关注标记
+   * @param id - 工作区 ID
+   * @param starred - 是否特别关注
+   */
+  toggleStar: (id: string, starred: boolean) =>
+    typedPut<void>(`/admin/workspaces/${id}/star`, { starred }),
 };
 
 export const auditApi = {
@@ -164,6 +217,7 @@ export const pushApi = {
     targetType?: string;
     targetUserIds?: string[];
     forceRead?: boolean;
+    displayType?: 'banner' | 'dot';
   }) => typedPost<{ messageId: string }>('/admin/push/broadcast', data),
   getMessages: (params: { page?: number; limit?: number }) =>
     typedGet<unknown>('/admin/push/messages', { params }),
@@ -179,12 +233,36 @@ export const settingsApi = {
   changePassword: (oldPassword: string, newPassword: string, confirmPassword: string) =>
     typedPost<void>('/admin/settings/password', { oldPassword, newPassword, confirmPassword }),
   getFeatures: () => typedGet<unknown>('/admin/settings/features'),
-  updateFeatures: (features: Record<string, boolean>) =>
+  /**
+   * 更新功能开关（含灰度规则）
+   * @param features - 功能开关数据，包含 enabled 状态和 grayRules
+   */
+  updateFeatures: (features: Record<string, unknown>) =>
     typedPut<void>('/admin/settings/features', features),
+  /**
+   * 评估指定功能对特定用户的可见性
+   * @param key - 功能开关键名
+   * @param params - 评估参数，包含 userId/ip/workspaceId
+   * @returns 评估结果，包含 visible 和 reason
+   */
+  evaluateFeature: (key: string, params: { userId?: string; ip?: string; workspaceId?: string }) =>
+    typedGet<{ key: string; visible: boolean; reason: string }>(`/admin/settings/features/${key}/evaluate`, { params }),
+  /**
+   * 获取 AI 服务商配置列表
+   * @returns AIProvider 数组
+   */
+  getAIProviders: () =>
+    typedGet<AIProvider[]>('/admin/settings/ai-providers'),
+  /**
+   * 保存 AI 服务商配置
+   * @param providers - AI 服务商配置列表
+   */
+  updateAIProviders: (providers: AIProvider[]) =>
+    typedPut<void>('/admin/settings/ai-providers', providers),
 };
 
 export const feedbacksApi = {
-  getList: (params: { page?: number; pageSize?: number; type?: string; status?: string; startDate?: string; endDate?: string; keyword?: string }) =>
+  getList: (params: { page?: number; pageSize?: number; type?: string; status?: string; startDate?: string; endDate?: string; keyword?: string; assignee?: string }) =>
     typedGet<unknown>('/admin/feedbacks', { params }),
   getStats: () =>
     typedGet<unknown>('/admin/feedbacks/stats'),
@@ -192,6 +270,30 @@ export const feedbacksApi = {
     typedPatch<void>(`/admin/feedbacks/${id}/status`, { status }),
   export: (params: { type?: string; status?: string; startDate?: string; endDate?: string }) =>
     api.post('/admin/feedbacks/export', params, { responseType: 'blob' }),
+  /**
+   * 分配反馈工单给指定管理员
+   * @param id - 反馈ID
+   * @param assignee - 被分配人昵称
+   * @param slaHours - SLA 时长（小时），默认 48
+   * @returns 分配结果，包含 assignee、assignedAt、slaHours、slaDeadline
+   */
+  assignFeedback: (id: string, assignee: string, slaHours?: number) =>
+    typedPut<{ assignee: string; assignedAt: string; slaHours: number; slaDeadline: string }>(`/admin/feedbacks/${id}/assign`, { assignee, slaHours }),
+  /**
+   * 添加内部备注
+   * @param id - 反馈ID
+   * @param content - 备注内容
+   * @returns 新增的备注数据，包含 content、author、createdAt
+   */
+  addNote: (id: string, content: string) =>
+    typedPost<{ content: string; author: string; createdAt: string }>(`/admin/feedbacks/${id}/notes`, { content }),
+  /**
+   * 获取内部备注列表
+   * @param id - 反馈ID
+   * @returns 备注列表
+   */
+  getNotes: (id: string) =>
+    typedGet<unknown>(`/admin/feedbacks/${id}/notes`),
 };
 
 export const aiUsageApi = {
@@ -231,6 +333,156 @@ export const exportApi = {
     typedPost<{ exportId: string; status: string }>('/admin/export', { type, format, filter }),
   getStatus: (id: string) => typedGet<unknown>(`/admin/export/${id}/status`),
   download: (id: string) => api.get(`/admin/export/${id}/download`, { responseType: 'blob' }),
+};
+
+export const exportCenterApi = {
+  getTasks: (params: { status?: string; page?: number; limit?: number }) =>
+    typedGet<{
+      items: unknown[];
+      total: number;
+      page: number;
+      limit: number;
+      totalPages: number;
+    }>('/admin/export', { params }),
+  retryTask: (id: string) =>
+    typedPost<{ exportId: string; status: string }>(`/admin/export/${id}/retry`),
+};
+
+export const auditLogsApi = {
+  getLogs: (params: { page?: number; pageSize?: number; action?: string; adminNickname?: string; startDate?: string; endDate?: string }) =>
+    typedGet<unknown>('/admin/audit-logs', { params }),
+  getStats: () =>
+    typedGet<unknown>('/admin/audit-logs/stats'),
+  exportCSV: (queryString: string) =>
+    api.get(`/admin/audit-logs/export?${queryString}`, { responseType: 'blob' }),
+};
+
+export const adminAccountsApi = {
+  getAccounts: (params: { page?: number; limit?: number }) =>
+    typedGet<{
+      items: unknown[];
+      total: number;
+      page: number;
+      limit: number;
+      totalPages: number;
+    }>('/admin/admin-accounts', { params }),
+  createAccount: (data: { username: string; password: string; nickname: string; role: string }) =>
+    typedPost<{ id: string }>('/admin/admin-accounts', data),
+  updateAccount: (id: string, data: { nickname?: string; role?: string; isActive?: boolean }) =>
+    typedPut<void>(`/admin/admin-accounts/${id}`, data),
+  deleteAccount: (id: string) =>
+    typedDelete<void>(`/admin/admin-accounts/${id}`),
+};
+
+export const userSegmentsApi = {
+  listTags: () =>
+    typedGet<unknown>('/admin/user-segments/tags'),
+  createTag: (name: string, color: string, description?: string) =>
+    typedPost<unknown>('/admin/user-segments/tags', { name, color, description }),
+  updateTag: (id: string, name: string, color: string, description?: string) =>
+    typedPut<unknown>(`/admin/user-segments/tags/${id}`, { name, color, description }),
+  deleteTag: (id: string) =>
+    typedDelete<void>(`/admin/user-segments/tags/${id}`),
+  addTagToUser: (userId: string, tagId: string) =>
+    typedPost<void>(`/admin/user-segments/users/${userId}/tags/${tagId}`),
+  removeTagFromUser: (userId: string, tagId: string) =>
+    typedDelete<void>(`/admin/user-segments/users/${userId}/tags/${tagId}`),
+  getUsersByTag: (tagId: string, page: number, limit: number) =>
+    typedGet<unknown>(`/admin/user-segments/users/by-tag/${tagId}`, { params: { page, limit } }),
+  listSegments: () =>
+    typedGet<unknown>('/admin/user-segments/segments'),
+  createSegment: (name: string, description: string | undefined, rule: SegmentRule, autoUpdate: boolean) =>
+    typedPost<unknown>('/admin/user-segments/segments', { name, description, rule, autoUpdate }),
+  updateSegment: (id: string, name: string, description: string | undefined, rule: SegmentRule) =>
+    typedPut<unknown>(`/admin/user-segments/segments/${id}`, { name, description, rule }),
+  deleteSegment: (id: string) =>
+    typedDelete<void>(`/admin/user-segments/segments/${id}`),
+  executeSegment: (id: string) =>
+    typedPost<unknown>(`/admin/user-segments/segments/${id}/execute`),
+  getSegmentUsers: (segmentId: string, page: number, limit: number) =>
+    typedGet<unknown>(`/admin/user-segments/segments/${segmentId}/users`, { params: { page, limit } }),
+};
+
+export const searchApi = {
+  /**
+   * 全局搜索接口
+   * 根据搜索词查询用户和工作区
+   * @param q - 搜索关键词
+   * @returns 包含 users 和 workspaces 的搜索结果
+   */
+  search: (q: string) =>
+    typedGet<{
+      users: Array<{ id: string; nickname: string; email: string }>;
+      workspaces: Array<{ id: string; name: string }>;
+    }>('/admin/search', { params: { q } }),
+};
+
+export const announcementsApi = {
+  /**
+   * 获取公告列表（分页+筛选）
+   * @param params - 分页与筛选参数
+   * @returns 分页的公告列表
+   */
+  getList: (params: { page?: number; limit?: number; search?: string; type?: string; isActive?: string }) =>
+    typedGet<{
+      items: Array<{
+        _id: string;
+        title: string;
+        content: string;
+        type: 'info' | 'warning' | 'success' | 'error';
+        targetGroups?: string[];
+        startDate: string;
+        endDate: string;
+        isActive: boolean;
+        createdBy: string;
+        createdAt: string;
+        updatedAt: string;
+      }>;
+      total: number;
+      page: number;
+      limit: number;
+      totalPages: number;
+    }>('/admin/announcements', { params }),
+  /**
+   * 创建公告
+   * @param data - 公告数据
+   * @returns 创建结果，包含新公告ID
+   */
+  create: (data: {
+    title: string;
+    content: string;
+    type: 'info' | 'warning' | 'success' | 'error';
+    targetGroups?: string[];
+    startDate: string;
+    endDate: string;
+    isActive: boolean;
+  }) => typedPost<{ id: string }>('/admin/announcements', data),
+  /**
+   * 更新公告
+   * @param id - 公告ID
+   * @param data - 更新字段
+   */
+  update: (id: string, data: {
+    title?: string;
+    content?: string;
+    type?: 'info' | 'warning' | 'success' | 'error';
+    targetGroups?: string[];
+    startDate?: string;
+    endDate?: string;
+  }) => typedPut<void>(`/admin/announcements/${id}`, data),
+  /**
+   * 删除公告
+   * @param id - 公告ID
+   */
+  delete: (id: string) =>
+    typedDelete<void>(`/admin/announcements/${id}`),
+  /**
+   * 切换公告启用/禁用状态
+   * @param id - 公告ID
+   * @returns 切换后的最新状态
+   */
+  toggle: (id: string) =>
+    typedPut<{ isActive: boolean }>(`/admin/announcements/${id}/toggle`),
 };
 
 export default api;

@@ -77,9 +77,9 @@ const CONFIG: ConfigType = {
   FPS_CHECK_INTERVAL: 2000,
   FPS_LOW_TRIGGER_COUNT: 3,
   FPS_HIGH_TRIGGER_COUNT: 5,
-  COLOR_R: 14,
-  COLOR_G: 165,
-  COLOR_B: 233,
+  COLOR_R: 13,
+  COLOR_G: 148,
+  COLOR_B: 136,
   FLOW_COUNT: 3,
   FLOW_SPEED_MIN: 0.1,
   FLOW_SPEED_MAX: 0.3,
@@ -91,9 +91,9 @@ const CONFIG: ConfigType = {
 
 /** 流光颜色数组（项目品牌色系） */
 const FLOW_COLORS: readonly { r: number; g: number; b: number }[] = [
-  { r: 14, g: 165, b: 233 },
-  { r: 99, g: 102, b: 241 },
-  { r: 56, g: 189, b: 248 },
+  { r: 13, g: 148, b: 136 },
+  { r: 217, g: 119, b: 6 },
+  { r: 45, g: 212, b: 191 },
 ];
 
 /**
@@ -445,7 +445,7 @@ const ParticleNetworkBackground: FC = () => {
      * 主动画循环：清屏、绘制流光、更新粒子、绘制连线与粒子、更新 FPS
      */
     const animate = (): void => {
-      ctx.fillStyle = `rgba(2,6,23,${CONFIG.TRAIL_ALPHA})`;
+      ctx.fillStyle = `rgba(12,10,9,${CONFIG.TRAIL_ALPHA})`;
       ctx.fillRect(0, 0, canvas.width, canvas.height);
 
       updateFlows();

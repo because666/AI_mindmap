@@ -31,7 +31,12 @@ DEFAULT_FILES_TO_UPLOAD: List[Tuple[str, Optional[str]]] = [
     ("server/src/routes/nodes.ts", None),
     ("server/src/routes/conversations.ts", None),
     ("server/src/services/conversationService.ts", None),
-    # 非线性对话体验 - 客户端
+    # 非线性对话体验 - 客户端 - 埋点 SDK 及引用
+    ("client/src/services/tracker.ts", None),
+    ("client/src/App.tsx", None),
+    ("client/src/stores/nodeStore.ts", None),
+    ("client/src/stores/visitorWorkspaceStore.ts", None),
+    # 非线性对话体验 - 客户端 - 其他
     ("client/src/services/api.ts", None),
     ("client/src/stores/chatStore.ts", None),
     ("client/src/utils/extensionDirections.ts", None),

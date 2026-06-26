@@ -351,8 +351,11 @@ const ChatPanel: React.FC<ChatPanelProps> = ({ nodeId }) => {
   const pendingExtensionSendRef = useRef<{ targetNodeId: string; direction: string } | null>(null);
   /** 分叉提示检测结果，null 表示当前不展示提示 */
   const [branchSuggestion, setBranchSuggestion] = useState<BranchSuggestionResult | null>(null);
-  /** 已忽略分叉提示的节点ID集合，切换回该节点时不再重复提示 */
-  const [dismissedNodeIds, setDismissedNodeIds] = useState<Set<string>>(new Set());
+  /**
+   * 最近被忽略的分叉提示标识
+   * 用于避免同一输入内容反复弹出相同提示；输入变化或发送消息后会重置
+   */
+  const dismissedSuggestionRef = useRef<{ inputHash: string; suggestionKey: string } | null>(null);
   /** 分叉检测防抖计时器引用 */
   const debounceTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
   /** 待自动发送到分叉子节点的问题（节点切换后通过 effect 触发发送） */
@@ -479,11 +482,12 @@ const ChatPanel: React.FC<ChatPanelProps> = ({ nodeId }) => {
 
   /**
    * 节点切换时重置分叉提示状态
-   * 清除当前展示的提示，但保留 dismissedNodeIds（切回原节点时仍保持忽略状态）
+   * 清除当前展示的提示和最近忽略记录，让用户在新节点可以正常收到提示
    * 同时清理防抖计时器，避免切换节点后触发旧节点的检测
    */
   useEffect(() => {
     setBranchSuggestion(null);
+    dismissedSuggestionRef.current = null;
     if (debounceTimerRef.current) {
       clearTimeout(debounceTimerRef.current);
       debounceTimerRef.current = null;
@@ -1032,6 +1036,8 @@ const ChatPanel: React.FC<ChatPanelProps> = ({ nodeId }) => {
       }
       setBranchSuggestion(null);
     }
+    // 发送消息后重置忽略记录，允许下一条输入继续触发提示
+    dismissedSuggestionRef.current = null;
 
     const userMessage = input.trim();
     setInput('');
@@ -1085,14 +1091,19 @@ const ChatPanel: React.FC<ChatPanelProps> = ({ nodeId }) => {
     const newValue = target.value;
     setInput(newValue);
 
+    // 输入清空时重置忽略记录，允许重新输入后正常提示
+    if (newValue.trim() === '') {
+      dismissedSuggestionRef.current = null;
+    }
+
     // 防抖检测：500ms 后调用 detectBranchSuggestion
     if (debounceTimerRef.current) {
       clearTimeout(debounceTimerRef.current);
     }
     debounceTimerRef.current = setTimeout(() => {
       debounceTimerRef.current = null;
-      // 当前无节点或节点已被忽略，直接清除提示
-      if (!nodeId || dismissedNodeIds.has(nodeId)) {
+      // 当前无节点，直接清除提示
+      if (!nodeId) {
         setBranchSuggestion(null);
         return;
       }
@@ -1105,7 +1116,15 @@ const ChatPanel: React.FC<ChatPanelProps> = ({ nodeId }) => {
       try {
         const result = detectBranchSuggestion(newValue, currentNodeTitle, recentMessages);
         if (result && result.shouldSuggest) {
-          setBranchSuggestion(result);
+          const inputHash = newValue.trim();
+          const suggestionKey = `${result.subTopic}|${result.triggerRule}`;
+          const dismissed = dismissedSuggestionRef.current;
+          // 仅当与最近忽略的提示为同一输入且同一子主题时才不展示，避免同一输入反复打扰
+          if (dismissed && dismissed.inputHash === inputHash && dismissed.suggestionKey === suggestionKey) {
+            setBranchSuggestion(null);
+          } else {
+            setBranchSuggestion(result);
+          }
         } else {
           setBranchSuggestion(null);
         }
@@ -1256,8 +1275,9 @@ const ChatPanel: React.FC<ChatPanelProps> = ({ nodeId }) => {
       if (userQuestion) {
         pendingBranchQuestionSendRef.current = { targetNodeId: childId, question: userQuestion };
       }
-      // 清空输入框与提示
+      // 清空输入框与提示，并重置忽略记录
       setInput('');
+      dismissedSuggestionRef.current = null;
       if (textareaRef.current) {
         textareaRef.current.style.height = 'auto';
       }
@@ -1269,17 +1289,17 @@ const ChatPanel: React.FC<ChatPanelProps> = ({ nodeId }) => {
 
   /**
    * 处理用户点击分叉提示"忽略"按钮
-   * 将当前 nodeId 加入 dismissedNodeIds，清除提示，
-   * 并上报 branch_suggestion_dismissed 埋点。埋点异常静默处理。
+   * 记录当前输入和提示标识，仅对同一输入的同一提示避免重复展示；
+   * 用户修改输入或发送下一条消息后仍可触发新提示。
+   * 同时上报 branch_suggestion_dismissed 埋点。埋点异常静默处理。
    */
   const handleBranchSuggestionDismiss = () => {
     if (!nodeId || !branchSuggestion) return;
 
-    setDismissedNodeIds((prev) => {
-      const next = new Set(prev);
-      next.add(nodeId);
-      return next;
-    });
+    dismissedSuggestionRef.current = {
+      inputHash: input.trim(),
+      suggestionKey: `${branchSuggestion.subTopic}|${branchSuggestion.triggerRule}`,
+    };
     try {
       track(TRACK_EVENT_BRANCH_SUGGESTION_DISMISSED, {
         nodeId,

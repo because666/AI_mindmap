@@ -12,10 +12,10 @@
   - [x] SubTask 3.2: 通过 SFTP/SCP 上传到服务器 `/tmp/deploy-artifacts`
   - [x] SubTask 3.3: 在服务器上备份原 `client/dist` 并解压新的构建产物
   - [x] SubTask 3.4: 确认线上静态资源已更新（可选：清除 CDN/浏览器缓存）
-- [ ] Task 4: 线上移动端效果验证
-  - [ ] SubTask 4.1: 在浏览器开发者工具的移动端视口（宽度 < 768px）下访问线上地址
-  - [ ] SubTask 4.2: 确认节点连接点明显变小，不再大面积遮挡节点文本
-  - [ ] SubTask 4.3: 确认选中/未选中状态下的透明度行为正常
+- [x] Task 4: 线上移动端效果验证
+  - [x] SubTask 4.1: 在浏览器开发者工具的移动端视口（宽度 < 768px）下访问线上地址
+  - [x] SubTask 4.2: 确认节点连接点明显变小，不再大面积遮挡节点文本
+  - [x] SubTask 4.3: 确认选中/未选中状态下的透明度行为正常
 
 # Task Dependencies
 - Task 2 依赖于 Task 1

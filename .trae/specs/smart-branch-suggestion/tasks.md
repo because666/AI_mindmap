@@ -20,6 +20,13 @@
   - [x] SubTask 2.4: 点击"忽略"或直接发送消息时关闭提示
   - [x] SubTask 2.5: 提示频率控制：当前节点忽略一次后不再触发，切换节点后重置
 
+- [x] Task 5: 优化提示频率控制
+  - [x] SubTask 5.1: 修改 `ChatPanel.tsx`，将"忽略"从"当前节点永久禁用"改为"仅对当前输入内容生效"
+  - [x] SubTask 5.2: 用户忽略提示后清空当前输入内容时，重新检测新输入
+  - [x] SubTask 5.3: 用户发送消息后，允许下一条输入继续触发提示
+  - [x] SubTask 5.4: 只有当同一输入内容重复触发时，才避免重复提示
+  - [x] SubTask 5.5: 构建与回归测试通过
+
 - [x] Task 3: 分叉建议埋点
   - [x] SubTask 3.1: 在 `client/src/services/tracker.ts` 新增 3 个事件常量：`branch_suggestion_shown`、`branch_suggestion_accepted`、`branch_suggestion_dismissed`
   - [x] SubTask 3.2: 提示展示时上报 `branch_suggestion_shown`（载荷：nodeId、suggestionText、triggerRule）

@@ -138,6 +138,8 @@ const CustomNodeComponent: React.FC<NodeProps<CustomNodeType>> = ({ id, data, se
   const selectedNodeId = useAppStore(state => state.selectedNodeId);
   const isSelected = selectedNodeId === id;
   const isConclusion = nodeData.nodeType === 'conclusion';
+  /** 节点摘要展开状态：默认折叠只显示一行，点击切换为展开显示完整摘要 */
+  const [isSummaryExpanded, setIsSummaryExpanded] = useState(false);
 
   const handleOpacity: number = isMobile ? (isSelected ? 1 : 0.4) : (isSelected ? 1 : 0);
   const handleSize: number = isMobile ? 12 : 8;
@@ -240,7 +242,23 @@ const CustomNodeComponent: React.FC<NodeProps<CustomNodeType>> = ({ id, data, se
         )}
       </div>
       {nodeData.summary && (
-        <p className="text-xs text-dark-300 truncate">{nodeData.summary}</p>
+        <div
+          className="mt-1 cursor-pointer select-none"
+          onClick={(e) => {
+            // 阻止事件冒泡，避免点击摘要时触发节点选中或拖动结束逻辑
+            e.stopPropagation();
+            setIsSummaryExpanded((prev) => !prev);
+          }}
+          title={isSummaryExpanded ? t('collapseSummary') : t('expandSummary')}
+        >
+          <p
+            className={`text-xs text-dark-300 ${
+              isSummaryExpanded ? 'whitespace-pre-wrap break-words' : 'truncate'
+            }`}
+          >
+            {nodeData.summary}
+          </p>
+        </div>
       )}
       {nodeData.isComposite && (
         <div className="flex items-center justify-between mt-2">

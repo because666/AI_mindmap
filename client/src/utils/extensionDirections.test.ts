@@ -117,4 +117,48 @@ describe('parseExtensionDirections', () => {
     expect(result.directions).toEqual(['方向一', '方向二', '方向三']);
     expect(result.cleanContent).toBe('正文前面\n\n');
   });
+
+  it('应解析带圈数字格式的 3 个延伸方向', () => {
+    const content = `🌱 延伸方向：① 泰勒展开的推导 ② 拉格朗日中值定理的应用 ③ 函数极值判定方法`;
+
+    const result = parseExtensionDirections(content);
+
+    expect(result.directions).toEqual([
+      '泰勒展开的推导',
+      '拉格朗日中值定理的应用',
+      '函数极值判定方法',
+    ]);
+    expect(result.cleanContent).toBe('');
+  });
+
+  it('应解析带圈数字格式的 4 个延伸方向', () => {
+    const content = `🌱 延伸方向：① 方向一 ② 方向二 ③ 方向三 ④ 方向四`;
+
+    const result = parseExtensionDirections(content);
+
+    expect(result.directions).toEqual(['方向一', '方向二', '方向三', '方向四']);
+    expect(result.cleanContent).toBe('');
+  });
+
+  it('应去除带圈数字方向条目中的尾部补充描述', () => {
+    const content = `🌱 延伸方向：① 泰勒展开的推导 — 深入理解多项式逼近 ② 拉格朗日中值定理的应用：实际案例分析 ③ 函数极值判定方法`;
+
+    const result = parseExtensionDirections(content);
+
+    expect(result.directions).toEqual([
+      '泰勒展开的推导',
+      '拉格朗日中值定理的应用',
+      '函数极值判定方法',
+    ]);
+  });
+
+  it('应正确处理带圈数字格式与正文的混合内容', () => {
+    const body = '这是回答正文。';
+    const content = `${body}🌱 延伸方向：① 方向一 ② 方向二`;
+
+    const result = parseExtensionDirections(content);
+
+    expect(result.directions).toEqual(['方向一', '方向二']);
+    expect(result.cleanContent).toBe(body);
+  });
 });

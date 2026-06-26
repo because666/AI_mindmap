@@ -41,6 +41,8 @@
   "cancel": "取消",
   "nodeTitle": "节点标题",
   "nodeSummary": "节点摘要（可选）",
+  "expandSummary": "展开摘要",
+  "collapseSummary": "折叠摘要",
   "confirmDeleteNode": "确定要删除此节点及其所有子节点吗？",
   "sourceNode": "源节点",
   "relationType": "关系类型",

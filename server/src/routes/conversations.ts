@@ -419,7 +419,10 @@ router.post('/extract-conclusion', workspaceMemberAuth, aiTaskRateLimit, async (
 
     if (sourceMessages.length === 0) {
       const conversation = await conversationService.getConversationByNodeId(nodeId);
-      sourceMessages = conversation?.messages || [];
+      // 消息独立集合迁移后，conversation.messages 始终为空，需从独立 messages 集合查询
+      if (conversation) {
+        sourceMessages = await conversationService.getConversationMessages(conversation.id);
+      }
     }
 
     const chatMessages = sourceMessages

@@ -218,6 +218,16 @@ class ConversationService {
       }
     }
 
+    // 消息独立集合迁移后，conversation 文档不再维护 messages 数组，
+    // 需要从独立 messages 集合按 conversationId 查询并附加到每个对话，
+    // 以保证客户端通过对话列表接口能正常显示消息（页面刷新或工作区切换后不丢失）
+    // 使用 Promise.all 并行查询所有对话的消息，提升查询性能
+    await Promise.all(
+      results.map(async (conv: Conversation) => {
+        conv.messages = await this.getConversationMessages(conv.id);
+      })
+    );
+
     return results;
   }
 

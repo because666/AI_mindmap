@@ -26,16 +26,23 @@ REQUIRED_ENV_VARS: List[str] = [
 
 # 默认上传文件映射（本地相对路径，远程绝对路径；None 表示按项目目录自动推导）
 DEFAULT_FILES_TO_UPLOAD: List[Tuple[str, Optional[str]]] = [
-    ("server/src/routes/feedback.ts", None),
-    ("server/src/types/push.ts", None),
-    ("server/src/services/pushService.ts", None),
-    ("server/src/index.ts", None),
-    ("admin/server/src/routes/feedbacks.ts", None),
-    ("admin/server/src/routes/push.ts", None),
-    ("admin/server/src/services/cacheNotify.ts", None),
-    ("admin/server/src/types/index.ts", None),
-    ("admin/client/src/types/index.ts", None),
-    ("admin/client/src/pages/Feedback/FeedbackPage.tsx", None),
+    # 非线性对话体验 - 服务端
+    ("server/src/config/prompts.ts", None),
+    ("server/src/routes/nodes.ts", None),
+    ("server/src/routes/conversations.ts", None),
+    ("server/src/services/conversationService.ts", None),
+    # 非线性对话体验 - 客户端
+    ("client/src/services/api.ts", None),
+    ("client/src/stores/chatStore.ts", None),
+    ("client/src/utils/extensionDirections.ts", None),
+    ("client/src/components/Canvas/CanvasPage.tsx", None),
+    ("client/src/components/Chat/ChatPanel.tsx", None),
+    ("client/src/components/Chat/MindMapThumbnail.tsx", None),
+    # i18n
+    ("client/src/locales/canvas/en.json", None),
+    ("client/src/locales/canvas/zh.json", None),
+    ("client/src/locales/chat/en.json", None),
+    ("client/src/locales/chat/zh.json", None),
 ]
 
 

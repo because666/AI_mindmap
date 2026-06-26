@@ -41,6 +41,8 @@
   "cancel": "Cancel",
   "nodeTitle": "Node Title",
   "nodeSummary": "Node Summary (Optional)",
+  "expandSummary": "Expand Summary",
+  "collapseSummary": "Collapse Summary",
   "confirmDeleteNode": "Are you sure you want to delete this node and all its children?",
   "sourceNode": "Source Node",
   "relationType": "Relation Type",

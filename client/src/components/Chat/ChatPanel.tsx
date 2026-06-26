@@ -4,10 +4,13 @@ import i18n from 'i18next';
 import { Send, Loader2, Trash2, User, Bot, Sparkles, GitBranch, MessageSquare, Copy, Check, Plus, Brain, ChevronDown, ChevronUp, Paperclip, X, FileText, File, Image, RefreshCw, Lightbulb, AlertTriangle, Settings } from 'lucide-react';
 import { useAppStore } from '../../stores/appStore';
 import { useAPIConfigStore } from '../../stores/apiConfigStore';
+import { useChatStore } from '../../stores/chatStore';
+import type { BranchEndCheckArgs } from '../../stores/chatStore';
 import { useToastStore } from '../../stores/toastStore';
 import { chatService } from '../../services/chatService';
-import { fileApi, conversationApi } from '../../services/api';
+import { fileApi, conversationApi, getLocalWorkspaceId, nodeApi } from '../../services/api';
 import type { FileInfo, MessageData } from '../../services/api';
+import { track, TRACK_EVENT_EXTENSION_DIRECTION_CLICK, TRACK_EVENT_SUMMARY_GENERATED } from '../../services/tracker';
 import useMobile from '../../hooks/useMobile';
 import useIsMobile from '../../hooks/useIsMobile';
 import { useFeatures } from '../../hooks/useFeatures';
@@ -265,6 +268,43 @@ const RateLimitGuide: React.FC<{
 };
 
 /**
+ * 支线结束摘要提示横幅组件
+ * 当 chatStore 检测到支线可能已结束时显示，引导用户生成摘要回到主线
+ * 用户可点击"立即生成"触发摘要生成，或点击"忽略"关闭提示
+ */
+const SummaryPromptBanner: React.FC<{
+  nodeTitle: string;
+  onGenerate: () => void;
+  onIgnore: () => void;
+}> = ({ nodeTitle, onGenerate, onIgnore }) => {
+  const { t } = useTranslation('chat');
+  return (
+    <div className="flex items-center gap-3 px-4 py-3 bg-emerald-900/30 border border-emerald-500/30 rounded-2xl">
+      <FileText className="w-4 h-4 text-emerald-400 flex-shrink-0" />
+      <div className="flex-1 min-w-0">
+        <p className="text-sm font-medium text-emerald-200">{t('summaryPromptTitle')}</p>
+        <p className="text-xs text-emerald-300/80 mt-0.5 break-words">
+          {t('summaryPromptMessage', { title: nodeTitle })}
+        </p>
+      </div>
+      <button
+        onClick={onGenerate}
+        className="flex items-center gap-1 px-3 py-1 bg-emerald-600/30 hover:bg-emerald-600/50 border border-emerald-500/40 text-emerald-300 rounded-lg text-xs font-medium transition-colors flex-shrink-0"
+      >
+        <Sparkles className="w-3 h-3" />
+        <span>{t('generateNow')}</span>
+      </button>
+      <button
+        onClick={onIgnore}
+        className="px-2 py-1 text-emerald-500 hover:text-emerald-300 text-xs transition-colors flex-shrink-0"
+      >
+        {t('ignore')}
+      </button>
+    </div>
+  );
+};
+
+/**
  * 聊天面板组件 - 支持分支隔离上下文和流式传输
  * 包含快捷创建分支按钮，优化移动端操作体验
  */
@@ -288,6 +328,8 @@ const ChatPanel: React.FC<ChatPanelProps> = ({ nodeId }) => {
   const { keepAwake, allowSleep, haptic } = useMobile();
   const isMobile = useIsMobile();
   const { isVisible: isFeatureVisible } = useFeatures();
+  /** 支线结束摘要提示信息（来自 chatStore 的支线结束检测器） */
+  const showSummaryPrompt = useChatStore((s) => s.showSummaryPrompt);
   const [input, setInput] = useState('');
   const [isLoading, setIsLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
@@ -305,6 +347,8 @@ const ChatPanel: React.FC<ChatPanelProps> = ({ nodeId }) => {
   const [confirmDialogOpen, setConfirmDialogOpen] = useState(false);
   const [isGeneratingTitle, setIsGeneratingTitle] = useState(false);
   const [isExtractingConclusion, setIsExtractingConclusion] = useState(false);
+  /** 是否正在生成节点摘要 */
+  const [isGeneratingSummary, setIsGeneratingSummary] = useState(false);
   const [showRateLimitGuide, setShowRateLimitGuide] = useState(false);
   const [isLoadingMore, setIsLoadingMore] = useState(false);
   const [hasMoreMessages, setHasMoreMessages] = useState(false);
@@ -358,6 +402,14 @@ const ChatPanel: React.FC<ChatPanelProps> = ({ nodeId }) => {
   }, [nodeId, isMobile]);
 
   /**
+   * 节点切换时清理支线结束检测定时器
+   * 避免上一个节点的定时器在当前节点触发误提示
+   */
+  useEffect(() => {
+    useChatStore.getState().clearBranchEndDetector();
+  }, [nodeId]);
+
+  /**
    * 处理延伸方向自动追问
    * 用户点击延伸方向按钮后，会先创建子节点并切换过去；当 nodeId 变为目标节点时，
    * 自动向新节点发送生成的追问。使用 ref 存储待发送信息，避免将 sendMessage 加入依赖数组。
@@ -391,6 +443,8 @@ const ChatPanel: React.FC<ChatPanelProps> = ({ nodeId }) => {
       if (animationFrameRef.current) {
         cancelAnimationFrame(animationFrameRef.current);
       }
+      // 组件卸载时清理支线结束检测定时器，避免内存泄漏
+      useChatStore.getState().clearBranchEndDetector();
     };
   }, []);
 
@@ -669,6 +723,26 @@ const ChatPanel: React.FC<ChatPanelProps> = ({ nodeId }) => {
 
     addMessage(convId, { role: 'user', content: userMessage });
 
+    // 用户活跃：重置支线结束检测定时器（3 分钟无新消息后再次检测）
+    // 流式响应期间不触发检测，仅在定时器到期后才检查
+    try {
+      const userActiveNode = useAppStore.getState().nodes.get(nodeId);
+      const userActiveConv = userActiveNode?.conversationId
+        ? useAppStore.getState().conversations.get(userActiveNode.conversationId)
+        : null;
+      if (userActiveNode && userActiveConv) {
+        const userActiveArgs: BranchEndCheckArgs = {
+          nodeId,
+          messages: userActiveConv.messages,
+          nodeTitle: userActiveNode.title,
+          isRoot: userActiveNode.isRoot
+        };
+        useChatStore.getState().resetBranchEndTimer(userActiveArgs);
+      }
+    } catch (error) {
+      console.error('[ChatPanel] 重置支线结束定时器失败:', error);
+    }
+
     const allMessages = [
       ...contextMessages,
       { role: 'user' as const, content: userMessage }
@@ -842,6 +916,27 @@ const ChatPanel: React.FC<ChatPanelProps> = ({ nodeId }) => {
           }, 5000);
         }
       }
+
+      // 流式响应结束：检测支线结束条件（轮数/语义信号），并重置 3 分钟定时器
+      // 仅在 AI 成功回复后检测，避免在错误或流式中误触发
+      try {
+        const branchEndNode = useAppStore.getState().nodes.get(nodeId);
+        const branchEndConv = branchEndNode?.conversationId
+          ? useAppStore.getState().conversations.get(branchEndNode.conversationId)
+          : null;
+        if (branchEndNode && branchEndConv) {
+          const branchEndArgs: BranchEndCheckArgs = {
+            nodeId,
+            messages: branchEndConv.messages,
+            nodeTitle: branchEndNode.title,
+            isRoot: branchEndNode.isRoot
+          };
+          useChatStore.getState().checkBranchEnd(branchEndArgs);
+          useChatStore.getState().resetBranchEndTimer(branchEndArgs);
+        }
+      } catch (error) {
+        console.error('[ChatPanel] 检测支线结束失败:', error);
+      }
     }
   };
 
@@ -987,6 +1082,16 @@ const ChatPanel: React.FC<ChatPanelProps> = ({ nodeId }) => {
         return;
       }
       selectNode(childId);
+      try {
+        track(TRACK_EVENT_EXTENSION_DIRECTION_CLICK, {
+          nodeId,
+          direction,
+          childNodeId: childId,
+          workspaceId: getLocalWorkspaceId() || '',
+        });
+      } catch {
+        // 埋点上报失败时静默处理，不阻塞后续 UI 流程
+      }
       pendingExtensionSendRef.current = { targetNodeId: childId, direction };
     } catch (err) {
       console.error('创建延伸分支失败:', err);
@@ -1120,6 +1225,79 @@ const ChatPanel: React.FC<ChatPanelProps> = ({ nodeId }) => {
   }, [nodeId, isExtractingConclusion, createConclusionNode, t]);
 
   /**
+   * 生成节点摘要处理
+   * 调用后端 AI 接口基于当前节点对话内容生成精炼摘要，更新节点 summary 字段
+   * 生成成功后上报 summary_generated 埋点事件，埋点异常静默处理
+   * @returns 无返回值，结果通过 toast 提示和节点状态更新体现
+   */
+  const handleGenerateSummary = useCallback(async () => {
+    if (!nodeId || isGeneratingSummary) return;
+
+    const activeConfig = useAPIConfigStore.getState().getActiveConfig();
+    if (!activeConfig?.apiKey && !hasBuiltInKey) {
+      setError(t('configureApiKeyFirst'));
+      return;
+    }
+
+    const currentNode = useAppStore.getState().nodes.get(nodeId);
+    if (!currentNode) return;
+
+    const currentConversation = currentNode.conversationId
+      ? useAppStore.getState().conversations.get(currentNode.conversationId)
+      : null;
+    const summaryMessages = (currentConversation?.messages || [])
+      .filter((msg) => msg.role === 'user' || msg.role === 'assistant')
+      .filter((msg) => msg.content.trim().length > 0);
+    const hasUserMessage = summaryMessages.some((msg) => msg.role === 'user');
+    const hasAssistantMessage = summaryMessages.some((msg) => msg.role === 'assistant');
+
+    if (!hasUserMessage || !hasAssistantMessage) {
+      useToastStore.getState().addToast('error', t('summaryNeedsQA'));
+      return;
+    }
+
+    setIsGeneratingSummary(true);
+    try {
+      const configPayload: { model?: string; provider?: string; apiKey?: string; baseUrl?: string } = {};
+      if (activeConfig?.modelId) configPayload.model = activeConfig.modelId;
+      if (activeConfig?.provider) configPayload.provider = activeConfig.provider;
+      if (activeConfig?.apiKey) configPayload.apiKey = activeConfig.apiKey;
+      if (activeConfig?.baseUrl) configPayload.baseUrl = activeConfig.baseUrl;
+
+      const currentLanguage = i18n.language?.startsWith('en') ? 'en' : 'zh';
+      const result = await nodeApi.generateSummary(
+        nodeId,
+        Object.keys(configPayload).length > 0 ? configPayload : undefined,
+        currentLanguage
+      );
+
+      if (result.success && result.data?.summary) {
+        const summaryText = result.data.summary;
+        updateNode(nodeId, { summary: summaryText });
+        useToastStore.getState().addToast('success', t('summaryGenerateSuccess'));
+        try {
+          track(TRACK_EVENT_SUMMARY_GENERATED, {
+            nodeId,
+            summaryLength: summaryText.length,
+            workspaceId: getLocalWorkspaceId() || '',
+          });
+        } catch {
+          // 埋点上报异常静默处理，不阻塞主流程
+        }
+      } else {
+        useToastStore.getState().addToast('error', result.error || t('summaryGenerateFailed'));
+      }
+    } catch (error: unknown) {
+      console.error('[ChatPanel] 生成摘要失败:', error);
+      const err = error as { response?: { data?: { error?: string } }; message?: string };
+      const errMsg = err?.response?.data?.error || err?.message || t('summaryGenerateFailed');
+      useToastStore.getState().addToast('error', errMsg);
+    } finally {
+      setIsGeneratingSummary(false);
+    }
+  }, [nodeId, isGeneratingSummary, hasBuiltInKey, updateNode, t]);
+
+  /**
    * 缩略图节点点击处理
    * 选中目标节点并请求打开其对话面板
    * @param targetNodeId - 目标节点ID
@@ -1249,7 +1427,7 @@ const ChatPanel: React.FC<ChatPanelProps> = ({ nodeId }) => {
             <MessageSquare className="w-4 h-4 text-primary-400" />
           )}
           <span className="text-white font-medium truncate flex-1">{node?.title}</span>
-          
+
           {messages.length > 0 && (
             <button
               onClick={() => handleGenerateTitle(true)}
@@ -1264,7 +1442,24 @@ const ChatPanel: React.FC<ChatPanelProps> = ({ nodeId }) => {
               )}
             </button>
           )}
-          
+
+          {/* 生成摘要按钮 - 节点对话有内容时显示，已存在摘要时切换为重新生成 */}
+          {messages.length > 0 && (
+            <button
+              onClick={handleGenerateSummary}
+              disabled={isGeneratingSummary || isLoading}
+              className="flex items-center gap-1.5 px-3 py-1.5 bg-emerald-600/15 border border-emerald-500/30 text-emerald-400 rounded-xl text-xs font-medium hover:bg-emerald-600/25 hover:border-emerald-500/50 active:scale-95 transition-all disabled:opacity-40 disabled:cursor-not-allowed"
+              title={node?.summary ? t('regenerateSummary') : t('generateSummary')}
+            >
+              {isGeneratingSummary ? (
+                <Loader2 className="w-3.5 h-3.5 animate-spin" />
+              ) : (
+                <FileText className="w-3.5 h-3.5" />
+              )}
+              <span>{node?.summary ? t('regenerateSummary') : t('generateSummary')}</span>
+            </button>
+          )}
+
           {/* 快捷创建分支按钮 - 移动端核心优化 */}
           <button
             onClick={handleCreateBranch}
@@ -1296,6 +1491,18 @@ const ChatPanel: React.FC<ChatPanelProps> = ({ nodeId }) => {
                 {t('inheritParentNodes', { count: contextInfo.parentCount })}
               </span>
             )}
+          </div>
+        )}
+        {/* 节点摘要展示区：仅在节点已生成摘要时显示，展示完整摘要文本 */}
+        {node?.summary && (
+          <div className="mt-2 px-3 py-2 bg-dark-700/40 border border-dark-600/50 rounded-xl">
+            <div className="flex items-center gap-1.5 text-xs font-medium text-emerald-400 mb-1">
+              <FileText className="w-3 h-3" />
+              <span>{t('nodeSummaryLabel')}</span>
+            </div>
+            <p className="text-xs text-dark-200 leading-relaxed whitespace-pre-wrap break-words">
+              {node.summary}
+            </p>
           </div>
         )}
         {contextUsage && (
@@ -1347,6 +1554,20 @@ const ChatPanel: React.FC<ChatPanelProps> = ({ nodeId }) => {
           activeNodeId={nodeId}
           onNodeClick={handleThumbnailNodeClick}
         />
+
+        {/* 支线结束摘要提示横幅：仅当当前节点触发且非空对话时显示 */}
+        {showSummaryPrompt && showSummaryPrompt.nodeId === nodeId && messages.length > 0 && (
+          <SummaryPromptBanner
+            nodeTitle={showSummaryPrompt.nodeTitle}
+            onGenerate={() => {
+              useChatStore.getState().dismissSummaryPrompt();
+              handleGenerateSummary();
+            }}
+            onIgnore={() => {
+              useChatStore.getState().dismissSummaryPrompt();
+            }}
+          />
+        )}
 
         {messages.length === 0 && !streamingContent ? (
           <div className="text-center text-dark-400 py-8">

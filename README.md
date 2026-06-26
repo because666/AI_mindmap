@@ -219,9 +219,10 @@ npm run dev:client
 
 项目支持多种部署方式：
 
-- **Docker**: 使用 `docker-compose.yml` 一键启动
-- **Zeabur**: 已配置 `zeabur.json`
-- **自建服务器**: 使用 `deploy.sh` 与 `deploy_server.py`
+- **Windows 一键部署到 Linux 服务器**：使用 `deploy_server.py`，详细流程参考 [`docs/deploy.md`](docs/deploy.md)。
+- **服务器端全量部署**：在服务器上设置 `ZHIPU_API_KEY_2` 后运行 `deploy.sh`。
+- **Docker**：使用 `docker-compose.yml` 一键启动本地环境。
+- **Zeabur**：已配置 `zeabur.json`。
 
 生产部署前务必先编译后端：
 
@@ -230,7 +231,7 @@ cd server
 npm run build
 ```
 
-更多细节参考 `docs/tech/capacitor-setup.md` 与 `.trae/skills/server-deploy-checklist/SKILL.md`。
+移动端打包细节参考 `docs/tech/capacitor-setup.md`，服务器部署检查清单参考 `.trae/skills/server-deploy-checklist/SKILL.md`。
 
 ---
 

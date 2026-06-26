@@ -405,6 +405,25 @@ export const nodeApi = {
       '/nodes/import',
       { format, data }
     ),
+
+  /**
+   * 生成节点摘要
+   * 调用后端 AI 接口基于节点对话内容生成精炼摘要
+   * @param nodeId - 节点ID
+   * @param config - 可选 AI 模型配置（model、provider、apiKey、baseUrl），未提供时使用服务端默认配置
+   * @param language - 可选输出语言代码（如 'zh'、'en'），未提供时由服务端默认
+   * @returns 生成结果，包含 success 标志、summary 文本或 error 信息
+   * @throws 当网络异常或服务端返回非 2xx 时通过 axios 拦截器抛出错误
+   */
+  generateSummary: async (
+    nodeId: string,
+    config?: { model?: string; provider?: string; apiKey?: string; baseUrl?: string },
+    language?: string
+  ): Promise<{ success: boolean; data?: { summary: string }; error?: string }> => {
+    const response = await httpClient.post(`/nodes/${nodeId}/summary`, { config, language });
+    // axios 响应拦截器已统一返回 response.data，需通过 unknown 中间断言以匹配实际业务返回结构
+    return response as unknown as { success: boolean; data?: { summary: string }; error?: string };
+  },
 };
 
 /**

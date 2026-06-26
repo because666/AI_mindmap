@@ -1,0 +1,808 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="UTF-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1.0" />
+<title>思流图 DeepMindMap - 项目展示</title>
+<style>
+  @import url('https://fonts.googleapis.com/css2?family=Noto+Sans+SC:wght@300;400;500;700;900&display=swap');
+
+  * { margin: 0; padding: 0; box-sizing: border-box; }
+
+  :root {
+    --primary: #6366f1;
+    --primary-light: #818cf8;
+    --primary-dark: #4f46e5;
+    --accent: #22d3ee;
+    --accent-green: #34d399;
+    --bg-dark: #0a0a1a;
+    --bg-card: #12122a;
+    --bg-card-hover: #1a1a3e;
+    --text-primary: #f0f0ff;
+    --text-secondary: #a0a0c0;
+    --text-muted: #606080;
+    --border: #2a2a4a;
+    --gradient-1: linear-gradient(135deg, #6366f1 0%, #22d3ee 100%);
+    --gradient-2: linear-gradient(135deg, #f472b6 0%, #6366f1 100%);
+    --gradient-3: linear-gradient(135deg, #34d399 0%, #22d3ee 100%);
+  }
+
+  html { scroll-behavior: smooth; }
+
+  body {
+    font-family: 'Noto Sans SC', -apple-system, BlinkMacSystemFont, sans-serif;
+    background: var(--bg-dark);
+    color: var(--text-primary);
+    overflow-x: hidden;
+  }
+
+  /* ===== Navigation ===== */
+  .nav {
+    position: fixed; top: 0; left: 0; right: 0; z-index: 100;
+    background: rgba(10, 10, 26, 0.85);
+    backdrop-filter: blur(20px);
+    border-bottom: 1px solid rgba(99, 102, 241, 0.15);
+    padding: 0 40px;
+    height: 60px;
+    display: flex; align-items: center; justify-content: space-between;
+  }
+  .nav-logo { font-size: 18px; font-weight: 700; background: var(--gradient-1); -webkit-background-clip: text; -webkit-text-fill-color: transparent; }
+  .nav-links { display: flex; gap: 28px; }
+  .nav-links a { color: var(--text-secondary); text-decoration: none; font-size: 14px; font-weight: 500; transition: color 0.2s; }
+  .nav-links a:hover { color: var(--accent); }
+
+  /* ===== Slide system ===== */
+  .slide {
+    min-height: 100vh; padding: 100px 60px 80px;
+    display: flex; flex-direction: column; justify-content: center;
+    position: relative; overflow: hidden;
+  }
+  .slide-inner { max-width: 1200px; margin: 0 auto; width: 100%; position: relative; z-index: 2; }
+
+  /* ===== Slide 0: Hero ===== */
+  .hero { text-align: center; padding: 120px 40px; }
+  .hero-badge {
+    display: inline-block; padding: 6px 20px; border-radius: 100px;
+    background: rgba(99, 102, 241, 0.15); border: 1px solid rgba(99, 102, 241, 0.3);
+    color: var(--primary-light); font-size: 13px; font-weight: 500;
+    margin-bottom: 32px;
+  }
+  .hero h1 {
+    font-size: clamp(40px, 6vw, 72px); font-weight: 900;
+    line-height: 1.15; margin-bottom: 24px;
+    background: var(--gradient-1); -webkit-background-clip: text; -webkit-text-fill-color: transparent;
+  }
+  .hero-sub {
+    font-size: clamp(18px, 2.5vw, 24px); color: var(--text-secondary);
+    max-width: 700px; margin: 0 auto 40px; line-height: 1.6;
+  }
+  .hero-cta {
+    display: inline-flex; align-items: center; gap: 10px;
+    padding: 14px 36px; border-radius: 12px;
+    background: var(--gradient-1); color: #fff; font-size: 16px; font-weight: 600;
+    text-decoration: none; transition: transform 0.2s, box-shadow 0.2s;
+    box-shadow: 0 4px 24px rgba(99, 102, 241, 0.3);
+  }
+  .hero-cta:hover { transform: translateY(-2px); box-shadow: 0 8px 32px rgba(99, 102, 241, 0.5); }
+  .hero-stats { display: flex; justify-content: center; gap: 60px; margin-top: 60px; }
+  .hero-stat-num { font-size: 36px; font-weight: 900; background: var(--gradient-1); -webkit-background-clip: text; -webkit-text-fill-color: transparent; }
+  .hero-stat-label { font-size: 14px; color: var(--text-muted); margin-top: 4px; }
+
+  /* ===== Common section ===== */
+  .section-label {
+    display: inline-block; padding: 4px 14px; border-radius: 6px;
+    background: rgba(99, 102, 241, 0.12); color: var(--primary-light);
+    font-size: 12px; font-weight: 600; letter-spacing: 1px; text-transform: uppercase;
+    margin-bottom: 16px;
+  }
+  .section-title {
+    font-size: clamp(28px, 4vw, 44px); font-weight: 800; line-height: 1.25;
+    margin-bottom: 16px;
+  }
+  .section-desc {
+    font-size: 17px; color: var(--text-secondary); line-height: 1.7;
+    max-width: 680px; margin-bottom: 48px;
+  }
+
+  /* ===== Slide 1: Pain Point ===== */
+  .pain-grid { display: grid; grid-template-columns: 1fr 1fr; gap: 40px; align-items: center; }
+  .pain-visual {
+    background: var(--bg-card); border: 1px solid var(--border); border-radius: 16px;
+    padding: 32px; position: relative; overflow: hidden;
+  }
+  .pain-visual::before {
+    content: ''; position: absolute; top: -50%; right: -50%; width: 200%; height: 200%;
+    background: radial-gradient(circle, rgba(99,102,241,0.06) 0%, transparent 60%);
+  }
+  .pain-chat { margin-bottom: 16px; }
+  .pain-msg {
+    display: inline-block; max-width: 85%; padding: 10px 16px; border-radius: 12px;
+    font-size: 13px; line-height: 1.5; margin-bottom: 10px;
+  }
+  .pain-msg.user { background: var(--primary-dark); color: #fff; border-bottom-right-radius: 4px; float: right; clear: both; }
+  .pain-msg.ai { background: var(--bg-card-hover); color: var(--text-secondary); border-bottom-left-radius: 4px; float: left; clear: both; }
+  .pain-arrow { text-align: center; font-size: 28px; color: var(--accent); margin: 24px 0; clear: both; }
+  .pain-lost {
+    text-align: center; padding: 16px; border: 2px dashed rgba(244, 63, 94, 0.4);
+    border-radius: 12px; color: #f87171; font-size: 14px; clear: both;
+  }
+
+  /* ===== Slide 2: Solution ===== */
+  .solution-grid { display: grid; grid-template-columns: repeat(3, 1fr); gap: 24px; }
+  .solution-card {
+    background: var(--bg-card); border: 1px solid var(--border); border-radius: 16px;
+    padding: 32px; transition: transform 0.3s, border-color 0.3s;
+    position: relative; overflow: hidden;
+  }
+  .solution-card:hover { transform: translateY(-4px); border-color: var(--primary); }
+  .solution-icon {
+    width: 52px; height: 52px; border-radius: 14px; display: flex;
+    align-items: center; justify-content: center; font-size: 24px;
+    margin-bottom: 20px; background: rgba(99, 102, 241, 0.12);
+  }
+  .solution-card h3 { font-size: 18px; font-weight: 700; margin-bottom: 10px; }
+  .solution-card p { font-size: 14px; color: var(--text-secondary); line-height: 1.6; }
+  .solution-card .tag {
+    display: inline-block; margin-top: 14px; padding: 3px 10px; border-radius: 6px;
+    font-size: 11px; font-weight: 600;
+  }
+  .tag-p0 { background: rgba(244, 63, 94, 0.15); color: #f87171; }
+  .tag-p1 { background: rgba(251, 191, 36, 0.15); color: #fbbf24; }
+  .tag-done { background: rgba(52, 211, 153, 0.15); color: #34d399; }
+
+  /* ===== Slide 3: Product Demo (Map mockup) ===== */
+  .demo-container {
+    background: var(--bg-card); border: 1px solid var(--border); border-radius: 20px;
+    padding: 0; overflow: hidden; position: relative;
+  }
+  .demo-toolbar {
+    height: 48px; background: var(--bg-card-hover); border-bottom: 1px solid var(--border);
+    display: flex; align-items: center; padding: 0 20px; gap: 12px;
+  }
+  .demo-dot { width: 10px; height: 10px; border-radius: 50%; }
+  .demo-dot.r { background: #f87171; } .demo-dot.y { background: #fbbf24; } .demo-dot.g { background: #34d399; }
+  .demo-title { margin-left: 12px; font-size: 13px; color: var(--text-muted); }
+  .demo-body { display: flex; min-height: 500px; }
+  .demo-canvas {
+    flex: 1; position: relative; background:
+      radial-gradient(circle at 1px 1px, rgba(99,102,241,0.08) 1px, transparent 0);
+    background-size: 28px 28px; padding: 40px;
+  }
+  .demo-chat {
+    width: 360px; border-left: 1px solid var(--border); background: rgba(18, 18, 42, 0.9);
+    display: flex; flex-direction: column;
+  }
+  .demo-chat-header {
+    padding: 14px 18px; border-bottom: 1px solid var(--border);
+    font-size: 14px; font-weight: 600; display: flex; align-items: center; gap: 8px;
+  }
+  .demo-chat-msgs { flex: 1; padding: 16px; overflow-y: auto; }
+  .demo-node-map { position: relative; }
+  .demo-node {
+    position: absolute; padding: 12px 20px; border-radius: 12px;
+    font-size: 13px; font-weight: 600; white-space: nowrap;
+    border: 2px solid; transition: transform 0.3s;
+  }
+  .demo-node.root { background: rgba(99,102,241,0.15); border-color: var(--primary); color: var(--primary-light); left: 50%; top: 20px; transform: translateX(-50%); }
+  .demo-node.child1 { background: rgba(34,211,238,0.12); border-color: var(--accent); color: var(--accent); left: 8%; top: 130px; }
+  .demo-node.child2 { background: rgba(52,211,153,0.12); border-color: var(--accent-green); color: var(--accent-green); left: 52%; top: 130px; }
+  .demo-node.child3 { background: rgba(244,114,182,0.12); border-color: #f472b6; color: #f472b6; right: 5%; top: 130px; }
+  .demo-node.grand { background: rgba(251,191,36,0.1); border-color: #fbbf24; color: #fbbf24; left: 10%; top: 240px; }
+  .demo-line { position: absolute; background: var(--border); }
+  .demo-line.v { width: 2px; }
+  .demo-line.h { height: 2px; }
+
+  /* ===== Slide 4: User Journey ===== */
+  .journey-steps { display: flex; gap: 0; position: relative; }
+  .journey-step {
+    flex: 1; text-align: center; padding: 24px 16px; position: relative;
+  }
+  .journey-step::after {
+    content: '→'; position: absolute; right: -8px; top: 40px;
+    font-size: 24px; color: var(--text-muted);
+  }
+  .journey-step:last-child::after { display: none; }
+  .journey-num {
+    width: 48px; height: 48px; border-radius: 50%; display: flex;
+    align-items: center; justify-content: center; font-size: 18px; font-weight: 800;
+    margin: 0 auto 16px; background: var(--gradient-1); color: #fff;
+  }
+  .journey-step h4 { font-size: 15px; font-weight: 700; margin-bottom: 8px; }
+  .journey-step p { font-size: 13px; color: var(--text-secondary); line-height: 1.5; }
+
+  /* ===== Slide 5: Tech Stack ===== */
+  .tech-grid { display: grid; grid-template-columns: repeat(4, 1fr); gap: 20px; }
+  .tech-card {
+    background: var(--bg-card); border: 1px solid var(--border); border-radius: 14px;
+    padding: 24px; text-align: center; transition: transform 0.3s, border-color 0.3s;
+  }
+  .tech-card:hover { transform: translateY(-3px); border-color: var(--primary); }
+  .tech-card .icon { font-size: 32px; margin-bottom: 12px; }
+  .tech-card h4 { font-size: 15px; font-weight: 700; margin-bottom: 6px; }
+  .tech-card p { font-size: 12px; color: var(--text-muted); }
+
+  /* ===== Slide 6: Differentiation ===== */
+  .diff-table {
+    width: 100%; border-collapse: separate; border-spacing: 0;
+    background: var(--bg-card); border-radius: 16px; overflow: hidden;
+    border: 1px solid var(--border);
+  }
+  .diff-table th {
+    padding: 16px 20px; text-align: left; font-size: 13px; font-weight: 600;
+    background: rgba(99, 102, 241, 0.08); color: var(--text-secondary);
+    border-bottom: 1px solid var(--border);
+  }
+  .diff-table th:last-child { color: var(--primary-light); }
+  .diff-table td {
+    padding: 14px 20px; font-size: 14px; border-bottom: 1px solid rgba(42, 42, 74, 0.5);
+    color: var(--text-secondary);
+  }
+  .diff-table tr:last-child td { border-bottom: none; }
+  .diff-table td:last-child { color: var(--accent-green); font-weight: 500; }
+  .diff-check { color: var(--accent-green); } .diff-cross { color: #f87171; }
+
+  /* ===== Slide 8: CTA ===== */
+  .cta-slide { text-align: center; }
+  .cta-slide h2 {
+    font-size: clamp(32px, 5vw, 56px); font-weight: 900; margin-bottom: 20px;
+    background: var(--gradient-1); -webkit-background-clip: text; -webkit-text-fill-color: transparent;
+  }
+  .cta-slide p { font-size: 18px; color: var(--text-secondary); margin-bottom: 40px; }
+  .cta-links { display: flex; justify-content: center; gap: 20px; flex-wrap: wrap; }
+  .cta-link {
+    padding: 14px 32px; border-radius: 12px; font-size: 15px; font-weight: 600;
+    text-decoration: none; transition: transform 0.2s, box-shadow 0.2s;
+  }
+  .cta-link.primary { background: var(--gradient-1); color: #fff; box-shadow: 0 4px 24px rgba(99,102,241,0.3); }
+  .cta-link.primary:hover { transform: translateY(-2px); box-shadow: 0 8px 32px rgba(99,102,241,0.5); }
+  .cta-link.ghost { background: rgba(99,102,241,0.1); color: var(--primary-light); border: 1px solid rgba(99,102,241,0.3); }
+  .cta-link.ghost:hover { background: rgba(99,102,241,0.2); }
+
+  /* ===== Backgrounds ===== */
+  .bg-glow {
+    position: absolute; border-radius: 50%; filter: blur(100px); pointer-events: none; z-index: 0;
+  }
+  .bg-glow-1 { width: 500px; height: 500px; background: rgba(99, 102, 241, 0.08); top: -100px; right: -100px; }
+  .bg-glow-2 { width: 400px; height: 400px; background: rgba(34, 211, 238, 0.06); bottom: -80px; left: -80px; }
+
+  /* ===== Footer ===== */
+  .footer {
+    text-align: center; padding: 40px; font-size: 13px; color: var(--text-muted);
+    border-top: 1px solid var(--border);
+  }
+
+  /* ===== Responsive ===== */
+  @media (max-width: 900px) {
+    .slide { padding: 80px 24px 60px; }
+    .pain-grid, .solution-grid, .tech-grid { grid-template-columns: 1fr; }
+    .demo-body { flex-direction: column; }
+    .demo-chat { width: 100%; border-left: none; border-top: 1px solid var(--border); }
+    .hero-stats { flex-wrap: wrap; gap: 32px; }
+    .journey-steps { flex-wrap: wrap; }
+    .journey-step { min-width: 140px; }
+    .journey-step::after { display: none; }
+    .nav-links { display: none; }
+    .diff-table { font-size: 13px; }
+    .diff-table th, .diff-table td { padding: 10px 12px; }
+  }
+</style>
+</head>
+<body>
+
+<!-- Navigation -->
+<nav class="nav">
+  <div class="nav-logo">思流图 DeepMindMap</div>
+  <div class="nav-links">
+    <a href="#hero">首页</a>
+    <a href="#pain">痛点</a>
+    <a href="#solution">方案</a>
+    <a href="#demo">产品</a>
+    <a href="#journey">旅程</a>
+    <a href="#tech">技术</a>
+    <a href="#diff">差异</a>
+    <a href="#roadmap">AI能力</a>
+  </div>
+</nav>
+
+<!-- Slide 0: Hero -->
+<section class="slide hero" id="hero">
+  <div class="bg-glow bg-glow-1"></div>
+  <div class="bg-glow bg-glow-2"></div>
+  <div class="slide-inner">
+    <div class="hero-badge">社会服务赛道 · AI 驱动的非线性思维工具</div>
+    <h1>对话即思维<br>知识可沉淀</h1>
+    <p class="hero-sub">
+      思流图 DeepMindMap 让 AI 对话像人的思维一样——有主线、有支线，深入后还能回来，最终沉淀为一张可复用的知识地图。
+    </p>
+    <a href="https://deepmindmap.work/" target="_blank" class="hero-cta">
+      立即体验 →
+    </a>
+    <div class="hero-stats">
+      <div>
+        <div class="hero-stat-num">8+</div>
+        <div class="hero-stat-label">节点关系类型</div>
+      </div>
+      <div>
+        <div class="hero-stat-num">5</div>
+        <div class="hero-stat-label">内置知识模板</div>
+      </div>
+      <div>
+        <div class="hero-stat-num">100%</div>
+        <div class="hero-stat-label">对话即节点</div>
+      </div>
+      <div>
+        <div class="hero-stat-num">PWA</div>
+        <div class="hero-stat-label">支持离线访问</div>
+      </div>
+    </div>
+  </div>
+</section>
+
+<!-- Slide 1: Pain Point -->
+<section class="slide" id="pain">
+  <div class="bg-glow bg-glow-2"></div>
+  <div class="slide-inner">
+    <div class="pain-grid">
+      <div>
+        <div class="section-label">核心痛点</div>
+        <h2 class="section-title">线性对话<br>正在淹没你的思路</h2>
+        <p class="section-desc">
+          用 ChatGPT、DeepSeek 聊复杂问题时，追问细节会让整个对话偏离主题。等细节聊完，你已经忘记最初的核心问题。所有知识都沉没在长消息列表中，无法结构化复用。
+        </p>
+        <div style="display:flex;gap:16px;flex-wrap:wrap;">
+          <div style="background:rgba(244,63,94,0.1);border:1px solid rgba(244,63,94,0.2);border-radius:10px;padding:14px 18px;flex:1;min-width:180px;">
+            <div style="font-size:20px;margin-bottom:6px;">😫</div>
+            <div style="font-size:13px;color:#f87171;font-weight:600;">思路断裂</div>
+            <div style="font-size:12px;color:var(--text-muted);margin-top:4px;">追问细节后忘记主线</div>
+          </div>
+          <div style="background:rgba(244,63,94,0.1);border:1px solid rgba(244,63,94,0.2);border-radius:10px;padding:14px 18px;flex:1;min-width:180px;">
+            <div style="font-size:20px;margin-bottom:6px;">📚</div>
+            <div style="font-size:13px;color:#f87171;font-weight:600;">知识散落</div>
+            <div style="font-size:12px;color:var(--text-muted);margin-top:4px;">对话结束后无法复用</div>
+          </div>
+          <div style="background:rgba(244,63,94,0.1);border:1px solid rgba(244,63,94,0.2);border-radius:10px;padding:14px 18px;flex:1;min-width:180px;">
+            <div style="font-size:20px;margin-bottom:6px;">🔀</div>
+            <div style="font-size:13px;color:#f87171;font-weight:600;">上下文污染</div>
+            <div style="font-size:12px;color:var(--text-muted);margin-top:4px;">所有内容混在一条消息流中</div>
+          </div>
+        </div>
+      </div>
+      <div class="pain-visual">
+        <div class="pain-chat">
+          <div class="pain-msg user">帮我解释一下机器学习中的梯度下降</div>
+          <div class="pain-msg ai">梯度下降是一种优化算法，通过迭代调整参数来最小化损失函数...</div>
+          <div class="pain-msg user">那随机梯度下降和小批量梯度下降有什么区别？</div>
+          <div class="pain-msg ai">SGD每次只用一个样本计算梯度，Mini-batch则用一小批...</div>
+          <div class="pain-msg user">Adam优化器的原理是什么？和SGD相比有什么优势？</div>
+          <div class="pain-msg ai">Adam结合了动量和自适应学习率...</div>
+        </div>
+        <div class="pain-arrow">⬇</div>
+        <div class="pain-lost">
+          ❌ 主线"梯度下降"在哪里？<br>
+          追问了 3 轮细节后，已经忘记最初要问什么了...
+        </div>
+      </div>
+    </div>
+  </div>
+</section>
+
+<!-- Slide 2: Solution -->
+<section class="slide" id="solution">
+  <div class="bg-glow bg-glow-1"></div>
+  <div class="slide-inner">
+    <div class="section-label">解决方案</div>
+    <h2 class="section-title">六大核心能力</h2>
+    <p class="section-desc">
+      DeepMindMap 不是另一个思维导图工具，而是一个让 AI 对话天然产生结构化知识的系统。
+    </p>
+    <div class="solution-grid">
+      <div class="solution-card">
+        <div class="solution-icon">🌱</div>
+        <h3>延伸方向按钮</h3>
+        <p>AI 回答后自动提供 2-4 个可点击的深入方向，一键创建子节点并进入支线对话</p>
+        <span class="tag tag-p0">P0 核心</span><span class="tag tag-done" style="margin-left:6px;">已完成</span>
+      </div>
+      <div class="solution-card">
+        <div class="solution-icon">💬</div>
+        <h3>对话即节点</h3>
+        <p>每个节点拥有独立 AI 对话上下文，子节点自动继承父节点历史，对话自然形成知识树</p>
+        <span class="tag tag-p0">P0 核心</span><span class="tag tag-done" style="margin-left:6px;">已完成</span>
+      </div>
+      <div class="solution-card">
+        <div class="solution-icon">🧠</div>
+        <h3>智能分叉提示</h3>
+        <p>当用户输入深入性问题时，自动提示创建分支，无需手动操作，不打断对话节奏</p>
+        <span class="tag tag-p1">P1</span><span class="tag tag-done" style="margin-left:6px;">已完成</span>
+      </div>
+      <div class="solution-card">
+        <div class="solution-icon">📝</div>
+        <h3>节点摘要</h3>
+        <p>聊完支线后一键生成节点摘要，每个节点一目了然，知识不再散落在对话中</p>
+        <span class="tag tag-p1">P1</span><span class="tag tag-done" style="margin-left:6px;">已完成</span>
+      </div>
+      <div class="solution-card">
+        <div class="solution-icon">🧭</div>
+        <h3>节点导航树</h3>
+        <p>悬浮在对话面板上的导航树，高亮当前路径，一键回到上一级，深入再多也不会迷路</p>
+        <span class="tag tag-p1">P1</span><span class="tag tag-done" style="margin-left:6px;">已完成</span>
+      </div>
+      <div class="solution-card">
+        <div class="solution-icon">📋</div>
+        <h3>模板库</h3>
+        <p>5 个内置知识模板（Python 入门、机器学习、产品分析等），新用户首次进入即可选择模板开始探索</p>
+        <span class="tag tag-p1">P1</span><span class="tag tag-done" style="margin-left:6px;">已完成</span>
+      </div>
+    </div>
+  </div>
+</section>
+
+<!-- Slide 3: Product Demo -->
+<section class="slide" id="demo">
+  <div class="slide-inner">
+    <div class="section-label">产品预览</div>
+    <h2 class="section-title">对话产生地图，地图承载知识</h2>
+    <p class="section-desc">
+      用户与 AI 对话的同时，系统自动在画布上生成节点和关系，形成一张可视化的知识地图。
+    </p>
+    <div class="demo-container">
+      <div class="demo-toolbar">
+        <div class="demo-dot r"></div><div class="demo-dot y"></div><div class="demo-dot g"></div>
+        <div class="demo-title">思流图 DeepMindMap — 画布视图</div>
+      </div>
+      <div class="demo-body">
+        <div class="demo-canvas">
+          <div class="demo-node-map">
+            <div class="demo-node root">机器学习基础</div>
+            <div class="demo-node child1">梯度下降</div>
+            <div class="demo-node child2">损失函数</div>
+            <div class="demo-node child3">正则化</div>
+            <div class="demo-node grand">SGD vs Adam</div>
+            <!-- Connection lines (simplified with CSS) -->
+            <svg style="position:absolute;top:0;left:0;width:100%;height:100%;pointer-events:none;">
+              <line x1="50%" y1="65" x2="18%" y2="130" stroke="#4f46e5" stroke-width="2" stroke-dasharray="6,4" opacity="0.5"/>
+              <line x1="50%" y1="65" x2="52%" y2="130" stroke="#4f46e5" stroke-width="2" stroke-dasharray="6,4" opacity="0.5"/>
+              <line x1="50%" y1="65" x2="82%" y2="130" stroke="#4f46e5" stroke-width="2" stroke-dasharray="6,4" opacity="0.5"/>
+              <line x1="18%" y1="172" x2="18%" y2="240" stroke="#22d3ee" stroke-width="2" stroke-dasharray="6,4" opacity="0.4"/>
+            </svg>
+          </div>
+        </div>
+        <div class="demo-chat">
+          <div class="demo-chat-header">
+            <span style="color:var(--accent);">💬</span> 梯度下降 · AI 对话
+          </div>
+          <div class="demo-chat-msgs">
+            <div style="margin-bottom:12px;">
+              <div style="font-size:11px;color:var(--text-muted);margin-bottom:4px;">你</div>
+              <div style="background:var(--primary-dark);color:#fff;padding:10px 14px;border-radius:10px 10px 10px 2px;font-size:13px;">
+                帮我详细解释梯度下降的原理
+              </div>
+            </div>
+            <div style="margin-bottom:12px;">
+              <div style="font-size:11px;color:var(--text-muted);margin-bottom:4px;">AI</div>
+              <div style="background:var(--bg-card-hover);color:var(--text-secondary);padding:10px 14px;border-radius:10px 10px 10px 2px;font-size:13px;">
+                梯度下降是机器学习中最基础的优化算法。核心思想是沿着损失函数梯度的反方向更新参数...
+              </div>
+            </div>
+            <div style="margin-bottom:8px;">
+              <div style="font-size:11px;color:var(--primary-light);margin-bottom:6px;font-weight:600;">🌱 想深入了解：</div>
+              <div style="display:flex;flex-direction:column;gap:6px;">
+                <div style="background:rgba(99,102,241,0.15);border:1px solid rgba(99,102,241,0.3);border-radius:8px;padding:8px 12px;font-size:12px;color:var(--primary-light);cursor:pointer;">
+                  → SGD 与 Adam 的对比
+                </div>
+                <div style="background:rgba(34,211,238,0.12);border:1px solid rgba(34,211,238,0.25);border-radius:8px;padding:8px 12px;font-size:12px;color:var(--accent);cursor:pointer;">
+                  → 学习率调度策略
+                </div>
+                <div style="background:rgba(52,211,153,0.12);border:1px solid rgba(52,211,153,0.25);border-radius:8px;padding:8px 12px;font-size:12px;color:var(--accent-green);cursor:pointer;">
+                  → 常见收敛问题与调参技巧
+                </div>
+              </div>
+            </div>
+          </div>
+        </div>
+      </div>
+    </div>
+  </div>
+</section>
+
+<!-- Slide 4: User Journey -->
+<section class="slide" id="journey">
+  <div class="bg-glow bg-glow-2"></div>
+  <div class="slide-inner">
+    <div class="section-label">用户旅程</div>
+    <h2 class="section-title">从一个问题到一张知识地图</h2>
+    <p class="section-desc">
+      用户不需要理解"节点""分支"这些概念。对话就是探索，点击就是深入，回看就是复盘。
+    </p>
+    <div class="journey-steps">
+      <div class="journey-step">
+        <div class="journey-num">1</div>
+        <h4>输入主题</h4>
+        <p>用户输入想探索的问题或主题</p>
+      </div>
+      <div class="journey-step">
+        <div class="journey-num">2</div>
+        <h4>AI 回答 + 方向</h4>
+        <p>AI 给出回答，并在底部提供 2-4 个可点击的延伸方向</p>
+      </div>
+      <div class="journey-step">
+        <div class="journey-num">3</div>
+        <h4>一键深入</h4>
+        <p>点击方向按钮，自动创建子节点并进入支线对话</p>
+      </div>
+      <div class="journey-step">
+        <div class="journey-num">4</div>
+        <h4>自由探索</h4>
+        <p>支线中继续对话，可再次深入，也可随时回到主线</p>
+      </div>
+      <div class="journey-step">
+        <div class="journey-num">5</div>
+        <h4>沉淀复盘</h4>
+        <p>生成节点摘要，整张地图每个节点一目了然，可复用可分享</p>
+      </div>
+    </div>
+  </div>
+</section>
+
+<!-- Slide 5: Tech Stack -->
+<section class="slide" id="tech">
+  <div class="bg-glow bg-glow-1"></div>
+  <div class="slide-inner">
+    <div class="section-label">技术架构</div>
+    <h2 class="section-title">全栈技术选型</h2>
+    <p class="section-desc">
+      前后端分离架构，支持 Web 端和 Android 原生壳，具备完善的后台管理系统。
+    </p>
+    <div class="tech-grid">
+      <div class="tech-card">
+        <div class="icon">⚛️</div>
+        <h4>React 19</h4>
+        <p>前端框架</p>
+      </div>
+      <div class="tech-card">
+        <div class="icon">🔷</div>
+        <h4>TypeScript</h4>
+        <p>类型安全</p>
+      </div>
+      <div class="tech-card">
+        <div class="icon">🔀</div>
+        <h4>React Flow</h4>
+        <p>画布渲染引擎</p>
+      </div>
+      <div class="tech-card">
+        <div class="icon">🐻</div>
+        <h4>Zustand</h4>
+        <p>状态管理</p>
+      </div>
+      <div class="tech-card">
+        <div class="icon">🟢</div>
+        <h4>Node.js</h4>
+        <p>后端运行时</p>
+      </div>
+      <div class="tech-card">
+        <div class="icon">🚀</div>
+        <h4>Express</h4>
+        <p>API 框架</p>
+      </div>
+      <div class="tech-card">
+        <div class="icon">🍃</div>
+        <h4>MongoDB</h4>
+        <p>文档数据库</p>
+      </div>
+      <div class="tech-card">
+        <div class="icon">⚡</div>
+        <h4>Redis</h4>
+        <p>缓存与会话</p>
+      </div>
+    </div>
+    <div style="margin-top:32px;display:flex;gap:16px;flex-wrap:wrap;">
+      <div style="background:var(--bg-card);border:1px solid var(--border);border-radius:10px;padding:14px 20px;display:flex;align-items:center;gap:10px;">
+        <span style="font-size:20px;">📱</span>
+        <div><div style="font-size:14px;font-weight:600;">Capacitor</div><div style="font-size:12px;color:var(--text-muted);">Android 原生壳</div></div>
+      </div>
+      <div style="background:var(--bg-card);border:1px solid var(--border);border-radius:10px;padding:14px 20px;display:flex;align-items:center;gap:10px;">
+        <span style="font-size:20px;">🌐</span>
+        <div><div style="font-size:14px;font-weight:600;">PWA</div><div style="font-size:12px;color:var(--text-muted);">离线访问支持</div></div>
+      </div>
+      <div style="background:var(--bg-card);border:1px solid var(--border);border-radius:10px;padding:14px 20px;display:flex;align-items:center;gap:10px;">
+        <span style="font-size:20px;">🔧</span>
+        <div><div style="font-size:14px;font-weight:600;">后台管理系统</div><div style="font-size:12px;color:var(--text-muted);">用户/数据/AI 用量管理</div></div>
+      </div>
+      <div style="background:var(--bg-card);border:1px solid var(--border);border-radius:10px;padding:14px 20px;display:flex;align-items:center;gap:10px;">
+        <span style="font-size:20px;">🤖</span>
+        <div><div style="font-size:14px;font-weight:600;">多模型支持</div><div style="font-size:12px;color:var(--text-muted);">GLM-4 / DeepSeek / GPT</div></div>
+      </div>
+    </div>
+  </div>
+</section>
+
+<!-- Slide 6: Differentiation -->
+<section class="slide" id="diff">
+  <div class="slide-inner">
+    <div class="section-label">差异化对比</div>
+    <h2 class="section-title">为什么选择思流图？</h2>
+    <p class="section-desc">
+      思流图不是替代 ChatGPT，而是在需要深度探索和结构化沉淀的场景下，提供比线性对话更高效的工具。
+    </p>
+    <table class="diff-table">
+      <thead>
+        <tr>
+          <th>对比维度</th>
+          <th>线性 AI 聊天（ChatGPT/DeepSeek）</th>
+          <th>思流图 DeepMindMap</th>
+        </tr>
+      </thead>
+      <tbody>
+        <tr>
+          <td>对话结构</td>
+          <td>线性，所有内容混在一条消息流中</td>
+          <td>树状，每个节点独立上下文，主线支线清晰</td>
+        </tr>
+        <tr>
+          <td>深入细节</td>
+          <td>需复制粘贴或开新窗口，打断思路</td>
+          <td>一键分叉，上下文自动继承，不打断节奏</td>
+        </tr>
+        <tr>
+          <td>回到主线</td>
+          <td>翻历史记录找</td>
+          <td>节点导航树一键回到上一级</td>
+        </tr>
+        <tr>
+          <td>知识沉淀</td>
+          <td>靠用户自己总结</td>
+          <td>一键生成节点摘要，地图即知识库</td>
+        </tr>
+        <tr>
+          <td>复盘复习</td>
+          <td>翻长消息列表</td>
+          <td>直接看地图结构，每个节点有摘要</td>
+        </tr>
+        <tr>
+          <td>分享协作</td>
+          <td>截图或导出文本</td>
+          <td>分享整张知识地图，可视化呈现</td>
+        </tr>
+        <tr>
+          <td>冷启动引导</td>
+          <td>无</td>
+          <td>5 个内置模板 + 新手引导 + 延伸方向按钮</td>
+        </tr>
+      </tbody>
+    </table>
+  </div>
+</section>
+
+<!-- Slide 7: AI Capabilities -->
+<section class="slide" id="roadmap">
+  <div class="bg-glow bg-glow-1"></div>
+  <div class="slide-inner">
+    <div class="section-label">AI 能力</div>
+    <h2 class="section-title">多模型智能调度体系</h2>
+    <p class="section-desc">
+      思流图接入多个 AI 模型，支持智能降级与按任务路由，确保对话质量的同时控制成本。
+    </p>
+    <div style="display:grid;grid-template-columns:repeat(2,1fr);gap:20px;">
+      <div style="background:var(--bg-card);border:1px solid var(--border);border-radius:14px;padding:24px;">
+        <div style="display:flex;align-items:center;gap:12px;margin-bottom:14px;">
+          <div style="width:42px;height:42px;border-radius:10px;background:rgba(99,102,241,0.15);display:flex;align-items:center;justify-content:center;font-size:20px;">🤖</div>
+          <div>
+            <div style="font-size:16px;font-weight:700;">多模型接入</div>
+            <div style="font-size:12px;color:var(--text-muted);">默认 GLM-4-Flash，支持 DeepSeek、GPT 等</div>
+          </div>
+        </div>
+        <div style="font-size:13px;color:var(--text-secondary);line-height:1.6;">
+          系统支持智谱 GLM-4-Flash（默认）、DeepSeek、OpenAI GPT 等多个模型服务商。通过环境变量配置 API Key 和模型优先级，后台可动态管理模型池。
+        </div>
+      </div>
+      <div style="background:var(--bg-card);border:1px solid var(--border);border-radius:14px;padding:24px;">
+        <div style="display:flex;align-items:center;gap:12px;margin-bottom:14px;">
+          <div style="width:42px;height:42px;border-radius:10px;background:rgba(34,211,238,0.12);display:flex;align-items:center;justify-content:center;font-size:20px;">🔄</div>
+          <div>
+            <div style="font-size:16px;font-weight:700;">智能降级链路</div>
+            <div style="font-size:12px;color:var(--text-muted);">主模型失败自动 fallback 到备用模型</div>
+          </div>
+        </div>
+        <div style="font-size:13px;color:var(--text-secondary);line-height:1.6;">
+          配置 fallback 链路（如 zhipu → deepseek → openai），主模型不可用时自动切换到下一个模型，用户无感知。前端实时显示降级通知。
+        </div>
+      </div>
+      <div style="background:var(--bg-card);border:1px solid var(--border);border-radius:14px;padding:24px;">
+        <div style="display:flex;align-items:center;gap:12px;margin-bottom:14px;">
+          <div style="width:42px;height:42px;border-radius:10px;background:rgba(52,211,153,0.12);display:flex;align-items:center;justify-content:center;font-size:20px;">🛠️</div>
+          <div>
+            <div style="font-size:16px;font-weight:700;">AI 工具调用</div>
+            <div style="font-size:12px;color:var(--text-muted);">AI 可直接操作思维导图</div>
+          </div>
+        </div>
+        <div style="font-size:13px;color:var(--text-secondary);line-height:1.6;">
+          通过 Function Calling，AI 可直接调用 create_node、create_relation、update_node、expand_node 等工具，实现"地图优先模式"——AI 一次性生成整张知识大纲。
+        </div>
+      </div>
+      <div style="background:var(--bg-card);border:1px solid var(--border);border-radius:14px;padding:24px;">
+        <div style="display:flex;align-items:center;gap:12px;margin-bottom:14px;">
+          <div style="width:42px;height:42px;border-radius:10px;background:rgba(244,114,182,0.12);display:flex;align-items:center;justify-content:center;font-size:20px;">⚡</div>
+          <div>
+            <div style="font-size:16px;font-weight:700;">优先级队列调度</div>
+            <div style="font-size:12px;color:var(--text-muted);">对话请求优先，后台任务排队</div>
+          </div>
+        </div>
+        <div style="font-size:13px;color:var(--text-secondary);line-height:1.6;">
+          AI 请求按优先级队列调度：用户对话为 P0 最高优先级，标题生成、摘要提炼等后台任务为 P1，确保对话体验始终流畅。
+        </div>
+      </div>
+      <div style="background:var(--bg-card);border:1px solid var(--border);border-radius:14px;padding:24px;">
+        <div style="display:flex;align-items:center;gap:12px;margin-bottom:14px;">
+          <div style="width:42px;height:42px;border-radius:10px;background:rgba(251,191,36,0.12);display:flex;align-items:center;justify-content:center;font-size:20px;">📊</div>
+          <div>
+            <div style="font-size:16px;font-weight:700;">智能分叉检测</div>
+            <div style="font-size:12px;color:var(--text-muted);">规则引擎，零模型调用</div>
+          </div>
+        </div>
+        <div style="font-size:13px;color:var(--text-secondary);line-height:1.6;">
+          输入框智能分叉提示完全基于规则引擎实现——关键词匹配、语义偏离检测、连续追问判断，零额外模型调用成本，500ms 内响应。
+        </div>
+      </div>
+      <div style="background:var(--bg-card);border:1px solid var(--border);border-radius:14px;padding:24px;">
+        <div style="display:flex;align-items:center;gap:12px;margin-bottom:14px;">
+          <div style="width:42px;height:42px;border-radius:10px;background:rgba(99,102,241,0.15);display:flex;align-items:center;justify-content:center;font-size:20px;">📝</div>
+          <div>
+            <div style="font-size:16px;font-weight:700;">用户自定义 API</div>
+            <div style="font-size:12px;color:var(--text-muted);">支持用户填入自己的 API Key</div>
+          </div>
+        </div>
+        <div style="font-size:13px;color:var(--text-secondary);line-height:1.6;">
+          高级用户可在设置中填入自己的 API Key（支持任意 OpenAI 兼容接口），优先级高于内置模型池，实现完全自主控制。
+        </div>
+      </div>
+    </div>
+  </div>
+</section>
+
+<!-- Slide 8: CTA -->
+<section class="slide cta-slide" id="cta">
+  <div class="bg-glow bg-glow-1"></div>
+  <div class="bg-glow bg-glow-2"></div>
+  <div class="slide-inner">
+    <h2>让每一次深度对话<br>都沉淀为知识地图</h2>
+    <p>思流图 DeepMindMap — 对话即思维，知识可沉淀</p>
+    <div class="cta-links">
+      <a href="https://deepmindmap.work/" target="_blank" class="cta-link ghost">查看线上地址</a>
+    </div>
+  </div>
+</section>
+
+<!-- Footer -->
+<footer class="footer">
+  思流图 DeepMindMap · AI 驱动的非线性思维导图协作平台 · https://deepmindmap.work/
+</footer>
+
+<script>
+  // Smooth scroll for nav links
+  document.querySelectorAll('.nav-links a').forEach(a => {
+    a.addEventListener('click', e => {
+      e.preventDefault();
+      const target = document.querySelector(a.getAttribute('href'));
+      if (target) target.scrollIntoView({ behavior: 'smooth' });
+    });
+  });
+
+  // Simple fade-in on scroll
+  const observer = new IntersectionObserver(entries => {
+    entries.forEach(entry => {
+      if (entry.isIntersecting) {
+        entry.target.style.opacity = '1';
+        entry.target.style.transform = 'translateY(0)';
+      }
+    });
+  }, { threshold: 0.1 });
+
+  document.querySelectorAll('.slide-inner').forEach(el => {
+    el.style.opacity = '0';
+    el.style.transform = 'translateY(30px)';
+    el.style.transition = 'opacity 0.6s ease, transform 0.6s ease';
+    observer.observe(el);
+  });
+</script>
+
+</body>
+</html>

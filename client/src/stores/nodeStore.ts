@@ -12,7 +12,8 @@ import { useAppStore } from './appStore';
 import { generateId } from './storeUtils';
 import { nodeApi, getLocalWorkspaceId } from '../services/api';
 import type { NodeData as ApiNodeData } from '../services/api';
-import { track, TRACK_EVENT_NODE_CREATED } from '../services/tracker';
+import { track, TRACK_EVENT_NODE_CREATED, TRACK_EVENT_TEMPLATE_USED } from '../services/tracker';
+import type { TemplateData } from '../data/templates';
 import i18n from 'i18next';
 
 /**
@@ -85,6 +86,16 @@ export interface NodeSlice {
   createConclusionNode: (sourceNodeId: string, conclusion: string) => void;
   /** 自动布局所有节点 */
   autoLayout: () => void;
+  /**
+   * 从模板创建思维导图
+   *
+   * 根据传入的模板数据批量生成节点与关系，并选中根节点、上报埋点事件。
+   * 失败时通过 console.error 输出错误日志，不抛出异常以避免阻塞用户操作。
+   *
+   * @param template - 模板数据，包含 nodes 与 relations
+   * @returns 新创建的根节点 ID；若模板无根节点或异常时返回空字符串
+   */
+  createMapFromTemplate: (template: TemplateData) => string;
 }
 
 /**
@@ -1432,6 +1443,129 @@ export const createNodeSlice = (set: SliceSet, get: SliceGet): NodeSlice => ({
 
       return { nodes: newNodes };
     });
+  },
+
+  /**
+   * 从模板创建思维导图
+   *
+   * 根据传入的模板数据批量生成节点与关系，并选中根节点、上报埋点事件。
+   *
+   * 实现流程：
+   * 1. 遍历 template.nodes，为每个节点生成新 ID 并构造 NodeData（parentIds/childrenIds 初始为空）
+   * 2. 建立 templateNodeIndexToId 映射，将模板节点索引映射到实际节点 ID
+   * 3. 遍历 template.relations：通过映射获取 sourceId/targetId，
+   *    仅对 parent-child 类型更新内存中节点的 parentIds/childrenIds，并调用 addRelation 创建关系
+   * 4. 通过 addNode 将所有节点添加到 store
+   * 5. 选中根节点（set({ selectedNodeId: rootId })）
+   * 6. 上报 TRACK_EVENT_TEMPLATE_USED 埋点（载荷：templateId、templateName）
+   * 7. 返回根节点 ID
+   *
+   * 异常处理：整体包裹 try-catch，失败时通过 console.error 输出日志并返回空字符串，
+   * 不抛出异常以避免阻塞用户操作。
+   *
+   * @param template - 模板数据，包含 nodes 与 relations
+   * @returns 新创建的根节点 ID；若模板无根节点或异常时返回空字符串
+   */
+  createMapFromTemplate: (template) => {
+    try {
+      // 待创建节点列表（内存中暂存，后续统一 addNode 到 store）
+      const nodesToCreate: NodeData[] = [];
+      // 模板节点索引 -> 实际节点 ID 的映射
+      const templateNodeIndexToId = new Map<number, string>();
+      // 实际节点 ID -> NodeData 的映射，便于后续按 ID 更新 parentIds/childrenIds
+      const nodeIdToNode = new Map<string, NodeData>();
+      // 根节点 ID（遍历模板节点时确定）
+      let rootId = '';
+
+      // 步骤 1：遍历模板节点，构造 NodeData 并建立索引映射
+      template.nodes.forEach((templateNode, index) => {
+        const nodeId = generateId();
+        templateNodeIndexToId.set(index, nodeId);
+
+        // 节点位置：根节点固定 (100, 100)；子节点按层级布局，第一层 x=400, y=100+i*120
+        const position = templateNode.isRoot
+          ? { x: 100, y: 100 }
+          : { x: 400, y: 100 + index * 120 };
+
+        const nodeData: NodeData = {
+          id: nodeId,
+          title: templateNode.title,
+          summary: templateNode.summary ?? '',
+          type: 'default',
+          parentIds: [],
+          childrenIds: [],
+          isRoot: templateNode.isRoot,
+          isComposite: false,
+          compositeChildren: undefined,
+          compositeParent: undefined,
+          hidden: false,
+          conversationId: null,
+          position,
+          createdAt: new Date(),
+          updatedAt: new Date(),
+          tags: [],
+          expanded: true,
+        };
+
+        nodesToCreate.push(nodeData);
+        nodeIdToNode.set(nodeId, nodeData);
+
+        // 记录根节点 ID（取第一个 isRoot 为 true 的节点）
+        if (templateNode.isRoot && !rootId) {
+          rootId = nodeId;
+        }
+      });
+
+      // 步骤 2：遍历模板关系，更新节点 parentIds/childrenIds 并创建关系
+      template.relations.forEach((relation) => {
+        const sourceId = templateNodeIndexToId.get(relation.source);
+        const targetId = templateNodeIndexToId.get(relation.target);
+
+        // 索引越界保护：跳过无效关系
+        if (!sourceId || !targetId) {
+          return;
+        }
+
+        // 仅 parent-child 类型需要更新父子关系数组
+        if (relation.type === 'parent-child') {
+          const sourceNode = nodeIdToNode.get(sourceId);
+          const targetNode = nodeIdToNode.get(targetId);
+          if (sourceNode && targetNode) {
+            // 防止重复添加（同一对父子关系只添加一次）
+            if (!sourceNode.childrenIds.includes(targetId)) {
+              sourceNode.childrenIds.push(targetId);
+            }
+            if (!targetNode.parentIds.includes(sourceId)) {
+              targetNode.parentIds.push(sourceId);
+            }
+          }
+        }
+
+        // 调用聚合 store 的 addRelation 创建关系
+        get().addRelation({ sourceId, targetId, type: relation.type });
+      });
+
+      // 步骤 3：将所有节点通过 addNode 添加到 store
+      nodesToCreate.forEach((node) => {
+        get().addNode(node);
+      });
+
+      // 步骤 4：选中根节点
+      if (rootId) {
+        set({ selectedNodeId: rootId });
+      }
+
+      // 步骤 5：上报模板使用埋点
+      track(TRACK_EVENT_TEMPLATE_USED, {
+        templateId: template.id,
+        templateName: template.name,
+      });
+
+      return rootId;
+    } catch (error) {
+      console.error('[nodeStore] 从模板创建思维导图失败:', error);
+      return '';
+    }
   },
 });
 

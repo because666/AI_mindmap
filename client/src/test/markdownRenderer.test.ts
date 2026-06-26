@@ -11,9 +11,7 @@ const preprocessMarkdown = (content: string): string => {
 
   let processed = content;
 
-  processed = processed.replace(/^#{1,6}\s*/gm, (match) => {
-    return match;
-  });
+  processed = processed.replace(/^(#{1,6})\s+/gm, '$1 ');
 
   processed = processed.replace(/\*\*([^*]+)\*\*/g, '**$1**');
   processed = processed.replace(/\*([^*]+)\*/g, '*$1*');
@@ -27,7 +25,7 @@ const preprocessMarkdown = (content: string): string => {
 
   processed = processed.replace(/`([^`]+)`/g, '`$1`');
 
-  processed = processed.replace(/^\s*[-*+]\s+/gm, '- ');
+  processed = processed.replace(/^(\s*)[-*+]\s+/gm, '$1- ');
 
   processed = processed.replace(/^\s*\d+\.\s+/gm, '1. ');
 

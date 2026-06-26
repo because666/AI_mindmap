@@ -65,7 +65,8 @@ function createMockResponse(): MockResponseState {
       state.jsonData = data;
       return res as Response;
     }),
-    setHeader: vi.fn((_name: string, _value: string | number | readonly string[]) => {
+    setHeader: vi.fn((name: string, value: string | number | readonly string[]) => {
+      state.headers[name] = String(value);
       return res as Response;
     }),
   };

@@ -68,5 +68,10 @@
   "relationConclusion": "Conclusion",
   "relationConclusionDesc": "Conclusion drawn from a discussion",
   "relationCustom": "Custom",
-  "relationCustomDesc": "User-defined relationship"
+  "relationCustomDesc": "User-defined relationship",
+  "templateLibrary": "Template Library",
+  "templateLibraryDesc": "Choose a template to start, or create a blank map",
+  "createBlankMap": "Create Blank Map",
+  "nodesCount": "{{count}} nodes",
+  "selectTemplate": "Select Template"
 }

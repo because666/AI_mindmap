@@ -1,7 +1,7 @@
 import React, { useState, useRef, useEffect, useMemo, useCallback } from 'react';
 import { useTranslation } from 'react-i18next';
 import i18n from 'i18next';
-import { Send, Loader2, Trash2, User, Bot, Sparkles, GitBranch, MessageSquare, Copy, Check, Plus, Brain, ChevronDown, ChevronUp, Paperclip, X, FileText, File, Image, RefreshCw, Lightbulb, AlertTriangle, Settings } from 'lucide-react';
+import { Send, Loader2, Trash2, User, Bot, Sparkles, GitBranch, MessageSquare, Copy, Check, Plus, Brain, ChevronDown, ChevronUp, Paperclip, X, FileText, File, Image, RefreshCw, Lightbulb, AlertTriangle, Settings, MoreVertical } from 'lucide-react';
 import { useAppStore } from '../../stores/appStore';
 import { useAPIConfigStore } from '../../stores/apiConfigStore';
 import { useChatStore } from '../../stores/chatStore';
@@ -372,6 +372,16 @@ const ChatPanel: React.FC<ChatPanelProps> = ({ nodeId }) => {
   const [showRateLimitGuide, setShowRateLimitGuide] = useState(false);
   const [isLoadingMore, setIsLoadingMore] = useState(false);
   const [hasMoreMessages, setHasMoreMessages] = useState(false);
+  /**
+   * 移动端节点摘要展开状态
+   * 默认折叠（false），仅移动端生效；桌面端始终完整展开
+   */
+  const [isSummaryExpanded, setIsSummaryExpanded] = useState(false);
+  /**
+   * 移动端「更多」下拉菜单展开状态
+   * 点击「更多」按钮切换；点击菜单项或外部遮罩层后自动关闭
+   */
+  const [isMobileMenuOpen, setIsMobileMenuOpen] = useState(false);
   const messagesEndRef = useRef<HTMLDivElement>(null);
   const messagesContainerRef = useRef<HTMLDivElement>(null);
   const fileInputRef = useRef<HTMLInputElement>(null);
@@ -1639,60 +1649,150 @@ const ChatPanel: React.FC<ChatPanelProps> = ({ nodeId }) => {
           )}
           <span className="text-white font-medium truncate flex-1">{node?.title}</span>
 
-          {messages.length > 0 && (
-            <button
-              onClick={() => handleGenerateTitle(true)}
-              disabled={isGeneratingTitle}
-              className="p-1.5 text-dark-400 hover:text-primary-400 hover:bg-dark-700 rounded-xl transition-colors disabled:opacity-40 disabled:cursor-not-allowed"
-              title={t('regenerateTitle')}
-            >
-              {isGeneratingTitle ? (
-                <Loader2 className="w-3.5 h-3.5 animate-spin" />
-              ) : (
-                <RefreshCw className="w-3.5 h-3.5" />
+          {!isMobile ? (
+            <>
+              {/* 桌面端：保留原有四个按钮布局不变 */}
+              {messages.length > 0 && (
+                <button
+                  onClick={() => handleGenerateTitle(true)}
+                  disabled={isGeneratingTitle}
+                  className="p-1.5 text-dark-400 hover:text-primary-400 hover:bg-dark-700 rounded-xl transition-colors disabled:opacity-40 disabled:cursor-not-allowed"
+                  title={t('regenerateTitle')}
+                >
+                  {isGeneratingTitle ? (
+                    <Loader2 className="w-3.5 h-3.5 animate-spin" />
+                  ) : (
+                    <RefreshCw className="w-3.5 h-3.5" />
+                  )}
+                </button>
               )}
-            </button>
-          )}
 
-          {/* 生成摘要按钮 - 节点对话有内容时显示，已存在摘要时切换为重新生成 */}
-          {messages.length > 0 && (
-            <button
-              onClick={handleGenerateSummary}
-              disabled={isGeneratingSummary || isLoading}
-              className="flex items-center gap-1.5 px-3 py-1.5 bg-emerald-600/15 border border-emerald-500/30 text-emerald-400 rounded-xl text-xs font-medium hover:bg-emerald-600/25 hover:border-emerald-500/50 active:scale-95 transition-all disabled:opacity-40 disabled:cursor-not-allowed"
-              title={node?.summary ? t('regenerateSummary') : t('generateSummary')}
-            >
-              {isGeneratingSummary ? (
-                <Loader2 className="w-3.5 h-3.5 animate-spin" />
-              ) : (
-                <FileText className="w-3.5 h-3.5" />
+              {/* 生成摘要按钮 - 节点对话有内容时显示，已存在摘要时切换为重新生成 */}
+              {messages.length > 0 && (
+                <button
+                  onClick={handleGenerateSummary}
+                  disabled={isGeneratingSummary || isLoading}
+                  className="flex items-center gap-1.5 px-3 py-1.5 bg-emerald-600/15 border border-emerald-500/30 text-emerald-400 rounded-xl text-xs font-medium hover:bg-emerald-600/25 hover:border-emerald-500/50 active:scale-95 transition-all disabled:opacity-40 disabled:cursor-not-allowed"
+                  title={node?.summary ? t('regenerateSummary') : t('generateSummary')}
+                >
+                  {isGeneratingSummary ? (
+                    <Loader2 className="w-3.5 h-3.5 animate-spin" />
+                  ) : (
+                    <FileText className="w-3.5 h-3.5" />
+                  )}
+                  <span>{node?.summary ? t('regenerateSummary') : t('generateSummary')}</span>
+                </button>
               )}
-              <span>{node?.summary ? t('regenerateSummary') : t('generateSummary')}</span>
-            </button>
+
+              {/* 快捷创建分支按钮 */}
+              <button
+                onClick={handleCreateBranch}
+                disabled={branchCreating || !nodeId}
+                className="flex items-center gap-1.5 px-3 py-1.5 bg-primary-600/15 border border-primary-500/30 text-primary-400 rounded-xl text-xs font-medium hover:bg-primary-600/25 hover:border-primary-500/50 active:scale-95 transition-all disabled:opacity-40 disabled:cursor-not-allowed"
+                title={t('createConversationBranch')}
+              >
+                {branchCreating ? (
+                  <Loader2 className="w-3.5 h-3.5 animate-spin" />
+                ) : (
+                  <Plus className="w-3.5 h-3.5" />
+                )}
+                <span>{t('branchBtn')}</span>
+              </button>
+
+              <button
+                onClick={handleClear}
+                className="p-1.5 text-dark-200 hover:text-red-400 hover:bg-dark-700 rounded-xl transition-colors"
+                title={t('clearConversation')}
+              >
+                <Trash2 className="w-4 h-4" />
+              </button>
+            </>
+          ) : (
+            <>
+              {/* 移动端：仅保留「+ 分支」按钮与「更多」入口按钮 */}
+              <button
+                onClick={handleCreateBranch}
+                disabled={branchCreating || !nodeId}
+                className="flex items-center gap-1.5 px-3 py-1.5 bg-primary-600/15 border border-primary-500/30 text-primary-400 rounded-xl text-xs font-medium hover:bg-primary-600/25 hover:border-primary-500/50 active:scale-95 transition-all disabled:opacity-40 disabled:cursor-not-allowed"
+                title={t('createConversationBranch')}
+              >
+                {branchCreating ? (
+                  <Loader2 className="w-3.5 h-3.5 animate-spin" />
+                ) : (
+                  <Plus className="w-3.5 h-3.5" />
+                )}
+                <span>{t('branchBtn')}</span>
+              </button>
+
+              {/* 「更多」按钮：点击展开下拉菜单 */}
+              <div className="relative">
+                <button
+                  onClick={() => setIsMobileMenuOpen((prev) => !prev)}
+                  className="p-1.5 text-dark-300 hover:text-white hover:bg-dark-700 rounded-xl transition-colors"
+                  title="更多"
+                  aria-label="更多操作"
+                >
+                  <MoreVertical className="w-4 h-4" />
+                </button>
+                {isMobileMenuOpen && (
+                  <>
+                    {/* 透明遮罩层：捕获菜单外部的点击以关闭菜单 */}
+                    <div
+                      className="fixed inset-0 z-10"
+                      onClick={() => setIsMobileMenuOpen(false)}
+                    />
+                    {/* 移动端「更多」下拉菜单：包含重新生成标题、生成摘要、清空对话 */}
+                    <div className="absolute right-0 top-full mt-1 z-20 min-w-[160px] bg-dark-700 border border-dark-600 rounded-xl shadow-lg overflow-hidden">
+                      {messages.length > 0 && (
+                        <button
+                          onClick={() => {
+                            setIsMobileMenuOpen(false);
+                            handleGenerateTitle(true);
+                          }}
+                          disabled={isGeneratingTitle}
+                          className="flex items-center gap-2 w-full px-3 py-2 text-sm text-dark-200 hover:bg-dark-600 hover:text-white transition-colors disabled:opacity-40 disabled:cursor-not-allowed text-left"
+                        >
+                          {isGeneratingTitle ? (
+                            <Loader2 className="w-3.5 h-3.5 animate-spin" />
+                          ) : (
+                            <RefreshCw className="w-3.5 h-3.5" />
+                          )}
+                          <span>{t('regenerateTitle')}</span>
+                        </button>
+                      )}
+                      {messages.length > 0 && (
+                        <button
+                          onClick={() => {
+                            setIsMobileMenuOpen(false);
+                            handleGenerateSummary();
+                          }}
+                          disabled={isGeneratingSummary || isLoading}
+                          className="flex items-center gap-2 w-full px-3 py-2 text-sm text-dark-200 hover:bg-dark-600 hover:text-white transition-colors disabled:opacity-40 disabled:cursor-not-allowed text-left"
+                        >
+                          {isGeneratingSummary ? (
+                            <Loader2 className="w-3.5 h-3.5 animate-spin" />
+                          ) : (
+                            <FileText className="w-3.5 h-3.5" />
+                          )}
+                          <span>{node?.summary ? t('regenerateSummary') : t('generateSummary')}</span>
+                        </button>
+                      )}
+                      <button
+                        onClick={() => {
+                          setIsMobileMenuOpen(false);
+                          handleClear();
+                        }}
+                        className="flex items-center gap-2 w-full px-3 py-2 text-sm text-dark-200 hover:bg-dark-600 hover:text-red-400 transition-colors text-left"
+                      >
+                        <Trash2 className="w-3.5 h-3.5" />
+                        <span>{t('clearConversation')}</span>
+                      </button>
+                    </div>
+                  </>
+                )}
+              </div>
+            </>
           )}
-
-          {/* 快捷创建分支按钮 - 移动端核心优化 */}
-          <button
-            onClick={handleCreateBranch}
-            disabled={branchCreating || !nodeId}
-            className="flex items-center gap-1.5 px-3 py-1.5 bg-primary-600/15 border border-primary-500/30 text-primary-400 rounded-xl text-xs font-medium hover:bg-primary-600/25 hover:border-primary-500/50 active:scale-95 transition-all disabled:opacity-40 disabled:cursor-not-allowed"
-            title={t('createConversationBranch')}
-          >
-            {branchCreating ? (
-              <Loader2 className="w-3.5 h-3.5 animate-spin" />
-            ) : (
-              <Plus className="w-3.5 h-3.5" />
-            )}
-            <span>{t('branchBtn')}</span>
-          </button>
-
-          <button
-            onClick={handleClear}
-            className="p-1.5 text-dark-200 hover:text-red-400 hover:bg-dark-700 rounded-xl transition-colors"
-            title={t('clearConversation')}
-          >
-            <Trash2 className="w-4 h-4" />
-          </button>
         </div>
         {(contextInfo.parentCount > 0 || contextInfo.relationCount > 0) && (
           <div className="mt-2 flex items-center gap-2 text-xs text-dark-400">
@@ -1704,17 +1804,47 @@ const ChatPanel: React.FC<ChatPanelProps> = ({ nodeId }) => {
             )}
           </div>
         )}
-        {/* 节点摘要展示区：仅在节点已生成摘要时显示，展示完整摘要文本 */}
+        {/* 节点摘要展示区：仅在节点已生成摘要时显示，移动端支持折叠/展开，桌面端始终完整展开 */}
         {node?.summary && (
-          <div className="mt-2 px-3 py-2 bg-dark-700/40 border border-dark-600/50 rounded-xl">
-            <div className="flex items-center gap-1.5 text-xs font-medium text-emerald-400 mb-1">
-              <FileText className="w-3 h-3" />
-              <span>{t('nodeSummaryLabel')}</span>
+          isMobile ? (
+            <div
+              className="mt-2 px-3 py-2 bg-dark-700/40 border border-dark-600/50 rounded-xl cursor-pointer select-none"
+              onClick={() => setIsSummaryExpanded((prev) => !prev)}
+            >
+              <div className="flex items-center gap-1.5 text-xs font-medium text-emerald-400 mb-1">
+                <FileText className="w-3 h-3" />
+                <span>{t('nodeSummaryLabel')}</span>
+                {/* 折叠/展开切换图标，右对齐 */}
+                <span className="ml-auto">
+                  {isSummaryExpanded ? (
+                    <ChevronUp className="w-3 h-3" />
+                  ) : (
+                    <ChevronDown className="w-3 h-3" />
+                  )}
+                </span>
+              </div>
+              {/* 移动端：折叠时单行省略（truncate），展开时保持完整换行展示 */}
+              <p
+                className={
+                  isSummaryExpanded
+                    ? 'text-xs text-dark-200 leading-relaxed whitespace-pre-wrap break-words'
+                    : 'text-xs text-dark-200 leading-relaxed truncate'
+                }
+              >
+                {node.summary}
+              </p>
             </div>
-            <p className="text-xs text-dark-200 leading-relaxed whitespace-pre-wrap break-words">
-              {node.summary}
-            </p>
-          </div>
+          ) : (
+            <div className="mt-2 px-3 py-2 bg-dark-700/40 border border-dark-600/50 rounded-xl">
+              <div className="flex items-center gap-1.5 text-xs font-medium text-emerald-400 mb-1">
+                <FileText className="w-3 h-3" />
+                <span>{t('nodeSummaryLabel')}</span>
+              </div>
+              <p className="text-xs text-dark-200 leading-relaxed whitespace-pre-wrap break-words">
+                {node.summary}
+              </p>
+            </div>
+          )
         )}
         {contextUsage && (
           <ContextUsageIndicator used={contextUsage.used} limit={contextUsage.limit} />

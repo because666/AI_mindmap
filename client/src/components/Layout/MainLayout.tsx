@@ -1032,7 +1032,11 @@ const MainLayout: React.FC<{ children: React.ReactNode }> = ({ children }) => {
       </div>
 
       {isMobile && isChatOpen && (
-        <div className="fixed inset-0 z-50 bg-dark-950 flex flex-col">
+        // 移动端聊天面板全屏浮层：通过 env(safe-area-inset-top) 适配刘海屏/状态栏，确保标题栏不被遮挡
+        <div
+          className="fixed inset-0 z-50 bg-dark-950 flex flex-col"
+          style={{ paddingTop: 'env(safe-area-inset-top)' }}
+        >
           <div className="h-14 bg-dark-900 border-b border-dark-700 flex items-center justify-between px-4">
             <div className="flex items-center gap-2">
               <MessageSquare className="w-4 h-4 text-primary-400" />

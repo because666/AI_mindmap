@@ -46,6 +46,11 @@ export const TRACK_EVENT_BRANCH_SUGGESTION_ACCEPTED = 'branch_suggestion_accepte
 export const TRACK_EVENT_BRANCH_SUGGESTION_DISMISSED = 'branch_suggestion_dismissed';
 
 /**
+ * 模板使用事件（用户选择模板创建地图）
+ */
+export const TRACK_EVENT_TEMPLATE_USED = 'template_used';
+
+/**
  * 埋点事件公共属性接口
  */
 export interface TrackerEventCommonProps {

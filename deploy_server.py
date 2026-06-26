@@ -44,6 +44,10 @@ DEFAULT_FILES_TO_UPLOAD: List[Tuple[str, Optional[str]]] = [
     ("client/src/components/Canvas/CanvasPage.tsx", None),
     ("client/src/components/Chat/ChatPanel.tsx", None),
     ("client/src/components/Chat/MindMapThumbnail.tsx", None),
+    ("client/src/components/Chat/MarkdownRenderer.tsx", None),
+    # 模板库 MVP
+    ("client/src/data/templates.ts", None),
+    ("client/src/components/Workspace/TemplateLibrary.tsx", None),
     # i18n
     ("client/src/locales/canvas/en.json", None),
     ("client/src/locales/canvas/zh.json", None),

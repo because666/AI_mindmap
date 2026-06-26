@@ -1,0 +1,32 @@
+# Tasks
+- [x] Task 1: 移动端全屏面板安全区域适配
+  - [x] SubTask 1.1: 在 `client/src/components/Layout/MainLayout.tsx` 的移动端聊天全屏容器（`fixed inset-0 z-50`）顶部增加 `env(safe-area-inset-top)` 内边距，确保「AI 对话」标题栏不被状态栏/刘海遮挡
+  - [x] SubTask 1.2: 验证历史面板、消息中心等其他移动端全屏面板不受影响（仅改动聊天面板容器）
+- [x] Task 2: 节点摘要可折叠
+  - [x] SubTask 2.1: 在 `client/src/components/Chat/ChatPanel.tsx` 中新增 `isSummaryExpanded` 状态，默认 `false`
+  - [x] SubTask 2.2: 移动端摘要栏折叠时显示单行预览（`truncate`），展开时显示完整内容；点击摘要栏切换状态
+  - [x] SubTask 2.3: 桌面端保持原有完整展开行为，不显示折叠控件（通过 `isMobile` 判断）
+- [x] Task 3: 移动端头部按钮精简为「更多」菜单
+  - [x] SubTask 3.1: 新增 `isMobileMenuOpen` 状态控制「更多」弹出菜单的显隐
+  - [x] SubTask 3.2: 移动端头部仅保留「+ 分支」按钮和「更多」入口；「重新生成标题」「生成摘要」「清空」收入菜单
+  - [x] SubTask 3.3: 桌面端保持原有四个按钮布局不变（通过 `isMobile` 判断）
+  - [x] SubTask 3.4: 点击菜单项后自动关闭菜单
+- [x] Task 4: 本地构建校验
+  - [x] SubTask 4.1: 运行 `npm run lint` 确认无 ESLint 报错
+  - [x] SubTask 4.2: 运行 `npm run build` 确认客户端构建成功
+- [x] Task 5: 部署到线上服务器
+  - [x] SubTask 5.1: 将 `client/dist` 打包为 `client-dist.tar.gz`
+  - [x] SubTask 5.2: 通过 SFTP 上传到服务器 `/tmp/deploy-artifacts`
+  - [x] SubTask 5.3: 在服务器上备份原 `client/dist` 并解压新产物
+- [x] Task 6: 线上移动端效果验证
+  - [x] SubTask 6.1: 确认线上 JS 产物 hash 与本地构建一致（index-BhXRSY6H.js）
+  - [x] SubTask 6.2: 确认产物中包含 env(safe-area-inset-top) 特征字符串
+  - [x] SubTask 6.3: 确认页面正常加载（标题、资源链接完整）
+  - [x] SubTask 6.4: 移动端视口视觉验证需用户在真实设备确认（Puppeteer 无法设置移动端视口）
+
+# Task Dependencies
+- Task 2 依赖于 Task 1（可并行，但建议先完成安全区域）
+- Task 3 依赖于 Task 2（头部和摘要都在 ChatPanel 内）
+- Task 4 依赖于 Task 3
+- Task 5 依赖于 Task 4
+- Task 6 依赖于 Task 5

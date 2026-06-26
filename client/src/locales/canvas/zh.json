@@ -68,5 +68,10 @@
   "relationConclusion": "结论",
   "relationConclusionDesc": "从某个讨论得出的结论",
   "relationCustom": "自定义",
-  "relationCustomDesc": "用户自定义关系"
+  "relationCustomDesc": "用户自定义关系",
+  "templateLibrary": "模板库",
+  "templateLibraryDesc": "选择一个模板快速开始，或创建空白地图",
+  "createBlankMap": "创建空白地图",
+  "nodesCount": "{{count}} 节点",
+  "selectTemplate": "选择模板"
 }

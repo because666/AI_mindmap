@@ -17,7 +17,7 @@ import {
 } from '@xyflow/react';
 import type { Connection, Node, Edge, NodeProps, EdgeProps } from '@xyflow/react';
 import '@xyflow/react/dist/style.css';
-import { Plus, MessageSquare, MessageSquarePlus, Edit3, Link, Layers, Trash2, Undo2, Redo2, GitBranch, LayoutGrid, Maximize2, Minimize2, RefreshCw, MousePointer2, Combine, MoreHorizontal, Lightbulb } from 'lucide-react';
+import { Plus, MessageSquare, MessageSquarePlus, Edit3, Link, Layers, Trash2, Undo2, Redo2, GitBranch, LayoutGrid, Maximize2, Minimize2, RefreshCw, MousePointer2, Combine, MoreHorizontal, Lightbulb, LayoutTemplate } from 'lucide-react';
 import { useAppStore, getRelationTypeLabels } from '../../stores/appStore';
 import { useToastStore } from '../../stores/toastStore';
 import NodeEditor from '../Node/NodeEditor';
@@ -25,6 +25,7 @@ import RelationEditor from '../Node/RelationEditor';
 import CompositeNodeCreator from '../Node/CompositeNodeCreator';
 import ConfirmDialog from '../Common/ConfirmDialog';
 import { NodeContextMenu } from './NodeContextMenu';
+import TemplateLibrary from '../Workspace/TemplateLibrary';
 import useIsMobile from '../../hooks/useIsMobile';
 import { useLongPress } from '../../hooks/useLongPress';
 import useKeyboardShortcuts from '../../hooks/useKeyboardShortcuts';
@@ -44,6 +45,14 @@ const RELATION_COLORS: Record<string, string> = {
   'conclusion': '#22d3ee',
   'custom': '#f59e0b'
 };
+
+/**
+ * localStorage 键：标记用户是否已关闭过首次模板库弹窗
+ *
+ * 用于避免每次进入空白画布时都弹出模板库，仅在首次进入时主动展示。
+ * 写入值为字符串 'true'，未写入时视为未关闭。
+ */
+const TEMPLATE_LIBRARY_DISMISSED_KEY = 'templateLibraryDismissed';
 
 interface CustomNodeData extends Record<string, unknown> {
   label: string; 
@@ -336,6 +345,8 @@ const CanvasPageInner: React.FC = () => {
   const isMobile = useIsMobile();
   const [isMobileMenuOpen, setIsMobileMenuOpen] = useState(false);
   const mobileMenuRef = useRef<HTMLDivElement>(null);
+  // 模板库弹窗开关状态
+  const [isTemplateLibraryOpen, setIsTemplateLibraryOpen] = useState(false);
 
   /**
    * 移动端下拉菜单外部点击关闭
@@ -350,6 +361,22 @@ const CanvasPageInner: React.FC = () => {
     document.addEventListener('mousedown', handleClickOutside);
     return () => document.removeEventListener('mousedown', handleClickOutside);
   }, [isMobileMenuOpen]);
+
+  /**
+   * 关闭模板库弹窗并记录"已关闭"标记
+   *
+   * 写入 localStorage 后，下次进入空白画布不再自动弹出模板库。
+   * localStorage 写入失败时静默处理，不阻塞关闭操作。
+   */
+  const handleCloseTemplateLibrary = useCallback(() => {
+    setIsTemplateLibraryOpen(false);
+    try {
+      localStorage.setItem(TEMPLATE_LIBRARY_DISMISSED_KEY, 'true');
+    } catch (error) {
+      // localStorage 写入异常静默处理，不阻塞关闭
+      console.error('[CanvasPage] 写入模板库关闭标记失败:', error);
+    }
+  }, []);
 
   /**
    * 转换store节点为ReactFlow节点
@@ -494,6 +521,31 @@ const CanvasPageInner: React.FC = () => {
   useEffect(() => {
     setEdges(flowEdges);
   }, [flowEdges, setEdges]);
+
+  /**
+   * 首次进入空白画布时自动弹出模板库
+   *
+   * 触发条件：
+   * 1. 当前画布无节点（nodes.length === 0）
+   * 2. 用户未关闭过首次弹窗（localStorage 中无对应键）
+   *
+   * 使用 localStorage 持久化"已关闭"标记，避免每次进入空白画布都弹出。
+   * 注意：localStorage 读取失败时不阻塞，按未关闭处理。
+   */
+  useEffect(() => {
+    if (nodes.length === 0) {
+      try {
+        const dismissed = localStorage.getItem(TEMPLATE_LIBRARY_DISMISSED_KEY);
+        if (!dismissed) {
+          setIsTemplateLibraryOpen(true);
+        }
+      } catch (error) {
+        // localStorage 异常（隐私模式/禁用）静默处理，不阻塞首次弹窗
+        console.error('[CanvasPage] 读取模板库关闭标记失败:', error);
+        setIsTemplateLibraryOpen(true);
+      }
+    }
+  }, [nodes.length]);
 
   /**
    * 监听focus-node自定义事件，定位到目标节点并居中显示
@@ -813,6 +865,13 @@ const CanvasPageInner: React.FC = () => {
               <MessageSquarePlus className="w-5 h-5" />
             </button>
             <button
+              onClick={() => setIsTemplateLibraryOpen(true)}
+              className="p-2.5 rounded-lg hover:bg-dark-700/50 text-dark-300 transition-colors"
+              title={t('templateLibrary')}
+            >
+              <LayoutTemplate className="w-5 h-5" />
+            </button>
+            <button
               onClick={handleCreateChildNode}
               disabled={!selectedNodeId}
               className="p-2.5 rounded-lg hover:bg-dark-700/50 disabled:opacity-40 disabled:cursor-not-allowed text-dark-300 transition-colors"
@@ -925,6 +984,13 @@ const CanvasPageInner: React.FC = () => {
                 <GitBranch className="w-[18px] h-[18px]" />
               </button>
             </div>
+            <button
+              onClick={() => setIsTemplateLibraryOpen(true)}
+              className="p-2 rounded-lg hover:bg-dark-700/50 text-dark-300 transition-colors"
+              title={t('templateLibrary')}
+            >
+              <LayoutTemplate className="w-5 h-5" />
+            </button>
             <div className="w-px h-6 bg-dark-700" />
             <div className="flex items-center">
               <button
@@ -1085,6 +1151,13 @@ const CanvasPageInner: React.FC = () => {
               <Plus className="w-5 h-5" />
               <span>{t('createFirstConversation')}</span>
             </button>
+            <button
+              onClick={() => setIsTemplateLibraryOpen(true)}
+              className="pointer-events-auto btn-secondary px-6 py-3 mx-auto mt-3"
+            >
+              <LayoutTemplate className="w-5 h-5" />
+              <span>{t('templateLibrary')}</span>
+            </button>
           </div>
         </div>
       )}
@@ -1148,6 +1221,11 @@ const CanvasPageInner: React.FC = () => {
         cancelText={t('cancel')}
         onConfirm={handleConfirmDeleteNode}
         onCancel={handleCancelDeleteNode}
+      />
+
+      <TemplateLibrary
+        isOpen={isTemplateLibraryOpen}
+        onClose={handleCloseTemplateLibrary}
       />
     </div>
   );

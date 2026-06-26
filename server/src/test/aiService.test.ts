@@ -12,6 +12,7 @@ const { mockConfig } = vi.hoisted(() => ({
       embeddingModel: 'text-embedding-3-small',
       systemPrompt: '',
       fallbackChain: ['zhipu', 'deepseek', 'openai'],
+      aiProviders: [],
     },
   },
 }));

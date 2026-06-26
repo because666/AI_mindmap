@@ -10,7 +10,14 @@ import { useToastStore } from '../../stores/toastStore';
 import { chatService } from '../../services/chatService';
 import { fileApi, conversationApi, getLocalWorkspaceId, nodeApi } from '../../services/api';
 import type { FileInfo, MessageData } from '../../services/api';
-import { track, TRACK_EVENT_EXTENSION_DIRECTION_CLICK, TRACK_EVENT_SUMMARY_GENERATED } from '../../services/tracker';
+import {
+  track,
+  TRACK_EVENT_EXTENSION_DIRECTION_CLICK,
+  TRACK_EVENT_SUMMARY_GENERATED,
+  TRACK_EVENT_BRANCH_SUGGESTION_SHOWN,
+  TRACK_EVENT_BRANCH_SUGGESTION_ACCEPTED,
+  TRACK_EVENT_BRANCH_SUGGESTION_DISMISSED,
+} from '../../services/tracker';
 import useMobile from '../../hooks/useMobile';
 import useIsMobile from '../../hooks/useIsMobile';
 import { useFeatures } from '../../hooks/useFeatures';
@@ -22,6 +29,8 @@ import ConfirmDialog from '../Common/ConfirmDialog';
 import ExtensionDirectionButtons from './ExtensionDirectionButtons';
 import { MODEL_CONTEXT_WINDOWS, estimateTokens } from '../../constants/modelContext';
 import { parseExtensionDirections } from '../../utils/extensionDirections';
+import { detectBranchSuggestion } from '../../utils/branchSuggestion';
+import type { BranchSuggestionResult, RecentMessage } from '../../utils/branchSuggestion';
 
 interface ChatPanelProps {
   nodeId?: string | null;
@@ -340,6 +349,14 @@ const ChatPanel: React.FC<ChatPanelProps> = ({ nodeId }) => {
   const [hasBuiltInKey, setHasBuiltInKey] = useState(false);
   /** 待自动发送的延伸方向追问（节点切换后通过 effect 触发发送） */
   const pendingExtensionSendRef = useRef<{ targetNodeId: string; direction: string } | null>(null);
+  /** 分叉提示检测结果，null 表示当前不展示提示 */
+  const [branchSuggestion, setBranchSuggestion] = useState<BranchSuggestionResult | null>(null);
+  /** 已忽略分叉提示的节点ID集合，切换回该节点时不再重复提示 */
+  const [dismissedNodeIds, setDismissedNodeIds] = useState<Set<string>>(new Set());
+  /** 分叉检测防抖计时器引用 */
+  const debounceTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+  /** 待自动发送到分叉子节点的问题（节点切换后通过 effect 触发发送） */
+  const pendingBranchQuestionSendRef = useRef<{ targetNodeId: string; question: string } | null>(null);
   const [workspaceFiles, setWorkspaceFiles] = useState<FileInfo[]>([]);
   const [selectedFileIds, setSelectedFileIds] = useState<string[]>([]);
   const [isUploading, setIsUploading] = useState(false);
@@ -424,6 +441,55 @@ const ChatPanel: React.FC<ChatPanelProps> = ({ nodeId }) => {
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [nodeId, t]);
 
+  /**
+   * 处理分叉提示"创建分支"后的自动发送
+   * 用户点击"创建分支"后，会先创建子节点并切换过去；当 nodeId 变为目标节点时，
+   * 自动向新节点发送用户原本在输入框中输入的问题。使用 ref 存储待发送信息。
+   */
+  useEffect(() => {
+    if (pendingBranchQuestionSendRef.current && pendingBranchQuestionSendRef.current.targetNodeId === nodeId) {
+      const { question } = pendingBranchQuestionSendRef.current;
+      pendingBranchQuestionSendRef.current = null;
+      sendMessage(question);
+    }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [nodeId]);
+
+  /**
+   * 分叉提示展示时上报埋点
+   * 当 branchSuggestion 从 null 变为非 null 时，上报 branch_suggestion_shown 事件
+   * 载荷：nodeId、suggestionText、triggerRule
+   * 埋点上报失败时静默处理，不阻塞 UI
+   */
+  useEffect(() => {
+    if (branchSuggestion && nodeId) {
+      try {
+        track(TRACK_EVENT_BRANCH_SUGGESTION_SHOWN, {
+          nodeId,
+          suggestionText: branchSuggestion.suggestionText,
+          triggerRule: branchSuggestion.triggerRule,
+          workspaceId: getLocalWorkspaceId() || '',
+        });
+      } catch {
+        // 埋点上报异常静默处理，不阻塞主流程
+      }
+    }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [branchSuggestion]);
+
+  /**
+   * 节点切换时重置分叉提示状态
+   * 清除当前展示的提示，但保留 dismissedNodeIds（切回原节点时仍保持忽略状态）
+   * 同时清理防抖计时器，避免切换节点后触发旧节点的检测
+   */
+  useEffect(() => {
+    setBranchSuggestion(null);
+    if (debounceTimerRef.current) {
+      clearTimeout(debounceTimerRef.current);
+      debounceTimerRef.current = null;
+    }
+  }, [nodeId]);
+
   useEffect(() => {
     if (isLoading || streamingContent) {
       keepAwake();
@@ -442,6 +508,11 @@ const ChatPanel: React.FC<ChatPanelProps> = ({ nodeId }) => {
       }
       if (animationFrameRef.current) {
         cancelAnimationFrame(animationFrameRef.current);
+      }
+      // 清理分叉检测防抖计时器，避免内存泄漏
+      if (debounceTimerRef.current) {
+        clearTimeout(debounceTimerRef.current);
+        debounceTimerRef.current = null;
       }
       // 组件卸载时清理支线结束检测定时器，避免内存泄漏
       useChatStore.getState().clearBranchEndDetector();
@@ -943,9 +1014,24 @@ const ChatPanel: React.FC<ChatPanelProps> = ({ nodeId }) => {
   /**
    * 发送消息（流式传输）- 从输入框发送
    * 读取输入框内容，清空输入框，处理默认标题自动设置，然后调用 sendMessage 发送
+   * 若当前有分叉提示展示，先上报 branch_suggestion_dismissed 埋点，再正常发送
    */
   const handleSend = async () => {
     if (!input.trim() || isLoading) return;
+
+    // 用户直接发送消息时，若有分叉提示展示，先上报 dismissed 埋点
+    if (branchSuggestion && nodeId) {
+      try {
+        track(TRACK_EVENT_BRANCH_SUGGESTION_DISMISSED, {
+          nodeId,
+          suggestionText: branchSuggestion.suggestionText,
+          workspaceId: getLocalWorkspaceId() || '',
+        });
+      } catch {
+        // 埋点上报异常静默处理，不阻塞发送流程
+      }
+      setBranchSuggestion(null);
+    }
 
     const userMessage = input.trim();
     setInput('');
@@ -989,13 +1075,45 @@ const ChatPanel: React.FC<ChatPanelProps> = ({ nodeId }) => {
   /**
    * 处理输入框内容变化
    * 基于 scrollHeight 自动调整输入框高度，最大 160px
+   * 同时启动 500ms 防抖检测，命中分叉规则且当前节点未被忽略时显示提示气泡
    * @param e - 输入事件对象
    */
   const handleInputChange = (e: React.ChangeEvent<HTMLTextAreaElement>) => {
     const target = e.target;
     target.style.height = 'auto';
     target.style.height = Math.min(target.scrollHeight, 160) + 'px';
-    setInput(target.value);
+    const newValue = target.value;
+    setInput(newValue);
+
+    // 防抖检测：500ms 后调用 detectBranchSuggestion
+    if (debounceTimerRef.current) {
+      clearTimeout(debounceTimerRef.current);
+    }
+    debounceTimerRef.current = setTimeout(() => {
+      debounceTimerRef.current = null;
+      // 当前无节点或节点已被忽略，直接清除提示
+      if (!nodeId || dismissedNodeIds.has(nodeId)) {
+        setBranchSuggestion(null);
+        return;
+      }
+      const currentNode = useAppStore.getState().nodes.get(nodeId);
+      const currentNodeTitle = currentNode?.title || '';
+      // 取最近 4 条消息作为最近消息历史
+      const recentMessages: RecentMessage[] = messages
+        .slice(-4)
+        .map((msg) => ({ role: msg.role, content: msg.content }));
+      try {
+        const result = detectBranchSuggestion(newValue, currentNodeTitle, recentMessages);
+        if (result && result.shouldSuggest) {
+          setBranchSuggestion(result);
+        } else {
+          setBranchSuggestion(null);
+        }
+      } catch (error) {
+        console.error('[ChatPanel] 分叉检测异常:', error);
+        setBranchSuggestion(null);
+      }
+    }, 500);
   };
 
   const handleKeyDown = (e: React.KeyboardEvent) => {
@@ -1099,6 +1217,79 @@ const ChatPanel: React.FC<ChatPanelProps> = ({ nodeId }) => {
     } finally {
       setExtensionLoadingDirection(null);
     }
+  };
+
+  /**
+   * 处理用户点击分叉提示"创建分支"按钮
+   * 在当前节点下创建以 subTopic 为标题的子节点，切换到该子节点，
+   * 并将用户当前输入框的内容作为问题自动发送到子节点对话。
+   * 创建子节点失败时静默处理（console.error），不阻塞用户操作。
+   * 埋点上报失败时静默处理。
+   */
+  const handleBranchSuggestionAccept = async () => {
+    if (!nodeId || !branchSuggestion) return;
+
+    const subTopic = branchSuggestion.subTopic;
+    const suggestionText = branchSuggestion.suggestionText;
+    const userQuestion = input.trim();
+
+    try {
+      const childId = createChildNode(nodeId, subTopic);
+      if (!childId) {
+        console.error('[ChatPanel] 分叉提示创建分支失败：createChildNode 返回空');
+        return;
+      }
+      // 上报 accepted 埋点
+      try {
+        track(TRACK_EVENT_BRANCH_SUGGESTION_ACCEPTED, {
+          nodeId,
+          childNodeId: childId,
+          suggestionText,
+          workspaceId: getLocalWorkspaceId() || '',
+        });
+      } catch {
+        // 埋点上报异常静默处理
+      }
+      // 自动切换到子节点
+      selectNode(childId);
+      // 若用户有输入内容，作为问题发送到子节点对话
+      if (userQuestion) {
+        pendingBranchQuestionSendRef.current = { targetNodeId: childId, question: userQuestion };
+      }
+      // 清空输入框与提示
+      setInput('');
+      if (textareaRef.current) {
+        textareaRef.current.style.height = 'auto';
+      }
+      setBranchSuggestion(null);
+    } catch (err) {
+      console.error('[ChatPanel] 分叉提示创建分支异常:', err);
+    }
+  };
+
+  /**
+   * 处理用户点击分叉提示"忽略"按钮
+   * 将当前 nodeId 加入 dismissedNodeIds，清除提示，
+   * 并上报 branch_suggestion_dismissed 埋点。埋点异常静默处理。
+   */
+  const handleBranchSuggestionDismiss = () => {
+    if (!nodeId || !branchSuggestion) return;
+
+    setDismissedNodeIds((prev) => {
+      const next = new Set(prev);
+      next.add(nodeId);
+      return next;
+    });
+    try {
+      track(TRACK_EVENT_BRANCH_SUGGESTION_DISMISSED, {
+        nodeId,
+        suggestionText: branchSuggestion.suggestionText,
+        workspaceId: getLocalWorkspaceId() || '',
+      });
+    } catch {
+      // 埋点上报异常静默处理
+    }
+    setBranchSuggestion(null);
   };
 
   /**
@@ -1851,6 +2042,32 @@ const ChatPanel: React.FC<ChatPanelProps> = ({ nodeId }) => {
                 </div>
               );
             })}
+          </div>
+        )}
+
+        {/* 智能分叉提示气泡：仅在检测命中且未被忽略时展示 */}
+        {branchSuggestion && (
+          <div
+            className="flex items-center gap-2 mb-2 px-3 py-2 bg-blue-50 border border-blue-200 rounded-2xl transition-opacity duration-300 animate-fade dark:bg-blue-900/20 dark:border-blue-500/30"
+            role="status"
+            aria-label={t('branchSuggestionTitle')}
+          >
+            <GitBranch className="w-4 h-4 text-blue-500 flex-shrink-0 dark:text-blue-400" />
+            <span className="flex-1 min-w-0 text-sm text-blue-700 dark:text-blue-200 break-words">
+              {branchSuggestion.suggestionText}
+            </span>
+            <button
+              onClick={handleBranchSuggestionAccept}
+              className="flex-shrink-0 px-3 py-1 bg-blue-600 hover:bg-blue-700 text-white rounded-lg text-xs font-medium transition-colors"
+            >
+              {t('createBranch')}
+            </button>
+            <button
+              onClick={handleBranchSuggestionDismiss}
+              className="flex-shrink-0 px-2 py-1 text-blue-500 hover:text-blue-700 dark:text-blue-400 dark:hover:text-blue-200 text-xs transition-colors"
+            >
+              {t('ignore')}
+            </button>
           </div>
         )}
 

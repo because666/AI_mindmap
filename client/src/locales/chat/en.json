@@ -76,5 +76,7 @@
   "summaryPromptMessage": "It seems the conversation on \"{{title}}\" has ended. Generate a summary to return to the main topic?",
   "summaryPromptOnBackMessage": "The node \"{{title}}\" has no summary yet. Generate one before leaving?",
   "generateNow": "Generate Now",
-  "ignore": "Ignore"
+  "ignore": "Ignore",
+  "createBranch": "Create Branch",
+  "branchSuggestionTitle": "Branch Suggestion"
 }

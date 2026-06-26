@@ -76,5 +76,7 @@
   "summaryPromptMessage": "检测到「{{title}}」的对话可能已结束，是否生成摘要以便回到主线？",
   "summaryPromptOnBackMessage": "当前节点「{{title}}」尚未生成摘要，是否在离开前生成？",
   "generateNow": "立即生成",
-  "ignore": "忽略"
+  "ignore": "忽略",
+  "createBranch": "创建分支",
+  "branchSuggestionTitle": "分叉建议"
 }

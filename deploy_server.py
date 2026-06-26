@@ -40,6 +40,7 @@ DEFAULT_FILES_TO_UPLOAD: List[Tuple[str, Optional[str]]] = [
     ("client/src/services/api.ts", None),
     ("client/src/stores/chatStore.ts", None),
     ("client/src/utils/extensionDirections.ts", None),
+    ("client/src/utils/branchSuggestion.ts", None),
     ("client/src/components/Canvas/CanvasPage.tsx", None),
     ("client/src/components/Chat/ChatPanel.tsx", None),
     ("client/src/components/Chat/MindMapThumbnail.tsx", None),

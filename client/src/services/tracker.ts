@@ -31,6 +31,21 @@ export const TRACK_EVENT_SUMMARY_GENERATED = 'summary_generated';
 export const TRACK_EVENT_MAP_CREATED = 'map_created';
 
 /**
+ * 分叉提示展示事件
+ */
+export const TRACK_EVENT_BRANCH_SUGGESTION_SHOWN = 'branch_suggestion_shown';
+
+/**
+ * 分叉提示接受事件（用户点击"创建分支"）
+ */
+export const TRACK_EVENT_BRANCH_SUGGESTION_ACCEPTED = 'branch_suggestion_accepted';
+
+/**
+ * 分叉提示忽略事件（用户点击"忽略"或直接发送）
+ */
+export const TRACK_EVENT_BRANCH_SUGGESTION_DISMISSED = 'branch_suggestion_dismissed';
+
+/**
  * 埋点事件公共属性接口
  */
 export interface TrackerEventCommonProps {

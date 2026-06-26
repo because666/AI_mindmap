@@ -142,8 +142,8 @@ const CustomNodeComponent: React.FC<NodeProps<CustomNodeType>> = ({ id, data, se
   const [isSummaryExpanded, setIsSummaryExpanded] = useState(false);
 
   const handleOpacity: number = isMobile ? (isSelected ? 1 : 0.4) : (isSelected ? 1 : 0);
-  const handleSize: number = isMobile ? 12 : 8;
-  const handlePadding: number = isMobile ? 16 : 0;
+  const handleSize: number = isMobile ? 8 : 8;
+  const handlePadding: number = isMobile ? 4 : 0;
 
   const baseHandleStyle: React.CSSProperties = {
     width: handleSize,

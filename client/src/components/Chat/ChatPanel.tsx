@@ -1646,7 +1646,10 @@ const ChatPanel: React.FC<ChatPanelProps> = ({ nodeId }) => {
                           : 'bg-dark-700 text-white rounded-tl-sm'
                       }`}
                     >
-                      <MessageContent content={cleanContent} role={message.role} />
+                      <MessageContent
+                        content={cleanContent.trim() || (directions.length > 0 ? t('extensionDirectionsFallback') : cleanContent)}
+                        role={message.role}
+                      />
                       <div className="text-xs mt-1 text-dark-500">
                         {formatMessageTime(message.timestamp)}
                       </div>

@@ -61,6 +61,7 @@
   "fileReferenced": "[用户引用了以下文件: {{files}}，请在回答时参考这些文件内容]",
   "cannotGetResponseStream": "无法获取响应流",
   "extensionDirectionsTitle": "想深入了解",
+  "extensionDirectionsFallback": "AI 推荐了以下延伸方向，你可以点击继续深入：",
   "exploreDirectionPrompt": "请详细解释：{{direction}}",
   "creatingBranch": "正在创建分支...",
   "branchCreateFailed": "创建分支失败，请重试",

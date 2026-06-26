@@ -64,10 +64,13 @@ app.get('/api/health', (_req, res) => {
   res.json({ status: 'ok', timestamp: new Date().toISOString() });
 });
 
-// IP 白名单中间件：在 session 之后、API 路由之前注册，拦截非白名单 IP
-app.use('/api', ipWhitelistMiddleware);
-
+// 认证相关路由（登录、初始化、检查 IP 等）不受 IP 白名单限制
+// 否则首次初始化或管理员更换 IP 后将无法登录后台
 app.use('/api/auth', authRouter);
+
+// IP 白名单中间件：在认证路由之后注册，仅保护管理后台 API
+app.use('/api/admin', ipWhitelistMiddleware);
+app.use('/api/dashboard', ipWhitelistMiddleware);
 app.use('/api/honeypot', honeypotRouter);
 app.use('/api/dashboard', dashboardRouter);
 app.use('/api/admin/users', usersRouter);

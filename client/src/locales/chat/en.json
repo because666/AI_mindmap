@@ -61,6 +61,7 @@
   "fileReferenced": "[User referenced the following files: {{files}}, please refer to these file contents in your response]",
   "cannotGetResponseStream": "Cannot get response stream",
   "extensionDirectionsTitle": "Explore further",
+  "extensionDirectionsFallback": "AI suggested the following directions. Click one to dive deeper:",
   "exploreDirectionPrompt": "Please explain in detail: {{direction}}",
   "creatingBranch": "Creating branch...",
   "branchCreateFailed": "Failed to create branch, please retry",

@@ -55,17 +55,17 @@
   - [x] client: 执行 `npm audit --omit=dev` 输出报告并归档（npm-audit-client.json，9 漏洞：6 high / 3 moderate，0 critical）
   - [x] 评估高危漏洞处置方案（已给出 xlsx 替换、axios/nodemailer/uuid 升级、react-router 修复等建议）
 
-- [ ] Task 10: 重新部署到服务器（第二轮）
-  - [ ] 通过 deploy_server.py 执行部署
-  - [ ] 验证 22 个文件上传成功
-  - [ ] 验证 4 个子项目远程构建成功
-  - [ ] 验证 PM2 deepmindmap-server / deepmindmap-admin 重启成功
+- [x] Task 10: 重新部署到服务器（第二轮）
+  - [x] 通过 deploy_server.py 执行部署（备份标签 deploy-backup-20260627-011044）
+  - [x] 验证 22 个文件上传成功
+  - [x] 验证 4 个子项目远程构建成功（server、admin/server、client 2309 模块、admin/client 2713 模块）
+  - [x] 验证 PM2 deepmindmap-server / deepmindmap-admin 重启成功（状态 online）
 
-- [ ] Task 11: 线上服务状态核验
-  - [ ] 服务器端执行 `pm2 list` 确认两个进程状态为 online
-  - [ ] 服务器端 curl 健康检查 URL 返回 200
-  - [ ] 服务器端 `pm2 logs --lines 100 --nostream` 无未捕获异常
-  - [ ] 部署备份标签已创建（deploy-backup-<timestamp>）
+- [x] Task 11: 线上服务状态核验
+  - [x] 服务器端执行 `pm2 list` 确认两个进程状态为 online（server uptime 43s、admin uptime 42s）
+  - [x] 服务器端 curl 健康检查 URL 返回 200（3001:200、3002:200）
+  - [x] 服务器端 `pm2 logs --lines 100 --nostream` 无未捕获异常（部署后仅一次 MongoDB 降级提示，属预期行为）
+  - [x] 部署备份标签已创建（deploy-backup-20260627-011044）
 
 # Task Dependencies
 - Task 4 依赖 Task 1-3 的结果

@@ -64,15 +64,15 @@
 - [x] 高危漏洞（若有）已评估处置方案（xlsx 替换、axios/nodemailer/uuid 升级、react-router 修复等）
 
 ## 第二轮 — 重新部署
-- [ ] deploy_server.py 执行成功
-- [ ] 22 个文件上传成功
-- [ ] 服务器 4 个子项目构建成功
-- [ ] PM2 deepmindmap-server 重启成功
-- [ ] PM2 deepmindmap-admin 重启成功
-- [ ] 部署备份标签已创建
+- [x] deploy_server.py 执行成功（备份标签 deploy-backup-20260627-011044）
+- [x] 22 个文件上传成功
+- [x] 服务器 4 个子项目构建成功（client 2309 模块、admin/client 2713 模块）
+- [x] PM2 deepmindmap-server 重启成功（online）
+- [x] PM2 deepmindmap-admin 重启成功（online）
+- [x] 部署备份标签已创建（deploy-backup-20260627-011044）
 
 ## 第二轮 — 线上服务状态核验
-- [ ] pm2 list 显示两个进程状态为 online
-- [ ] curl 3001/health 返回 200
-- [ ] curl 3002/api/health 返回 200
-- [ ] pm2 logs --lines 100 --nostream 无未捕获异常
+- [x] pm2 list 显示两个进程状态为 online（server uptime 43s、admin uptime 42s）
+- [x] curl 3001/health 返回 200
+- [x] curl 3002/api/health 返回 200
+- [x] pm2 logs --lines 100 --nostream 无未捕获异常（部署后仅一次 MongoDB 降级提示，属预期行为）

@@ -1153,7 +1153,7 @@ const CanvasPageInner: React.FC = () => {
             </button>
             <button
               onClick={() => setIsTemplateLibraryOpen(true)}
-              className="pointer-events-auto btn-secondary px-6 py-3 mx-auto mt-3"
+              className="pointer-events-auto btn-ghost px-6 py-3 mx-auto mt-3"
             >
               <LayoutTemplate className="w-5 h-5" />
               <span>{t('templateLibrary')}</span>

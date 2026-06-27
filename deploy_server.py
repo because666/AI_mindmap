@@ -36,6 +36,8 @@ DEFAULT_FILES_TO_UPLOAD: List[Tuple[str, Optional[str]]] = [
     ("client/src/App.tsx", None),
     ("client/src/stores/nodeStore.ts", None),
     ("client/src/stores/visitorWorkspaceStore.ts", None),
+    # 非线性对话体验 - 客户端 - 样式
+    ("client/src/index.css", None),
     # 非线性对话体验 - 客户端 - 其他
     ("client/src/services/api.ts", None),
     ("client/src/stores/chatStore.ts", None),

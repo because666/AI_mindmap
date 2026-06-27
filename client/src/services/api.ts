@@ -328,6 +328,13 @@ export const workspaceApi = {
   getMine: () =>
     api.get<{ success: boolean; data: IWorkspace[] }>('/workspaces/mine'),
 
+  /**
+   * 获取当前访客所有工作区的元数据（节点数、最后更新时间）
+   * @returns 工作区元数据列表
+   */
+  getMineMetadata: () =>
+    api.get<{ success: boolean; data: Array<{ workspaceId: string; nodeCount: number; lastNodeUpdatedAt: string }> }>('/workspaces/mine/metadata'),
+
   getPublic: () =>
     api.get<{ success: boolean; data: IWorkspace[] }>('/workspaces/public/list'),
 

@@ -819,6 +819,42 @@ class NodeService {
   }
 
   /**
+   * 获取工作区节点数量（优先从缓存获取，缓存未命中时查询Neo4j）
+   * @param workspaceId - 工作区ID
+   * @returns 节点数量
+   */
+  async getNodeCount(workspaceId: string): Promise<number> {
+    // 优先从内存缓存获取
+    const memoryCache = this.workspaceCaches.get(workspaceId);
+    if (memoryCache && memoryCache.nodes.size > 0) {
+      return memoryCache.nodes.size;
+    }
+
+    // 尝试从Redis缓存获取
+    const redisCache = await this.getFromRedis(workspaceId);
+    if (redisCache && redisCache.nodes.size > 0) {
+      return redisCache.nodes.size;
+    }
+
+    // 缓存未命中，查询Neo4j COUNT
+    if (neo4jService.isConnected()) {
+      try {
+        const results = await neo4jService.runQuery<{ count: number }>(
+          `MATCH (n:Node {workspaceId: $workspaceId}) RETURN count(n) as count`,
+          { workspaceId }
+        );
+        if (results.length > 0) {
+          return Number(results[0].count);
+        }
+      } catch (error) {
+        console.error('Neo4j获取节点数量失败:', error);
+      }
+    }
+
+    return 0;
+  }
+
+  /**
    * 获取节点的所有后代节点
    * @param nodeId - 节点ID
    * @returns 后代节点列表

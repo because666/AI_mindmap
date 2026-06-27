@@ -33,5 +33,15 @@
   "accountBannedDesc": "Your account has been banned by the administrator",
   "ipBannedDesc": "Your current IP address has been banned by the administrator",
   "workspaceClosedDesc": "This workspace has been closed by the administrator",
-  "confirm": "OK"
+  "confirm": "OK",
+  "mapLibrary": "Map Library",
+  "mapLibrarySearch": "Search maps...",
+  "mapLibraryEmpty": "No maps yet",
+  "mapLibraryEmptyDesc": "Create your first mind map",
+  "mapLibraryNewMap": "New Map",
+  "mapLibrarySortRecent": "Recently Edited",
+  "mapLibrarySortCreated": "Created Time",
+  "mapLibraryNodes": "{{count}} nodes",
+  "mapLibraryCurrentMap": "Current",
+  "mapLibraryLastEdited": "Last edited"
 }

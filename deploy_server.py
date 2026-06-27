@@ -50,11 +50,18 @@ DEFAULT_FILES_TO_UPLOAD: List[Tuple[str, Optional[str]]] = [
     # 模板库 MVP
     ("client/src/data/templates.ts", None),
     ("client/src/components/Workspace/TemplateLibrary.tsx", None),
+    # 工作区地图库
+    ("client/src/components/Workspace/MapLibrary.tsx", None),
+    ("client/src/components/Layout/MainLayout.tsx", None),
+    ("server/src/services/nodeService.ts", None),
+    ("server/src/routes/workspaces.ts", None),
     # i18n
     ("client/src/locales/canvas/en.json", None),
     ("client/src/locales/canvas/zh.json", None),
     ("client/src/locales/chat/en.json", None),
     ("client/src/locales/chat/zh.json", None),
+    ("client/src/locales/nav/en.json", None),
+    ("client/src/locales/nav/zh.json", None),
 ]
 
 

@@ -51,6 +51,21 @@ export const TRACK_EVENT_BRANCH_SUGGESTION_DISMISSED = 'branch_suggestion_dismis
 export const TRACK_EVENT_TEMPLATE_USED = 'template_used';
 
 /**
+ * 地图库面板打开
+ */
+export const TRACK_EVENT_MAP_LIBRARY_OPENED = 'map_library_opened';
+
+/**
+ * 地图库搜索
+ */
+export const TRACK_EVENT_MAP_LIBRARY_SEARCH = 'map_library_search';
+
+/**
+ * 地图库切换地图
+ */
+export const TRACK_EVENT_MAP_LIBRARY_SWITCH = 'map_library_switch';
+
+/**
  * 埋点事件公共属性接口
  */
 export interface TrackerEventCommonProps {

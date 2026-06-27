@@ -1,5 +1,6 @@
 import { Router, Request, Response } from 'express';
 import { workspaceService } from '../services/workspaceService';
+import { nodeService } from '../services/nodeService';
 import { visitorAuth, getClientIp } from '../middleware';
 import { mongoDBService } from '../data/mongodb/connection';
 import { pushService } from '../services/pushService';
@@ -74,6 +75,30 @@ router.post('/', visitorAuth, async (req: Request, res: Response) => {
       description
     );
     res.json({ success: true, data: workspace });
+  } catch (error: unknown) {
+    const message = error instanceof Error ? error.message : String(error);
+    res.status(500).json({ success: false, error: message });
+  }
+});
+
+/**
+ * 获取当前访客所有工作区的元数据（节点数、最后节点更新时间）
+ * 用于地图库面板展示
+ */
+router.get('/mine/metadata', visitorAuth, async (req: Request, res: Response) => {
+  try {
+    const workspaces = await workspaceService.getVisitorWorkspaces(req.visitorId!);
+    const metadata = await Promise.all(
+      workspaces.map(async (workspace) => {
+        const nodeCount = await nodeService.getNodeCount(workspace.id);
+        return {
+          workspaceId: workspace.id,
+          nodeCount,
+          lastNodeUpdatedAt: workspace.updatedAt,
+        };
+      })
+    );
+    res.json({ success: true, data: metadata });
   } catch (error: unknown) {
     const message = error instanceof Error ? error.message : String(error);
     res.status(500).json({ success: false, error: message });

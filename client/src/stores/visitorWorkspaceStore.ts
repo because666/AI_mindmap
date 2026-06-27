@@ -119,6 +119,18 @@ interface VisitorWorkspaceState {
    * @param updates - 更新内容
    */
   updateWorkspace: (workspaceId: string, updates: Partial<Pick<IWorkspace, 'name' | 'description' | 'type'>>) => Promise<boolean>;
+
+  /**
+   * 工作区元数据（节点数、最后节点更新时间）
+   * 仅在内存中维护，不持久化到 localStorage
+   */
+  workspaceMetadata: Record<string, { nodeCount: number; lastNodeUpdatedAt: string }>;
+
+  /**
+   * 获取所有工作区的元数据
+   * 在地图库面板打开时调用
+   */
+  fetchWorkspaceMetadata: () => Promise<void>;
 }
 
 /**
@@ -133,6 +145,7 @@ export const useVisitorWorkspaceStore = create<VisitorWorkspaceState>()(
       isInitialized: false,
       isLoading: false,
       error: null,
+      workspaceMetadata: {},
 
       initialize: async () => {
         if (get().isInitialized) return;
@@ -367,6 +380,31 @@ export const useVisitorWorkspaceStore = create<VisitorWorkspaceState>()(
           }
         } catch (error: unknown) {
           console.error('刷新工作区列表失败:', error);
+        }
+      },
+
+      /**
+       * 获取所有工作区的元数据（节点数、最后更新时间）
+       * 将结果按 workspaceId 索引存入 workspaceMetadata
+       */
+      fetchWorkspaceMetadata: async () => {
+        try {
+          const result = await workspaceApi.getMineMetadata() as unknown as {
+            success: boolean;
+            data: Array<{ workspaceId: string; nodeCount: number; lastNodeUpdatedAt: string }>;
+          };
+          if (result.success && result.data) {
+            const metadata: Record<string, { nodeCount: number; lastNodeUpdatedAt: string }> = {};
+            for (const item of result.data) {
+              metadata[item.workspaceId] = {
+                nodeCount: item.nodeCount,
+                lastNodeUpdatedAt: item.lastNodeUpdatedAt,
+              };
+            }
+            set({ workspaceMetadata: metadata });
+          }
+        } catch (error: unknown) {
+          console.error('获取工作区元数据失败:', error);
         }
       },
 

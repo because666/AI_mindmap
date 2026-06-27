@@ -33,5 +33,15 @@
   "accountBannedDesc": "您的账号已被管理员封禁",
   "ipBannedDesc": "您当前使用的IP地址已被管理员封禁",
   "workspaceClosedDesc": "该工作区已被管理员关闭",
-  "confirm": "确定"
+  "confirm": "确定",
+  "mapLibrary": "地图库",
+  "mapLibrarySearch": "搜索地图...",
+  "mapLibraryEmpty": "暂无地图",
+  "mapLibraryEmptyDesc": "创建你的第一张思维导图",
+  "mapLibraryNewMap": "新建地图",
+  "mapLibrarySortRecent": "最近编辑",
+  "mapLibrarySortCreated": "创建时间",
+  "mapLibraryNodes": "{{count}} 个节点",
+  "mapLibraryCurrentMap": "当前",
+  "mapLibraryLastEdited": "最后编辑"
 }

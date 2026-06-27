@@ -1,12 +1,13 @@
 import React, { useState, useEffect, useCallback } from 'react';
 import { useTranslation } from 'react-i18next';
-import { Settings, FolderOpen, Search, MessageSquare, Network, X, Clock, Undo2, Redo2, Globe, Lock, LogOut, Users, Plus, Menu, RefreshCw, Bell, AlertTriangle, MessageCircle, Languages } from 'lucide-react';
+import { Settings, FolderOpen, Search, MessageSquare, Network, X, Clock, Undo2, Redo2, Globe, Lock, LogOut, Users, Plus, Menu, RefreshCw, Bell, AlertTriangle, MessageCircle, Languages, Map } from 'lucide-react';
 import SettingsModal from '../Settings/SettingsModal';
 import ChatPanel from '../Chat/ChatPanel';
 import SearchPanel from '../Search/SearchPanel';
 import HistoryPanel from '../History/HistoryPanel';
 import WorkspaceSettingsModal from '../Workspace/WorkspaceSettingsModal';
 import FilePanel from '../File/FilePanel';
+import MapLibrary from '../Workspace/MapLibrary';
 import { UnreadBadge, MessageCenter } from '../MessageCenter';
 import FeedbackModal from '../Feedback/FeedbackModal';
 import { useAppStore } from '../../stores/appStore';
@@ -79,6 +80,7 @@ const MainLayout: React.FC<{ children: React.ReactNode }> = ({ children }) => {
   const [isHistoryOpen, setIsHistoryOpen] = useState(false);
   const [isWorkspaceSettingsOpen, setIsWorkspaceSettingsOpen] = useState(false);
   const [isFilePanelOpen, setIsFilePanelOpen] = useState(false);
+  const [isMapLibraryOpen, setIsMapLibraryOpen] = useState(false);
   const [isFeedbackOpen, setIsFeedbackOpen] = useState(false);
   const [activeTab, setActiveTab] = useState<'canvas' | 'chat'>('canvas');
   const [showWorkspaceInfo, setShowWorkspaceInfo] = useState(false);
@@ -216,6 +218,18 @@ const MainLayout: React.FC<{ children: React.ReactNode }> = ({ children }) => {
       return false;
     },
     isFilePanelOpen,
+    BACK_PRIORITY_FULLSCREEN
+  );
+
+  useBackButton(
+    () => {
+      if (isMapLibraryOpen) {
+        setIsMapLibraryOpen(false);
+        return true;
+      }
+      return false;
+    },
+    isMapLibraryOpen,
     BACK_PRIORITY_FULLSCREEN
   );
 
@@ -419,6 +433,18 @@ const MainLayout: React.FC<{ children: React.ReactNode }> = ({ children }) => {
         >
           <MessageSquare className="w-5 h-5" />
           <span>{t('aiChat')}</span>
+        </button>
+
+        <button
+          onClick={() => { setIsMapLibraryOpen(true); handleMobileDrawerClose(); }}
+          className={`w-full flex items-center gap-3 px-4 py-3 text-left transition-colors ${
+            isMapLibraryOpen
+              ? 'bg-primary-600/20 text-primary-400 border-r-2 border-primary-500'
+              : 'text-dark-300 hover:text-white hover:bg-dark-800'
+          }`}
+        >
+          <Map className="w-5 h-5" />
+          <span>{t('mapLibrary')}</span>
         </button>
 
         <div className="px-3 mt-4 mb-2">
@@ -825,6 +851,23 @@ const MainLayout: React.FC<{ children: React.ReactNode }> = ({ children }) => {
           </span>
         </div>
 
+        <div className="relative group">
+          <button
+            onClick={() => setIsMapLibraryOpen(!isMapLibraryOpen)}
+            className={`w-10 h-10 rounded-xl flex items-center justify-center transition-colors ${
+              isMapLibraryOpen
+                ? 'bg-primary-600 text-white'
+                : 'text-dark-400 hover:text-white hover:bg-dark-700'
+            }`}
+            title={t('mapLibrary')}
+          >
+            <Map className="w-5 h-5" />
+          </button>
+          <span className="absolute left-full ml-2 px-2 py-1 bg-dark-800 text-dark-200 text-xs rounded-lg whitespace-nowrap pointer-events-none opacity-0 group-hover:opacity-100 transition-opacity duration-200">
+            {t('mapLibrary')}
+          </span>
+        </div>
+
         <div className="w-6 h-px bg-dark-700 my-2" />
 
         <div className="relative group">
@@ -981,6 +1024,18 @@ const MainLayout: React.FC<{ children: React.ReactNode }> = ({ children }) => {
 
           {!isMobile && (
             <div
+              className={`shrink-0 transition-all duration-300 ease-out overflow-hidden h-full`}
+              style={{ width: isMapLibraryOpen ? '320px' : 0, opacity: isMapLibraryOpen ? 1 : 0 }}
+            >
+              <MapLibrary
+                isOpen={isMapLibraryOpen}
+                onClose={() => setIsMapLibraryOpen(false)}
+              />
+            </div>
+          )}
+
+          {!isMobile && (
+            <div
               className={`shrink-0 border-l border-dark-700/30 flex flex-col bg-dark-950/30 backdrop-blur-sm transition-[width] duration-300 ease-out overflow-hidden ${
                 isMessageCenterOpen ? '' : 'pointer-events-none'
               }`}
@@ -1071,6 +1126,26 @@ const MainLayout: React.FC<{ children: React.ReactNode }> = ({ children }) => {
           </div>
           <div className="flex-1 overflow-hidden">
             <HistoryPanel isOpen={true} onClose={() => setIsHistoryOpen(false)} />
+          </div>
+        </div>
+      )}
+
+      {isMobile && isMapLibraryOpen && (
+        <div className="fixed inset-0 z-50 bg-dark-950 flex flex-col">
+          <div className="h-14 bg-dark-900 border-b border-dark-700 flex items-center justify-between px-4">
+            <div className="flex items-center gap-2">
+              <Map className="w-4 h-4 text-primary-400" />
+              <span className="text-white font-medium">{t('mapLibrary')}</span>
+            </div>
+            <button
+              onClick={() => setIsMapLibraryOpen(false)}
+              className="p-2 text-dark-400 hover:text-white hover:bg-dark-700 rounded-xl transition-colors"
+            >
+              <X className="w-5 h-5" />
+            </button>
+          </div>
+          <div className="flex-1 overflow-hidden">
+            <MapLibrary isOpen={true} onClose={() => setIsMapLibraryOpen(false)} />
           </div>
         </div>
       )}

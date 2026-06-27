@@ -30,11 +30,11 @@
   - [x] SubTask 5.1: 更新 deploy_server.py 文件列表，新增 MapLibrary.tsx 等 6 个文件
   - [x] SubTask 5.2: 确认所有新增文件路径正确
 
-- [ ] Task 6: 部署（**仅在用户确认 Task 1-5 全部无问题后执行**）
-  - [ ] SubTask 6.1: 执行 deploy_server.py 部署到生产服务器
-  - [ ] SubTask 6.2: 验证服务器构建成功
-  - [ ] SubTask 6.3: 验证 PM2 重启成功
-  - [ ] SubTask 6.4: 验证健康检查接口返回 200
+- [x] Task 6: 部署（**仅在用户确认 Task 1-5 全部无问题后执行**）
+  - [x] SubTask 6.1: 执行 deploy_server.py 部署到生产服务器（29 个文件上传）
+  - [x] SubTask 6.2: 验证服务器构建成功（server tsc + client vite build 均 exit 0）
+  - [x] SubTask 6.3: 验证 PM2 重启成功（deepmindmap-server + deepmindmap-admin 均 online）
+  - [x] SubTask 6.4: 验证健康检查接口返回 200（3001/health + 3002/api/health）
 
 ---
 

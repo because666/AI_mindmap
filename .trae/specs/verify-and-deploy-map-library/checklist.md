@@ -25,6 +25,6 @@
 - [x] deploy_server.py 文件列表已更新（新增 6 个文件）
 
 ## 部署验证（用户确认后执行）
-- [ ] 服务器构建成功
-- [ ] PM2 重启成功
-- [ ] 健康检查 3001/health 返回 200
+- [x] 服务器构建成功（server tsc + client vite build 均 exit 0）
+- [x] PM2 重启成功（deepmindmap-server + deepmindmap-admin 均 online）
+- [x] 健康检查 3001/health 返回 200，3002/api/health 返回 200

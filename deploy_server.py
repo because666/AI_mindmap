@@ -55,6 +55,9 @@ DEFAULT_FILES_TO_UPLOAD: List[Tuple[str, Optional[str]]] = [
     ("client/src/components/Layout/MainLayout.tsx", None),
     ("server/src/services/nodeService.ts", None),
     ("server/src/routes/workspaces.ts", None),
+    # 埋点路由和入口（修复 /api/events 404）
+    ("server/src/routes/events.ts", None),
+    ("server/src/index.ts", None),
     # i18n
     ("client/src/locales/canvas/en.json", None),
     ("client/src/locales/canvas/zh.json", None),

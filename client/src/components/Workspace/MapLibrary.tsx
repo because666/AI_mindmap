@@ -65,12 +65,19 @@ const MapLibrary: React.FC<MapLibraryProps> = ({ isOpen, onClose }) => {
 
   /**
    * 面板打开时获取元数据并上报埋点
+   * 使用 try-catch 保护，防止异常导致组件崩溃
    */
   useEffect(() => {
     if (isOpen) {
-      fetchWorkspaceMetadata();
+      fetchWorkspaceMetadata().catch(() => {
+        // fetchWorkspaceMetadata 内部已有错误处理，此处仅为双重保护
+      });
       if (!hasTrackedOpenRef.current) {
-        track(TRACK_EVENT_MAP_LIBRARY_OPENED, {});
+        try {
+          track(TRACK_EVENT_MAP_LIBRARY_OPENED, {});
+        } catch {
+          // 埋点异常不影响组件正常运行
+        }
         hasTrackedOpenRef.current = true;
       }
     } else {
@@ -84,7 +91,11 @@ const MapLibrary: React.FC<MapLibraryProps> = ({ isOpen, onClose }) => {
   useEffect(() => {
     if (!searchQuery.trim()) return;
     const timer = setTimeout(() => {
-      track(TRACK_EVENT_MAP_LIBRARY_SEARCH, { query: searchQuery });
+      try {
+        track(TRACK_EVENT_MAP_LIBRARY_SEARCH, { query: searchQuery });
+      } catch {
+        // 埋点异常不影响搜索功能
+      }
     }, 500);
     return () => clearTimeout(timer);
   }, [searchQuery]);
@@ -120,7 +131,11 @@ const MapLibrary: React.FC<MapLibraryProps> = ({ isOpen, onClose }) => {
    * @param workspaceId - 工作区ID
    */
   const handleSwitchMap = useCallback((workspaceId: string) => {
-    track(TRACK_EVENT_MAP_LIBRARY_SWITCH, { workspaceId });
+    try {
+      track(TRACK_EVENT_MAP_LIBRARY_SWITCH, { workspaceId });
+    } catch {
+      // 埋点异常不影响切换功能
+    }
     switchWorkspace(workspaceId);
     onClose();
   }, [switchWorkspace, onClose]);

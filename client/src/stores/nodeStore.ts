@@ -10,11 +10,26 @@ import type { ConversationData } from './conversationStore';
 import type { AppState } from './appStore';
 import { useAppStore } from './appStore';
 import { generateId } from './storeUtils';
-import { nodeApi, getLocalWorkspaceId } from '../services/api';
+import { nodeApi, getLocalWorkspaceId, conversationApi } from '../services/api';
 import type { NodeData as ApiNodeData } from '../services/api';
 import { track, TRACK_EVENT_NODE_CREATED, TRACK_EVENT_TEMPLATE_USED } from '../services/tracker';
-import type { TemplateData } from '../data/templates';
+import type { TemplateData, TemplateNode } from '../data/templates';
 import i18n from 'i18next';
+
+/**
+ * 模板创建结果
+ *
+ * createMapFromTemplate 方法的返回值，携带根节点 ID、所有节点 ID 列表和模板引用，
+ * 供调用方后续批量发起预置对话。
+ */
+export interface TemplateCreationResult {
+  /** 根节点 ID，创建失败时为空字符串 */
+  rootId: string;
+  /** 所有已创建节点的 ID 列表（按模板节点顺序） */
+  nodeIds: string[];
+  /** 模板数据引用，便于后续按索引取预置问题 */
+  template: TemplateData;
+}
 
 /**
  * 节点数据接口
@@ -93,9 +108,28 @@ export interface NodeSlice {
    * 失败时通过 console.error 输出错误日志，不抛出异常以避免阻塞用户操作。
    *
    * @param template - 模板数据，包含 nodes 与 relations
-   * @returns 新创建的根节点 ID；若模板无根节点或异常时返回空字符串
+   * @returns 模板创建结果，包含 rootId、nodeIds、template；失败时 rootId 为空字符串
    */
-  createMapFromTemplate: (template: TemplateData) => string;
+  createMapFromTemplate: (template: TemplateData) => TemplateCreationResult;
+
+  /**
+   * 为模板创建的节点批量发起预置AI对话
+   *
+   * 按顺序为每个节点发送预置问题，等待AI回答后更新节点的 conversationId。
+   * 单个节点失败时跳过继续，不阻塞整体流程。
+   *
+   * @param nodeIds - 节点 ID 列表（按创建顺序）
+   * @param template - 模板数据
+   * @param onProgress - 进度回调（currentIndex 从 0 开始，totalCount 为总数）
+   * @param shouldContinue - 取消检查函数，返回 false 时中断创建
+   * @returns 创建成功的节点 ID 列表
+   */
+  createPresetConversationsForTemplate: (
+    nodeIds: string[],
+    template: TemplateData,
+    onProgress?: (currentIndex: number, totalCount: number) => void,
+    shouldContinue?: () => boolean,
+  ) => Promise<string[]>;
 }
 
 /**
@@ -1458,13 +1492,13 @@ export const createNodeSlice = (set: SliceSet, get: SliceGet): NodeSlice => ({
    * 4. 通过 addNode 将所有节点添加到 store
    * 5. 选中根节点（set({ selectedNodeId: rootId })）
    * 6. 上报 TRACK_EVENT_TEMPLATE_USED 埋点（载荷：templateId、templateName）
-   * 7. 返回根节点 ID
+   * 7. 返回 TemplateCreationResult
    *
-   * 异常处理：整体包裹 try-catch，失败时通过 console.error 输出日志并返回空字符串，
+   * 异常处理：整体包裹 try-catch，失败时通过 console.error 输出日志并返回空结果，
    * 不抛出异常以避免阻塞用户操作。
    *
    * @param template - 模板数据，包含 nodes 与 relations
-   * @returns 新创建的根节点 ID；若模板无根节点或异常时返回空字符串
+   * @returns 模板创建结果，包含 rootId、nodeIds、template；失败时 rootId 为空字符串
    */
   createMapFromTemplate: (template) => {
     try {
@@ -1561,11 +1595,117 @@ export const createNodeSlice = (set: SliceSet, get: SliceGet): NodeSlice => ({
         templateName: template.name,
       });
 
-      return rootId;
+      // 构建结果：收集所有已创建节点 ID
+      const nodeIds = Array.from(templateNodeIndexToId.values());
+      return { rootId, nodeIds, template };
     } catch (error) {
       console.error('[nodeStore] 从模板创建思维导图失败:', error);
-      return '';
+      return { rootId: '', nodeIds: [], template };
     }
+  },
+
+  /**
+   * 为模板创建的节点批量发起预置AI对话
+   *
+   * 按顺序为每个节点发送预置问题，等待AI回答后更新节点的 conversationId。
+   * 实现流程：
+   * 1. 遍历 nodeIds，对每个节点通过索引获取对应的 templateNode
+   * 2. 检查 shouldContinue()，若返回 false 则中断
+   * 3. 若 templateNode.presetQuestion 存在：
+   *    - 调用 conversationApi.sendMessage(nodeId, presetQuestion)
+   *    - 成功后通过 conversationApi.getByNodeId 获取 conversationId
+   *    - 更新节点的 conversationId 和 summary
+   * 4. 每个节点处理完毕后调用 onProgress 回调
+   * 5. 单个节点失败时 catch 异常并跳过继续
+   *
+   * @param nodeIds - 节点 ID 列表（按创建顺序）
+   * @param template - 模板数据
+   * @param onProgress - 进度回调（currentIndex 从 0 开始，totalCount 为总数）
+   * @param shouldContinue - 取消检查函数，返回 false 时中断创建
+   * @returns 创建成功的节点 ID 列表
+   */
+  createPresetConversationsForTemplate: async (
+    nodeIds: string[],
+    template: TemplateData,
+    onProgress?: (currentIndex: number, totalCount: number) => void,
+    shouldContinue?: () => boolean,
+  ) => {
+    const successNodeIds: string[] = [];
+    const totalCount = nodeIds.length;
+
+    for (let i = 0; i < totalCount; i++) {
+      // 检查是否需要中断（用户取消）
+      if (shouldContinue && !shouldContinue()) {
+        break;
+      }
+
+      const nodeId = nodeIds[i];
+      const templateNode: TemplateNode | undefined = template.nodes[i];
+
+      // 索引越界保护
+      if (!templateNode) {
+        onProgress?.(i, totalCount);
+        continue;
+      }
+
+      // 仅处理有预置问题的节点
+      if (!templateNode.presetQuestion) {
+        onProgress?.(i, totalCount);
+        continue;
+      }
+
+      try {
+        // 发送预置问题，触发AI回答
+        const response = await conversationApi.sendMessage(
+          nodeId,
+          templateNode.presetQuestion,
+        );
+
+        // 响应拦截器已返回 response.data，需断言为实际业务结构
+        const result = response as unknown as {
+          success: boolean;
+          data: { userMessage: string; assistantMessage?: string; error?: string };
+        };
+
+        if (result.success && !result.data.error) {
+          // 获取对话 ID（sendMessage 后后端会自动创建 conversation）
+          try {
+            const convResponse = await conversationApi.getByNodeId(nodeId);
+            const convResult = convResponse as unknown as {
+              success: boolean;
+              data: { id: string };
+            };
+            if (convResult.success && convResult.data?.id) {
+              get().updateNode(nodeId, { conversationId: convResult.data.id });
+            }
+          } catch (convError) {
+            // 获取对话 ID 失败不影响整体流程，静默处理
+            console.error(
+              `[nodeStore] 获取节点 ${nodeId} 对话ID失败:`,
+              convError,
+            );
+          }
+
+          // 更新节点摘要（如果模板节点提供了摘要）
+          if (templateNode.summary) {
+            get().updateNode(nodeId, { summary: templateNode.summary });
+          }
+
+          successNodeIds.push(nodeId);
+        }
+      } catch (error) {
+        // 单个节点失败时跳过继续，不阻塞整体流程
+        console.error(
+          `[nodeStore] 为节点 ${nodeId} 创建预置对话失败:`,
+          error,
+        );
+      }
+
+      // 更新进度（无论成功失败都推进进度）
+      onProgress?.(i, totalCount);
+    }
+
+    return successNodeIds;
   },
 });
 

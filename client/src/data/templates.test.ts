@@ -66,6 +66,16 @@ describe('内置模板数据 BUILTIN_TEMPLATES', () => {
       expect(template.icon.trim().length).toBeGreaterThan(0);
     }
   });
+
+  it('每个节点都有预置问题（presetQuestion）', () => {
+    for (const template of BUILTIN_TEMPLATES) {
+      for (const node of template.nodes) {
+        expect(node.presetQuestion).toBeDefined();
+        expect(typeof node.presetQuestion).toBe('string');
+        expect((node.presetQuestion as string).trim().length).toBeGreaterThan(0);
+      }
+    }
+  });
 });
 
 describe('getTemplatesByCategory', () => {

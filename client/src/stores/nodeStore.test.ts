@@ -38,6 +38,10 @@ vi.mock('../services/api', () => ({
     delete: vi.fn().mockResolvedValue({}),
     deleteRelation: vi.fn().mockResolvedValue({}),
   },
+  conversationApi: {
+    getByNodeId: vi.fn().mockResolvedValue({ success: true, data: { id: 'mock-conv-id' } }),
+    sendMessage: vi.fn().mockResolvedValue({ success: true, data: { userMessage: '问题', assistantMessage: '回答' } }),
+  },
   getLocalWorkspaceId: () => 'test-workspace',
   getLocalVisitorId: () => 'test-visitor',
   httpClient: {
@@ -87,22 +91,22 @@ describe('createMapFromTemplate - 正常流程', () => {
 
   it('应根据模板创建所有节点', () => {
     const template = BUILTIN_TEMPLATES[0]; // guide-deepmindmap，4 个节点
-    const rootId = useAppStore.getState().createMapFromTemplate(template);
+    const result = useAppStore.getState().createMapFromTemplate(template);
     const state = useAppStore.getState();
 
     expect(state.nodes.size).toBe(template.nodes.length);
-    expect(rootId).toBeTruthy();
-    expect(typeof rootId).toBe('string');
+    expect(result.rootId).toBeTruthy();
+    expect(typeof result.rootId).toBe('string');
   });
 
   it('应返回根节点 ID 并选中根节点', () => {
     const template = BUILTIN_TEMPLATES[0];
-    const rootId = useAppStore.getState().createMapFromTemplate(template);
+    const result = useAppStore.getState().createMapFromTemplate(template);
     const state = useAppStore.getState();
 
-    expect(rootId).toBeTruthy();
-    expect(state.selectedNodeId).toBe(rootId);
-    const rootNode = state.nodes.get(rootId);
+    expect(result.rootId).toBeTruthy();
+    expect(state.selectedNodeId).toBe(result.rootId);
+    const rootNode = state.nodes.get(result.rootId);
     expect(rootNode).toBeDefined();
     expect(rootNode?.isRoot).toBe(true);
   });
@@ -139,9 +143,9 @@ describe('createMapFromTemplate - 正常流程', () => {
 
   it('根节点位置应为 (100, 100)', () => {
     const template = BUILTIN_TEMPLATES[0];
-    const rootId = useAppStore.getState().createMapFromTemplate(template);
+    const result = useAppStore.getState().createMapFromTemplate(template);
     const state = useAppStore.getState();
-    const rootNode = state.nodes.get(rootId);
+    const rootNode = state.nodes.get(result.rootId);
 
     expect(rootNode?.position).toEqual({ x: 100, y: 100 });
   });
@@ -172,10 +176,10 @@ describe('createMapFromTemplate - 正常流程', () => {
 
   it('parent-child 关系应更新节点的 parentIds 与 childrenIds', () => {
     const template = BUILTIN_TEMPLATES[0]; // guide-deepmindmap，3 条 parent-child
-    const rootId = useAppStore.getState().createMapFromTemplate(template);
+    const result = useAppStore.getState().createMapFromTemplate(template);
     const state = useAppStore.getState();
 
-    const rootNode = state.nodes.get(rootId);
+    const rootNode = state.nodes.get(result.rootId);
     expect(rootNode).toBeDefined();
     // 根节点应有 3 个子节点
     expect(rootNode?.childrenIds.length).toBe(3);
@@ -183,7 +187,7 @@ describe('createMapFromTemplate - 正常流程', () => {
     // 每个子节点的 parentIds 应包含根节点 ID
     const childNodes = Array.from(state.nodes.values()).filter((n) => !n.isRoot);
     childNodes.forEach((child) => {
-      expect(child.parentIds).toContain(rootId);
+      expect(child.parentIds).toContain(result.rootId);
     });
   });
 
@@ -223,13 +227,13 @@ describe('createMapFromTemplate - 正常流程', () => {
   it('应对所有内置模板正常创建地图', () => {
     BUILTIN_TEMPLATES.forEach((template) => {
       resetStoreState();
-      const rootId = useAppStore.getState().createMapFromTemplate(template);
+      const result = useAppStore.getState().createMapFromTemplate(template);
       const state = useAppStore.getState();
 
       expect(state.nodes.size).toBe(template.nodes.length);
       expect(state.relations.length).toBe(template.relations.length);
-      expect(rootId).toBeTruthy();
-      expect(state.selectedNodeId).toBe(rootId);
+      expect(result.rootId).toBeTruthy();
+      expect(state.selectedNodeId).toBe(result.rootId);
     });
   });
 });
@@ -240,7 +244,7 @@ describe('createMapFromTemplate - 边界情况', () => {
     mockTrack.mockReset();
   });
 
-  it('模板无节点时应返回空字符串且不创建节点', () => {
+  it('模板无节点时应返回空 rootId 且不创建节点', () => {
     const emptyTemplate: TemplateData = {
       id: 'empty-template',
       name: '空模板',
@@ -251,10 +255,11 @@ describe('createMapFromTemplate - 边界情况', () => {
       relations: [],
     };
 
-    const rootId = useAppStore.getState().createMapFromTemplate(emptyTemplate);
+    const result = useAppStore.getState().createMapFromTemplate(emptyTemplate);
     const state = useAppStore.getState();
 
-    expect(rootId).toBe('');
+    expect(result.rootId).toBe('');
+    expect(result.nodeIds).toEqual([]);
     expect(state.nodes.size).toBe(0);
     expect(state.relations.length).toBe(0);
     expect(state.selectedNodeId).toBeNull();
@@ -274,18 +279,18 @@ describe('createMapFromTemplate - 边界情况', () => {
       relations: [],
     };
 
-    const rootId = useAppStore.getState().createMapFromTemplate(noRelationTemplate);
+    const result = useAppStore.getState().createMapFromTemplate(noRelationTemplate);
     const state = useAppStore.getState();
 
     expect(state.nodes.size).toBe(2);
     expect(state.relations.length).toBe(0);
-    expect(state.selectedNodeId).toBe(rootId);
+    expect(state.selectedNodeId).toBe(result.rootId);
     // 无关系时根节点的 childrenIds 应为空
-    const rootNode = state.nodes.get(rootId);
+    const rootNode = state.nodes.get(result.rootId);
     expect(rootNode?.childrenIds).toEqual([]);
   });
 
-  it('模板无根节点时应返回空字符串', () => {
+  it('模板无根节点时应返回空 rootId', () => {
     const noRootTemplate: TemplateData = {
       id: 'no-root',
       name: '无根节点模板',
@@ -299,11 +304,11 @@ describe('createMapFromTemplate - 边界情况', () => {
       relations: [{ source: 0, target: 1, type: 'parent-child' }],
     };
 
-    const rootId = useAppStore.getState().createMapFromTemplate(noRootTemplate);
+    const result = useAppStore.getState().createMapFromTemplate(noRootTemplate);
     const state = useAppStore.getState();
 
     // 无根节点时 rootId 为空字符串，但仍会创建节点和关系
-    expect(rootId).toBe('');
+    expect(result.rootId).toBe('');
     expect(state.nodes.size).toBe(2);
     expect(state.relations.length).toBe(1);
     // selectedNodeId 不会被设置（因为 rootId 为空）
@@ -329,10 +334,10 @@ describe('createMapFromTemplate - 边界情况', () => {
       ],
     };
 
-    const rootId = useAppStore.getState().createMapFromTemplate(invalidRelationTemplate);
+    const result = useAppStore.getState().createMapFromTemplate(invalidRelationTemplate);
     const state = useAppStore.getState();
 
-    expect(rootId).toBeTruthy();
+    expect(result.rootId).toBeTruthy();
     expect(state.nodes.size).toBe(2);
     // 只有第一条关系有效，后两条因索引越界被跳过
     expect(state.relations.length).toBe(1);
@@ -367,7 +372,7 @@ describe('createMapFromTemplate - 异常处理', () => {
     mockTrack.mockReset();
   });
 
-  it('addRelation 抛出异常时应被捕获，console.error 被调用，返回空字符串', () => {
+  it('addRelation 抛出异常时应被捕获，console.error 被调用，返回空 rootId', () => {
     const template = BUILTIN_TEMPLATES[0];
     const consoleErrorSpy = vi.spyOn(console, 'error').mockImplementation(() => {});
 
@@ -379,10 +384,11 @@ describe('createMapFromTemplate - 异常处理', () => {
       }) as never,
     });
 
-    const rootId = useAppStore.getState().createMapFromTemplate(template);
+    const result = useAppStore.getState().createMapFromTemplate(template);
 
-    // 异常被捕获，返回空字符串
-    expect(rootId).toBe('');
+    // 异常被捕获，返回空 rootId
+    expect(result.rootId).toBe('');
+    expect(result.nodeIds).toEqual([]);
     // console.error 被调用
     expect(consoleErrorSpy).toHaveBeenCalled();
     // 错误日志包含模块标识

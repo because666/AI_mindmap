@@ -217,17 +217,19 @@ npm run dev:client
 
 ## 部署
 
-项目支持多种部署方式：
+项目采用「本地构建后上传产物」的部署模式，禁止在服务器端拉取 Git 代码或运行构建。
 
-- **Windows 一键部署到 Linux 服务器**：使用 `deploy_server.py`，详细流程参考 [`docs/deploy.md`](docs/deploy.md)。
-- **服务器端全量部署**：在服务器上设置 `ZHIPU_API_KEY_2` 后运行 `deploy.sh`。
+- **Windows 一键部署到 Linux 服务器**：在本地开发机运行 `python deploy_server.py`，详细流程参考 [`docs/deploy.md`](docs/deploy.md)。
+- **服务器端直接部署（已弃用）**：`deploy.sh` 不再在服务器端执行 `git pull` / `npm install` / `npm run build`，若被单独调用会提示改用 `deploy_server.py`。
 - **Docker**：使用 `docker-compose.yml` 一键启动本地环境。
 - **Zeabur**：已配置 `zeabur.json`。
 
-生产部署前务必先编译后端：
+生产部署前必须在本地完成 lint、test 与 build，并确保构建产物（`server/dist`、`client/dist`、`admin/server/dist`、`admin/client/dist`）与本地验证结果一致：
 
 ```powershell
-cd server
+cd d:\study1\DeepMindMap\v2
+npm run lint    # 若根目录存在 lint 脚本
+npm run test    # 若根目录存在 test 脚本
 npm run build
 ```
 

@@ -59,5 +59,6 @@
   "modelNamePlaceholder": "如 我的GPT-4o",
   "requestUrlPlaceholder": "如 https://api.openai.com/v1",
   "language": "语言",
-  "languageDesc": "选择界面显示语言"
+  "languageDesc": "选择界面显示语言",
+  "appIcpFiling": "桂ICP备2026005821号-3A"
 }

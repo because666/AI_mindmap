@@ -7,8 +7,9 @@
 import { describe, it, expect, beforeEach, vi } from 'vitest';
 
 // 使用 vi.hoisted 确保 mock 函数在 vi.mock 工厂执行前已初始化
-const { mockTrack } = vi.hoisted(() => ({
+const { mockTrack, mockGetPresetAnswer } = vi.hoisted(() => ({
   mockTrack: vi.fn(),
+  mockGetPresetAnswer: vi.fn(),
 }));
 
 // Mock tracker 模块（提供 track 函数和事件常量）
@@ -41,6 +42,11 @@ vi.mock('../services/api', () => ({
   conversationApi: {
     getByNodeId: vi.fn().mockResolvedValue({ success: true, data: { id: 'mock-conv-id' } }),
     sendMessage: vi.fn().mockResolvedValue({ success: true, data: { userMessage: '问题', assistantMessage: '回答' } }),
+    // saveMessage 默认返回成功，便于在测试中按需覆盖返回值
+    saveMessage: vi.fn().mockResolvedValue({
+      success: true,
+      data: { _id: 'mock-msg-id', role: 'user', content: '', timestamp: '' },
+    }),
   },
   getLocalWorkspaceId: () => 'test-workspace',
   getLocalVisitorId: () => 'test-visitor',
@@ -50,17 +56,27 @@ vi.mock('../services/api', () => ({
   },
 }));
 
-// Mock i18next，t() 直接返回 key 便于断言
+// Mock templateAnswers 模块，getPresetAnswer 由可控的 mockGetPresetAnswer 提供
+// 便于在每个测试用例中按需返回不同的预设答案（含空答案、非空答案等场景）
+vi.mock('../data/templateAnswers', () => ({
+  getPresetAnswer: mockGetPresetAnswer,
+}));
+
+// Mock i18next，t() 直接返回 key 便于断言；language 默认为 'zh'
 vi.mock('i18next', () => ({
   default: {
     t: (key: string) => key,
+    language: 'zh',
   },
 }));
 
 import { useAppStore } from './appStore';
 import { BUILTIN_TEMPLATES, type TemplateData } from '../data/templates';
+import type { PresetAnswer } from '../data/templateAnswers';
+import { conversationApi } from '../services/api';
 import { TRACK_EVENT_TEMPLATE_USED } from '../services/tracker';
 import type { NodeData } from './nodeStore';
+import i18n from 'i18next';
 
 /**
  * 重置聚合 Store 状态到初始空状态
@@ -413,5 +429,428 @@ describe('createMapFromTemplate - 异常处理', () => {
     expect(nodeStoreErrors).toHaveLength(0);
 
     consoleErrorSpy.mockRestore();
+  });
+});
+
+/**
+ * createPresetConversationsForTemplate 单元测试
+ *
+ * 覆盖预设问答对话写入的正常流程、异常流程、边界情况，
+ * 包括：有/无预设答案、空答案跳过、索引越界、取消中断、saveMessage 失败/抛异常、
+ * getByNodeId 失败、onProgress 回调、summary 更新、语言选择等核心逻辑。
+ */
+describe('createPresetConversationsForTemplate - 预设答案写入', () => {
+  beforeEach(() => {
+    resetStoreState();
+    mockTrack.mockReset();
+    mockGetPresetAnswer.mockReset();
+    // 重置 saveMessage 与 getByNodeId，并重新设置默认成功返回值
+    vi.mocked(conversationApi.saveMessage).mockReset();
+    vi.mocked(conversationApi.getByNodeId).mockReset();
+    // 使用 as never 绕过 AxiosResponse 包装类型断言（运行时已被拦截器剥离）
+    vi.mocked(conversationApi.saveMessage).mockResolvedValue({
+      success: true,
+      data: { _id: 'mock-msg-id', role: 'user', content: '', timestamp: '' },
+    } as never);
+    vi.mocked(conversationApi.getByNodeId).mockResolvedValue({
+      success: true,
+      data: { id: 'mock-conv-id' },
+    } as never);
+    // 确保 i18n.language 默认为 'zh'
+    (i18n as unknown as { language: string }).language = 'zh';
+  });
+
+  it('有预设答案时应写入用户问题和助手答案并更新 conversationId', async () => {
+    const template = BUILTIN_TEMPLATES[0]; // guide-deepmindmap，4 个节点均有 presetQuestion
+    const result = useAppStore.getState().createMapFromTemplate(template);
+
+    // 让 getPresetAnswer 返回非空答案
+    const fakeAnswer: PresetAnswer = { zh: '预设中文回答', en: 'preset english answer' };
+    mockGetPresetAnswer.mockReturnValue({ ...fakeAnswer });
+
+    const successIds = await useAppStore.getState().createPresetConversationsForTemplate(
+      result.nodeIds,
+      result.template,
+    );
+
+    // 4 个节点都有 presetQuestion 且有答案，应全部成功
+    expect(successIds).toHaveLength(4);
+    // 每个节点应调用 saveMessage 两次（user + assistant）
+    expect(conversationApi.saveMessage).toHaveBeenCalledTimes(8);
+    // 应调用 getByNodeId 获取 conversationId
+    expect(conversationApi.getByNodeId).toHaveBeenCalledTimes(4);
+
+    // 验证节点的 conversationId 已更新
+    result.nodeIds.forEach((nodeId) => {
+      const node = useAppStore.getState().nodes.get(nodeId);
+      expect(node?.conversationId).toBe('mock-conv-id');
+    });
+  });
+
+  it('应将预设问答同步写入 Store 的 conversations Map', async () => {
+    // 使用仅含一个预置问题节点的模板，避免多节点共用同一 conversationId 的覆盖问题
+    const singleNodeTemplate: TemplateData = {
+      id: 'single-preset',
+      name: '单节点预设',
+      description: '仅含一个预置问题节点',
+      icon: '✅',
+      category: 'guide',
+      nodes: [
+        { title: '根节点', isRoot: true, presetQuestion: '测试问题？', summary: '测试摘要' },
+      ],
+      relations: [],
+    };
+    const result = useAppStore.getState().createMapFromTemplate(singleNodeTemplate);
+
+    // 让 saveMessage 返回与传入 content 一致的内容，便于验证消息内容
+    let messageCallCount = 0;
+    vi.mocked(conversationApi.saveMessage).mockImplementation(async (_nodeId: string, role: string, content: string) => {
+      messageCallCount++;
+      return {
+        success: true,
+        data: {
+          _id: `mock-msg-id-${messageCallCount}`,
+          role,
+          content,
+          timestamp: '2024-01-01T00:00:00.000Z',
+        },
+      } as never;
+    });
+
+    const fakeAnswer: PresetAnswer = { zh: '预设中文回答', en: 'preset english answer' };
+    mockGetPresetAnswer.mockReturnValue({ ...fakeAnswer });
+
+    await useAppStore.getState().createPresetConversationsForTemplate(
+      result.nodeIds,
+      result.template,
+    );
+
+    const nodeId = result.nodeIds[0];
+    const node = useAppStore.getState().nodes.get(nodeId);
+    const conversation = useAppStore.getState().conversations.get('mock-conv-id');
+
+    expect(conversation).toBeDefined();
+    expect(conversation?.id).toBe('mock-conv-id');
+    expect(conversation?.nodeId).toBe(nodeId);
+    expect(conversation?.contextConfig).toEqual({
+      includeParentHistory: true,
+      includeRelatedNodes: [],
+    });
+    expect(conversation?.messages).toHaveLength(2);
+    expect(conversation?.messages[0].role).toBe('user');
+    expect(conversation?.messages[0].content).toBe('测试问题？');
+    expect(conversation?.messages[0].timestamp).toBeInstanceOf(Date);
+    expect(conversation?.messages[1].role).toBe('assistant');
+    expect(conversation?.messages[1].content).toBe('预设中文回答');
+    expect(conversation?.messages[1].timestamp).toBeInstanceOf(Date);
+    expect(node?.conversationId).toBe(conversation?.id);
+  });
+
+  it('应按 zh 语言取用答案字段（i18n.language 以 zh 开头）', async () => {
+    const template = BUILTIN_TEMPLATES[0];
+    const result = useAppStore.getState().createMapFromTemplate(template);
+
+    // 返回包含不同语言内容的答案，便于验证取用了 zh
+    mockGetPresetAnswer.mockImplementation(
+      (_templateId: string, nodeIndex: number) => ({
+        zh: `中文答案${nodeIndex}`,
+        en: `english${nodeIndex}`,
+      }),
+    );
+
+    await useAppStore.getState().createPresetConversationsForTemplate(
+      result.nodeIds,
+      result.template,
+    );
+
+    // 验证 saveMessage 的 assistant 调用使用了中文答案
+    const calls = vi.mocked(conversationApi.saveMessage).mock.calls;
+    // 过滤出 role='assistant' 的调用
+    const assistantCalls = calls.filter((call) => call[1] === 'assistant');
+    expect(assistantCalls).toHaveLength(4);
+    assistantCalls.forEach((call, idx) => {
+      expect(call[2]).toBe(`中文答案${idx}`);
+    });
+  });
+
+  it('i18n.language 以 en 开头时应取用 en 字段', async () => {
+    // 修改 i18n mock 的 language 为英文
+    (i18n as unknown as { language: string }).language = 'en-US';
+
+    const template = BUILTIN_TEMPLATES[0];
+    const result = useAppStore.getState().createMapFromTemplate(template);
+
+    mockGetPresetAnswer.mockImplementation(
+      (_templateId: string, nodeIndex: number) => ({
+        zh: `中文答案${nodeIndex}`,
+        en: `english${nodeIndex}`,
+      }),
+    );
+
+    await useAppStore.getState().createPresetConversationsForTemplate(
+      result.nodeIds,
+      result.template,
+    );
+
+    // 验证 saveMessage 的 assistant 调用使用了英文答案
+    const calls = vi.mocked(conversationApi.saveMessage).mock.calls;
+    const assistantCalls = calls.filter((call) => call[1] === 'assistant');
+    expect(assistantCalls).toHaveLength(4);
+    assistantCalls.forEach((call, idx) => {
+      expect(call[2]).toBe(`english${idx}`);
+    });
+  });
+
+  it('预设答案为空字符串时应跳过该节点并 console.warn', async () => {
+    const template = BUILTIN_TEMPLATES[0];
+    const result = useAppStore.getState().createMapFromTemplate(template);
+
+    // 返回空答案
+    mockGetPresetAnswer.mockReturnValue({ zh: '', en: '' });
+
+    const warnSpy = vi.spyOn(console, 'warn').mockImplementation(() => {});
+
+    const successIds = await useAppStore.getState().createPresetConversationsForTemplate(
+      result.nodeIds,
+      result.template,
+    );
+
+    // 无成功节点
+    expect(successIds).toHaveLength(0);
+    // 未调用 saveMessage
+    expect(conversationApi.saveMessage).not.toHaveBeenCalled();
+    // 每个节点都输出了警告
+    expect(warnSpy).toHaveBeenCalledTimes(4);
+    // 警告内容包含节点 ID 和模块标识
+    expect(warnSpy.mock.calls[0][0]).toContain('[nodeStore]');
+    expect(warnSpy.mock.calls[0][0]).toContain('无预设答案');
+
+    warnSpy.mockRestore();
+  });
+
+  it('getPresetAnswer 返回 null 时应跳过该节点并 console.warn', async () => {
+    const template = BUILTIN_TEMPLATES[0];
+    const result = useAppStore.getState().createMapFromTemplate(template);
+
+    mockGetPresetAnswer.mockReturnValue(null);
+
+    const warnSpy = vi.spyOn(console, 'warn').mockImplementation(() => {});
+
+    const successIds = await useAppStore.getState().createPresetConversationsForTemplate(
+      result.nodeIds,
+      result.template,
+    );
+
+    expect(successIds).toHaveLength(0);
+    expect(conversationApi.saveMessage).not.toHaveBeenCalled();
+    expect(warnSpy).toHaveBeenCalledTimes(4);
+
+    warnSpy.mockRestore();
+  });
+
+  it('节点无 presetQuestion 时应跳过（不查询答案、不写入对话）', async () => {
+    // 使用没有 presetQuestion 的自定义模板
+    const noPresetTemplate: TemplateData = {
+      id: 'no-preset',
+      name: '无预置问题',
+      description: '节点均无 presetQuestion',
+      icon: '🚫',
+      category: 'guide',
+      nodes: [
+        { title: '节点A', isRoot: true },
+        { title: '节点B', isRoot: false },
+      ],
+      relations: [{ source: 0, target: 1, type: 'parent-child' }],
+    };
+    const result = useAppStore.getState().createMapFromTemplate(noPresetTemplate);
+
+    const successIds = await useAppStore.getState().createPresetConversationsForTemplate(
+      result.nodeIds,
+      result.template,
+    );
+
+    expect(successIds).toHaveLength(0);
+    expect(conversationApi.saveMessage).not.toHaveBeenCalled();
+    // 未调用 getPresetAnswer（因为先检查 presetQuestion，无 presetQuestion 时直接 continue）
+    expect(mockGetPresetAnswer).not.toHaveBeenCalled();
+  });
+
+  it('节点索引越界时应跳过（nodeIds 长度大于 template.nodes）', async () => {
+    const template = BUILTIN_TEMPLATES[0]; // 4 个节点
+    const result = useAppStore.getState().createMapFromTemplate(template);
+    mockGetPresetAnswer.mockReturnValue({ zh: '答案', en: 'answer' });
+
+    // 传入额外的虚假 nodeId（超出 template.nodes 长度）
+    const extendedNodeIds = [...result.nodeIds, 'fake-extra-node-id'];
+    const successIds = await useAppStore.getState().createPresetConversationsForTemplate(
+      extendedNodeIds,
+      result.template,
+    );
+
+    // 仅 4 个有效节点成功，第 5 个因索引越界被跳过
+    expect(successIds).toHaveLength(4);
+  });
+
+  it('shouldContinue 返回 false 时应中断循环', async () => {
+    const template = BUILTIN_TEMPLATES[0];
+    const result = useAppStore.getState().createMapFromTemplate(template);
+    mockGetPresetAnswer.mockReturnValue({ zh: '答案', en: 'answer' });
+
+    let callCount = 0;
+    const shouldContinue = (): boolean => {
+      callCount++;
+      return callCount <= 1; // 第一次返回 true，第二次返回 false
+    };
+
+    const successIds = await useAppStore.getState().createPresetConversationsForTemplate(
+      result.nodeIds,
+      result.template,
+      undefined,
+      shouldContinue,
+    );
+
+    // shouldContinue 在 i=0 时返回 true（处理第 0 个节点），i=1 时返回 false（中断）
+    // 因此仅处理了第 0 个节点
+    expect(successIds).toHaveLength(1);
+  });
+
+  it('saveMessage 返回 success:false 时应跳过并 console.error', async () => {
+    const template = BUILTIN_TEMPLATES[0];
+    const result = useAppStore.getState().createMapFromTemplate(template);
+    mockGetPresetAnswer.mockReturnValue({ zh: '答案', en: 'answer' });
+
+    // saveMessage 返回失败
+    vi.mocked(conversationApi.saveMessage).mockResolvedValue({
+      success: false,
+      data: { _id: '', role: '', content: '', timestamp: '' },
+    } as never);
+
+    const errorSpy = vi.spyOn(console, 'error').mockImplementation(() => {});
+
+    const successIds = await useAppStore.getState().createPresetConversationsForTemplate(
+      result.nodeIds,
+      result.template,
+    );
+
+    expect(successIds).toHaveLength(0);
+    expect(errorSpy).toHaveBeenCalled();
+    // 错误日志包含模块标识和失败说明
+    const writeUserFailCalls = errorSpy.mock.calls.filter(
+      (call) => typeof call[0] === 'string' && call[0].includes('写入用户问题失败')
+    );
+    expect(writeUserFailCalls.length).toBeGreaterThan(0);
+
+    errorSpy.mockRestore();
+  });
+
+  it('saveMessage 抛出异常时应捕获并跳过，不阻塞后续节点', async () => {
+    const template = BUILTIN_TEMPLATES[0]; // 4 个节点
+    const result = useAppStore.getState().createMapFromTemplate(template);
+    mockGetPresetAnswer.mockReturnValue({ zh: '答案', en: 'answer' });
+
+    // 第 1 次（第 0 个节点的 user 写入）抛异常，后续正常
+    vi.mocked(conversationApi.saveMessage)
+      .mockRejectedValueOnce(new Error('网络错误'))
+      .mockResolvedValue({
+        success: true,
+        data: { _id: 'mock-msg-id', role: 'user', content: '', timestamp: '' },
+      } as never);
+
+    const errorSpy = vi.spyOn(console, 'error').mockImplementation(() => {});
+
+    const successIds = await useAppStore.getState().createPresetConversationsForTemplate(
+      result.nodeIds,
+      result.template,
+    );
+
+    // 第 0 个节点失败，后 3 个成功
+    expect(successIds).toHaveLength(3);
+    expect(errorSpy).toHaveBeenCalled();
+
+    errorSpy.mockRestore();
+  });
+
+  it('getByNodeId 抛出异常时应捕获并继续（conversationId 不更新但流程不中断）', async () => {
+    const template = BUILTIN_TEMPLATES[0];
+    const result = useAppStore.getState().createMapFromTemplate(template);
+    mockGetPresetAnswer.mockReturnValue({ zh: '答案', en: 'answer' });
+
+    // getByNodeId 抛异常
+    vi.mocked(conversationApi.getByNodeId).mockRejectedValue(new Error('获取对话失败'));
+
+    const errorSpy = vi.spyOn(console, 'error').mockImplementation(() => {});
+
+    const successIds = await useAppStore.getState().createPresetConversationsForTemplate(
+      result.nodeIds,
+      result.template,
+    );
+
+    // 4 个节点都成功写入对话（getByNodeId 失败不影响 successIds）
+    expect(successIds).toHaveLength(4);
+    // 但 conversationId 未更新（仍为 null）
+    result.nodeIds.forEach((nodeId) => {
+      const node = useAppStore.getState().nodes.get(nodeId);
+      expect(node?.conversationId).toBeNull();
+    });
+    // 获取对话 ID 失败的日志被调用
+    const convFailCalls = errorSpy.mock.calls.filter(
+      (call) => typeof call[0] === 'string' && call[0].includes('对话ID失败')
+    );
+    expect(convFailCalls.length).toBe(4);
+
+    errorSpy.mockRestore();
+  });
+
+  it('onProgress 回调应针对每个节点被调用', async () => {
+    const template = BUILTIN_TEMPLATES[0]; // 4 个节点
+    const result = useAppStore.getState().createMapFromTemplate(template);
+    mockGetPresetAnswer.mockReturnValue({ zh: '答案', en: 'answer' });
+
+    const onProgress = vi.fn();
+
+    await useAppStore.getState().createPresetConversationsForTemplate(
+      result.nodeIds,
+      result.template,
+      onProgress,
+    );
+
+    // 4 个节点，每个节点处理完后调用一次 onProgress
+    expect(onProgress).toHaveBeenCalledTimes(4);
+    // 验证参数：currentIndex 从 0 开始，totalCount 为 4
+    expect(onProgress).toHaveBeenLastCalledWith(3, 4);
+  });
+
+  it('有 summary 的节点应更新节点 summary', async () => {
+    const template = BUILTIN_TEMPLATES[0];
+    const result = useAppStore.getState().createMapFromTemplate(template);
+    mockGetPresetAnswer.mockReturnValue({ zh: '答案', en: 'answer' });
+
+    await useAppStore.getState().createPresetConversationsForTemplate(
+      result.nodeIds,
+      result.template,
+    );
+
+    // guide-deepmindmap 模板的节点都有 summary
+    template.nodes.forEach((templateNode, idx) => {
+      const nodeId = result.nodeIds[idx];
+      const node = useAppStore.getState().nodes.get(nodeId);
+      if (templateNode.summary) {
+        expect(node?.summary).toBe(templateNode.summary);
+      }
+    });
+  });
+
+  it('不应调用 conversationApi.sendMessage（已改为预设答案写入）', async () => {
+    const template = BUILTIN_TEMPLATES[0];
+    const result = useAppStore.getState().createMapFromTemplate(template);
+    mockGetPresetAnswer.mockReturnValue({ zh: '答案', en: 'answer' });
+
+    await useAppStore.getState().createPresetConversationsForTemplate(
+      result.nodeIds,
+      result.template,
+    );
+
+    // 验证不再调用 sendMessage（已被 saveMessage 替代）
+    expect(conversationApi.sendMessage).not.toHaveBeenCalled();
   });
 });

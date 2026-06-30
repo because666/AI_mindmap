@@ -51,6 +51,7 @@ const SettingsModal: React.FC<SettingsModalProps> = ({ isOpen, onClose, initialT
         {tabs.map((tab) => (
           <button
             key={tab.id}
+            data-tab={tab.id}
             onClick={() => setActiveTab(tab.id)}
             className={`flex items-center gap-2 px-6 py-3 text-sm font-medium transition-colors min-h-[44px] ${
               activeTab === tab.id
@@ -82,7 +83,7 @@ const SettingsModal: React.FC<SettingsModalProps> = ({ isOpen, onClose, initialT
                 {t('openGuide')}
               </button>
             </div>
-            
+
             <div className="bg-dark-800 rounded-xl p-4 border border-dark-700">
               <h4 className="text-sm font-medium text-white mb-3">{t('guideContentIncludes')}</h4>
               <ul className="space-y-2 text-xs text-dark-400">
@@ -123,6 +124,17 @@ const SettingsModal: React.FC<SettingsModalProps> = ({ isOpen, onClose, initialT
           </div>
         )}
       </div>
+
+      {/* 移动端底部 APP ICP 备案号展示 */}
+      {isMobile && (
+        <footer
+          className="py-3 px-6 bg-dark-900 border-t border-dark-800 text-center shrink-0"
+          role="contentinfo"
+          aria-label="APP ICP 备案号"
+        >
+          <span className="text-xs text-dark-400">{t('appIcpFiling')}</span>
+        </footer>
+      )}
     </>
   );
 

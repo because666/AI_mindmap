@@ -68,6 +68,10 @@ class AdminDBService {
       await this.db.collection('chat_audits').createIndex({ 'auditResult.riskLevel': 1 });
       await this.db.collection('ip_bans').createIndex({ ip: 1 }, { unique: true });
       await this.db.collection('admin_accounts').createIndex({ username: 1 }, { unique: true });
+      // AI 模型配置集合索引：按优先级排序、默认模型快速查找、模型ID 唯一性约束（弱唯一）
+      await this.db.collection('ai_model_configs').createIndex({ priority: 1 });
+      await this.db.collection('ai_model_configs').createIndex({ isDefault: 1 });
+      await this.db.collection('ai_model_configs').createIndex({ isActive: 1 });
       console.log('✅ 后台系统索引初始化完成');
     } catch (error) {
       console.warn('后台系统索引创建警告:', error);

@@ -1,0 +1,10 @@
+- [x] messages 集合有数据（376 条）
+- [x] conversations 集合有数据（118 条）
+- [x] events 集合有数据（4 条，埋点修复后新增）
+- [x] PM2 日志显示 events 上报返回 200
+- [x] 后台 chatAudit 路由已从 messages 集合查询
+- [x] 后台仪表盘趋势缓存已降到 1 分钟
+- [x] Capacitor 配置确认（server.url 指向线上主网站）
+- [x] npx cap sync android 同步成功
+- [x] Gradle 构建 Debug APK 成功
+- [x] APK 文件已生成并可下载（D:\study1\DeepMindMap\v2\DeepMindMap.apk，13.64 MB）

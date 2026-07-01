@@ -380,6 +380,134 @@ describe('WorkspaceService 工作区服务', () => {
 
       expect(workspaces).toHaveLength(0);
     });
+
+    it('置顶工作区应排在未置顶工作区之前', async () => {
+      // 未置顶工作区创建时间更早，置顶工作区创建时间更晚
+      // 若不按置顶优先排序，未置顶的 ws-old 会因 createdAt 更早被错误排到前面
+      const pinnedWs = {
+        id: 'ws-pinned',
+        name: '置顶工作区',
+        type: 'public',
+        ownerId: 'visitor-2',
+        members: [],
+        createdAt: new Date('2025-06-20T00:00:00.000Z'),
+        updatedAt: new Date('2025-06-20T00:00:00.000Z'),
+        isPinned: true,
+        pinnedAt: new Date('2025-06-25T00:00:00.000Z'),
+      };
+      const unpinnedOldWs = {
+        id: 'ws-old',
+        name: '较早创建的普通工作区',
+        type: 'public',
+        ownerId: 'visitor-3',
+        members: [],
+        createdAt: new Date('2024-01-01T00:00:00.000Z'),
+        updatedAt: new Date('2024-01-01T00:00:00.000Z'),
+      };
+      const unpinnedNewWs = {
+        id: 'ws-new',
+        name: '较新创建的普通工作区',
+        type: 'public',
+        ownerId: 'visitor-4',
+        members: [],
+        createdAt: new Date('2025-06-28T00:00:00.000Z'),
+        updatedAt: new Date('2025-06-28T00:00:00.000Z'),
+      };
+      mockMongoDBService.find.mockImplementation((collection: string) => {
+        if (collection === 'workspaces') {
+          // 数据库返回顺序故意打乱，确保排序逻辑生效
+          return Promise.resolve([unpinnedNewWs, unpinnedOldWs, pinnedWs]);
+        }
+        return Promise.resolve([]);
+      });
+
+      const service = await getService();
+      const workspaces = await service.getPublicWorkspaces();
+
+      expect(workspaces).toHaveLength(3);
+      // 置顶工作区应排在第一位
+      expect(workspaces[0].id).toBe('ws-pinned');
+      // 未置顶工作区之间按 createdAt 倒序，较新的排在前
+      expect(workspaces[1].id).toBe('ws-new');
+      expect(workspaces[2].id).toBe('ws-old');
+    });
+
+    it('多个置顶工作区应按 pinnedAt 倒序排序', async () => {
+      const pinnedEarlier = {
+        id: 'ws-earlier',
+        name: '较早置顶',
+        type: 'public',
+        ownerId: 'visitor-2',
+        members: [],
+        createdAt: new Date('2025-06-01T00:00:00.000Z'),
+        updatedAt: new Date('2025-06-01T00:00:00.000Z'),
+        isPinned: true,
+        pinnedAt: new Date('2025-06-10T00:00:00.000Z'),
+      };
+      const pinnedLater = {
+        id: 'ws-later',
+        name: '较晚置顶',
+        type: 'public',
+        ownerId: 'visitor-3',
+        members: [],
+        createdAt: new Date('2025-06-05T00:00:00.000Z'),
+        updatedAt: new Date('2025-06-05T00:00:00.000Z'),
+        isPinned: true,
+        pinnedAt: new Date('2025-06-25T00:00:00.000Z'),
+      };
+      mockMongoDBService.find.mockImplementation((collection: string) => {
+        if (collection === 'workspaces') {
+          // 数据库返回顺序故意把早置顶的放前面，验证会被倒序排列
+          return Promise.resolve([pinnedEarlier, pinnedLater]);
+        }
+        return Promise.resolve([]);
+      });
+
+      const service = await getService();
+      const workspaces = await service.getPublicWorkspaces();
+
+      expect(workspaces).toHaveLength(2);
+      // pinnedAt 更晚的应排在前面
+      expect(workspaces[0].id).toBe('ws-later');
+      expect(workspaces[1].id).toBe('ws-earlier');
+    });
+
+    it('缺少 pinnedAt 的置顶工作区应视为最早置顶，但仍排在未置顶工作区之前', async () => {
+      const pinnedNoTime = {
+        id: 'ws-pinned-no-time',
+        name: '置顶但无 pinnedAt',
+        type: 'public',
+        ownerId: 'visitor-2',
+        members: [],
+        createdAt: new Date('2025-06-01T00:00:00.000Z'),
+        updatedAt: new Date('2025-06-01T00:00:00.000Z'),
+        isPinned: true,
+        // pinnedAt 缺失
+      };
+      const unpinned = {
+        id: 'ws-unpinned',
+        name: '未置顶',
+        type: 'public',
+        ownerId: 'visitor-3',
+        members: [],
+        createdAt: new Date('2025-06-05T00:00:00.000Z'),
+        updatedAt: new Date('2025-06-05T00:00:00.000Z'),
+      };
+      mockMongoDBService.find.mockImplementation((collection: string) => {
+        if (collection === 'workspaces') {
+          return Promise.resolve([unpinned, pinnedNoTime]);
+        }
+        return Promise.resolve([]);
+      });
+
+      const service = await getService();
+      const workspaces = await service.getPublicWorkspaces();
+
+      expect(workspaces).toHaveLength(2);
+      // 缺少 pinnedAt 的置顶工作区仍应排在未置顶工作区之前
+      expect(workspaces[0].id).toBe('ws-pinned-no-time');
+      expect(workspaces[1].id).toBe('ws-unpinned');
+    });
   });
 
   describe('joinWorkspace - 加入工作区', () => {

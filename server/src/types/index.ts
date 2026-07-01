@@ -38,6 +38,18 @@ export interface Workspace {
   isClosed?: boolean;
   closeReason?: string;
   closedAt?: Date;
+  /**
+   * 是否被管理员置顶
+   * 由后台管理员通过 /api/admin/workspaces/:id/pin 接口设置
+   * 为 true 时该工作区会在公开列表中以"推荐工作区"形式优先展示
+   */
+  isPinned?: boolean;
+  /**
+   * 置顶时间
+   * 与 isPinned 配套使用，用于在置顶工作区之间按时间倒序排序
+   * 取消置顶时由后台清空
+   */
+  pinnedAt?: Date;
 }
 
 /**

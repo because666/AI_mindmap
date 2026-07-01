@@ -248,10 +248,13 @@ describe('auth 路由', () => {
 
       expect(respState.statusCode).toBe(200);
       expect(respState.jsonBody).toMatchObject({
-        allowed: true,
-        isFirstVisit: true,
-        hasPassword: false,
-        enableHoneypot: true,
+        success: true,
+        data: {
+          allowed: true,
+          isFirstVisit: true,
+          hasPassword: false,
+          enableHoneypot: true,
+        },
       });
     });
 
@@ -266,9 +269,12 @@ describe('auth 路由', () => {
       await callRoute('get', '/check-ip', req, respState.res);
 
       expect(respState.jsonBody).toMatchObject({
-        isFirstVisit: false,
-        hasPassword: true,
-        enableHoneypot: false,
+        success: true,
+        data: {
+          isFirstVisit: false,
+          hasPassword: true,
+          enableHoneypot: false,
+        },
       });
     });
 
@@ -281,9 +287,12 @@ describe('auth 路由', () => {
 
       expect(respState.statusCode).toBe(200);
       expect(respState.jsonBody).toMatchObject({
-        allowed: true,
-        isFirstVisit: true,
-        hasPassword: false,
+        success: true,
+        data: {
+          allowed: true,
+          isFirstVisit: true,
+          hasPassword: false,
+        },
       });
     });
   });
@@ -383,8 +392,10 @@ describe('auth 路由', () => {
       expect(respState.statusCode).toBe(200);
       expect(respState.jsonBody).toMatchObject({
         success: true,
-        isHoneypot: true,
-        nickname: '管理员',
+        data: {
+          isHoneypot: true,
+          nickname: '管理员',
+        },
       });
       expect(mockInsertOne).toHaveBeenCalled();
     });
@@ -407,7 +418,7 @@ describe('auth 路由', () => {
       await callRoute('post', '^/login$', req, respState.res);
 
       expect(respState.statusCode).toBe(200);
-      expect(respState.jsonBody).toMatchObject({ success: true, isHoneypot: true });
+      expect(respState.jsonBody).toMatchObject({ success: true, data: { isHoneypot: true } });
     });
   });
 
@@ -569,7 +580,7 @@ describe('auth 路由', () => {
       await callRoute('post', '/set-nickname', req, respState.res);
 
       expect(respState.statusCode).toBe(200);
-      expect(respState.jsonBody).toMatchObject({ success: true, nickname: '管理员小明' });
+      expect(respState.jsonBody).toMatchObject({ success: true, data: { nickname: '管理员小明' } });
     });
 
     it('昵称长度不足2位时返回 400', async () => {
@@ -626,8 +637,11 @@ describe('auth 路由', () => {
 
       expect(respState.statusCode).toBe(200);
       expect(respState.jsonBody).toMatchObject({
-        ipAddress: '127.0.0.1',
-        nickname: '管理员',
+        success: true,
+        data: {
+          ipAddress: '127.0.0.1',
+          nickname: '管理员',
+        },
       });
     });
 

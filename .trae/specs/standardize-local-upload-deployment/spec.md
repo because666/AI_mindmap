@@ -8,7 +8,7 @@
 
 - 明确部署顺序：**本地 Git 提交并推送 → 本地构建 client/server → 将构建产物上传至服务器 → 服务器仅执行替换与重启**，不再在服务器端拉取 Git 代码。
 - 更新或新增部署脚本/命令，支持本地一键完成"提交 → 构建 → 上传 → 重启 → 健康检查"。
-- 在服务器端保留备份机制，上传前自动备份当前 `client/dist`、`server/dist`、`admin/server/dist`，失败可回滚。
+- 在服务器端保留备份机制，上传前自动备份当前 `client/dist`、`server/dist`、`admin/server/dist`、`admin/client/dist`，失败可回滚。
 - 将本规则写入项目级记忆（project_memory.md），确保后续会话统一执行。
 - 文档中说明新的部署流程，废弃服务器端拉取代码的旧路径。
 
@@ -40,7 +40,7 @@
 #### Scenario: 部署前备份
 
 - **WHEN** 上传新的构建产物前
-- **THEN** 在服务器端将 `client/dist`、`server/dist`、`admin/server/dist` 备份为 `dist.bak-<timestamp>`
+- **THEN** 在服务器端将 `client/dist`、`server/dist`、`admin/server/dist`、`admin/client/dist` 备份为 `dist.bak-<timestamp>`
 - **AND** 本地仓库创建备份标签 `deploy-backup-<timestamp>`
 
 #### Scenario: 部署失败回滚

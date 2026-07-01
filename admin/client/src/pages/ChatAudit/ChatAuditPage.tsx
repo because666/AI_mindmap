@@ -26,6 +26,8 @@ interface ConversationDetail {
   createdAt: string;
   updatedAt: string;
   messages: Array<{
+    /** 消息 UUID，用于删除接口调用 */
+    id: string;
     role: string;
     content: string;
     timestamp: string;
@@ -105,13 +107,13 @@ const ChatAuditPage: React.FC = () => {
     }
   };
 
-  const handleDeleteConvMessage = async (convId: string, msgIndex: number) => {
+  const handleDeleteConvMessage = async (messageId: string) => {
     if (!confirm('确定删除该消息？此操作不可恢复。')) return;
+    if (!selectedConv) return;
     try {
-      await auditApi.deleteConversationMessage(convId, msgIndex, '管理员删除不安全内容');
-      if (selectedConv && selectedConv.id === convId) {
-        loadConversationDetail(convId);
-      }
+      await auditApi.deleteConversationMessage(messageId, '管理员删除不安全内容');
+      // 删除成功后刷新当前对话详情与列表统计
+      loadConversationDetail(selectedConv.id || selectedConv._id);
       loadConversations();
     } catch (error) {
       console.error('删除消息失败:', error);
@@ -311,8 +313,8 @@ const ChatAuditPage: React.FC = () => {
                   </div>
                 </div>
                 <div className="max-h-[550px] overflow-y-auto p-4 space-y-3">
-                  {selectedConv.messages?.map((msg, index) => (
-                    <div key={index} className={`flex ${msg.role === 'user' ? 'justify-end' : 'justify-start'}`}>
+                  {selectedConv.messages?.map((msg) => (
+                    <div key={msg.id} className={`flex ${msg.role === 'user' ? 'justify-end' : 'justify-start'}`}>
                       <div className={`relative group max-w-[80%] rounded-lg px-3 py-2 text-sm ${
                         msg.role === 'user'
                           ? 'bg-blue-500 text-white'
@@ -331,7 +333,7 @@ const ChatAuditPage: React.FC = () => {
                           )}
                           {msg.role === 'user' && (
                             <button
-                              onClick={() => handleDeleteConvMessage(selectedConv.id || selectedConv._id, index)}
+                              onClick={() => handleDeleteConvMessage(msg.id)}
                               className="opacity-0 group-hover:opacity-100 transition-opacity ml-1 text-red-300 hover:text-red-500"
                               title="删除此消息"
                             >

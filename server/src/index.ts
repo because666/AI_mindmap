@@ -33,6 +33,7 @@ import { workspaceService } from './services/workspaceService';
 import { fileService } from './services/fileService';
 import { conversationService } from './services/conversationService';
 import { nodeService } from './services/nodeService';
+import { aiService } from './services/aiService';
 import { initScheduledJobs } from './jobs/scheduledJobs';
 
 if (process.env.NODE_ENV !== 'production') {
@@ -228,6 +229,27 @@ if (!internalApiToken) {
       res.status(500).json({ success: false, error: message });
     }
   });
+
+  /**
+   * 内部API：刷新 AI 模型配置
+   * Admin后台修改模型配置后调用，触发主服务从 MongoDB 重新加载启用配置
+   * 需要提供 x-internal-token 请求头
+   */
+  app.post('/api/internal/refresh-ai-models', async (req, res) => {
+    const internalToken = req.headers['x-internal-token'];
+    if (!isTokenValid(internalToken, internalApiToken)) {
+      return res.status(403).json({ success: false, error: '无权访问' });
+    }
+
+    try {
+      const loadedCount = await aiService.refreshModelConfigs();
+      res.json({ success: true, data: { loadedCount } });
+    } catch (error) {
+      const message = error instanceof Error ? error.message : String(error);
+      console.error('[AI模型] 刷新配置失败:', message);
+      res.status(500).json({ success: false, error: message });
+    }
+  });
 }
 
 /**
@@ -356,6 +378,17 @@ async function startServer() {
     } catch (migrateError) {
       const migrateErrorMsg = migrateError instanceof Error ? migrateError.message : String(migrateError);
       console.error('⚠️ 消息迁移失败，服务继续运行:', migrateErrorMsg);
+    }
+
+    // 从数据库加载 AI 模型配置覆盖环境变量默认值（数据库无配置时回退到环境变量）
+    try {
+      await aiService.loadModelConfigsFromDB();
+      if (process.env.NODE_ENV !== 'production') {
+        console.log('✅ AI 模型配置加载完成');
+      }
+    } catch (aiModelError) {
+      const aiModelErrMsg = aiModelError instanceof Error ? aiModelError.message : String(aiModelError);
+      console.error('⚠️ AI 模型配置加载失败，使用环境变量默认值:', aiModelErrMsg);
     }
 
     try {

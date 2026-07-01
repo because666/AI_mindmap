@@ -2,13 +2,9 @@ import axios from 'axios';
 
 const MAIN_SERVER_URL = process.env.MAIN_SERVER_URL || 'http://localhost:3001';
 
-const INTERNAL_TOKEN = (() => {
-  const token = process.env.INTERNAL_API_TOKEN;
-  if (!token) {
-    throw new Error('INTERNAL_API_TOKEN 环境变量未设置，内部 API 通信不安全');
-  }
-  return token;
-})();
+// 内部 API 通信令牌，未配置时为空字符串，由各调用函数在调用前延迟校验
+// 与主服务 server/src/index.ts 保持一致：未配置时仅告警并跳过内部 API 调用，不阻塞服务启动
+const INTERNAL_TOKEN = process.env.INTERNAL_API_TOKEN || '';
 
 /**
  * 熔断器状态类型
@@ -260,6 +256,10 @@ export async function notifyWorkspaceCacheClear(workspaceId: string): Promise<vo
  * 在更新敏感词配置后调用，失败时自动重试
  */
 export async function notifySensitiveWordCacheClear(): Promise<void> {
+  if (!INTERNAL_TOKEN) {
+    console.warn('[缓存通知] INTERNAL_API_TOKEN 未配置，跳过敏感词缓存清除通知');
+    return;
+  }
   try {
     await circuitBreaker.execute(() => retryRequest(async () => {
       await axios.post(`${MAIN_SERVER_URL}/api/internal/clear-cache`, {
@@ -340,6 +340,45 @@ export async function notifyFeedbackPush(
       console.error('[反馈推送] 网络请求失败, 无法连接主服务端:', err.message);
     } else {
       console.error('[反馈推送] 未知错误:', error instanceof Error ? error.message : String(error));
+    }
+  }
+}
+
+/**
+ * 通知主服务端刷新 AI 模型配置
+ * 管理员在后台修改模型配置后调用，触发主服务从 MongoDB 重新加载启用配置
+ * 失败时仅输出警告，不影响 admin 后台主流程
+ */
+export async function notifyAIModelsRefresh(): Promise<void> {
+  if (!INTERNAL_TOKEN) {
+    console.warn('[AI模型] INTERNAL_API_TOKEN 未配置，跳过 AI 模型配置刷新通知');
+    return;
+  }
+  try {
+    await circuitBreaker.execute(() => retryRequest(async () => {
+      await axios.post(`${MAIN_SERVER_URL}/api/internal/refresh-ai-models`, {}, {
+        headers: { 'x-internal-token': INTERNAL_TOKEN },
+        timeout: 5000,
+      });
+    }));
+  } catch (error) {
+    if (error instanceof CircuitBreakerOpenError) {
+      console.warn('[AI模型] 刷新通知被熔断拒绝:', error.message);
+      return;
+    }
+    const err = error as { response?: { status: number; data: unknown }; message?: string };
+    if (err.response) {
+      const status = err.response.status;
+      const data = JSON.stringify(err.response.data);
+      if (status === 403) {
+        console.error('[AI模型] 刷新鉴权失败(403): 请检查 INTERNAL_API_TOKEN 配置一致性');
+      } else {
+        console.error('[AI模型] 刷新HTTP调用失败, status:', status, ', response:', data);
+      }
+    } else if (err.message) {
+      console.error('[AI模型] 刷新网络请求失败, 无法连接主服务端:', err.message);
+    } else {
+      console.error('[AI模型] 刷新未知错误:', error instanceof Error ? error.message : String(error));
     }
   }
 }

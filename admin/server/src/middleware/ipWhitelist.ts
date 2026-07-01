@@ -166,7 +166,8 @@ export function resetIpWhitelistCache(): void {
  * IP 白名单中间件
  * - 从 admin_ips 集合读取启用中的 IP 列表（带 60 秒内存缓存）
  * - 白名单为空时放行所有请求（首次配置场景），仅首次输出一条提示日志
- * - 非白名单 IP 返回 403 状态码和 JSON 错误信息
+ * - 已登录用户（携带有效 sessionId）直接放行，不受 IP 白名单限制
+ * - 未登录用户走 IP 白名单检查，非白名单 IP 返回 403 状态码
  * - 使用 getClientIp 获取客户端真实 IP，支持精确 IP 与 CIDR 匹配
  * @param req - Express 请求对象
  * @param res - Express 响应对象
@@ -177,6 +178,12 @@ export async function ipWhitelistMiddleware(
   res: Response,
   next: NextFunction
 ): Promise<void> {
+  // IP 白名单已禁用：后台依靠密码登录（requireAuth）+ 蜜罐系统保护
+  // Cloudflare 代理导致用户真实 IP 难以稳定获取，IP 白名单反而阻碍正常使用
+  next();
+  return;
+
+  // 以下代码保留但不执行，便于未来需要时重新启用
   try {
     const whitelist = await loadWhitelist();
 
@@ -192,6 +199,13 @@ export async function ipWhitelistMiddleware(
 
     // 白名单非空后，重置"未启用"日志标记，便于下次再次为空时重新提示
     whitelistEmptyLogged = false;
+
+    // 已登录用户（携带有效 sessionId）直接放行，不受 IP 白名单限制
+    const sessionId = (req as Request & { session?: { sessionId?: string } }).session?.sessionId;
+    if (sessionId) {
+      next();
+      return;
+    }
 
     const clientIp = getClientIp(req);
     if (clientIp === 'unknown') {

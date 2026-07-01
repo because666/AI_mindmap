@@ -1,7 +1,7 @@
 import React, { useState, useEffect, useCallback } from 'react';
 import { workspacesApi } from '../../services/api';
 import type { WorkspaceListItem, PaginationResult, RankingSortBy, WorkspaceRankingItem } from '../../types';
-import { Search, Eye, XCircle, Bell, Star, Trophy } from 'lucide-react';
+import { Search, Eye, XCircle, Bell, Star, Trophy, Pin, PinOff } from 'lucide-react';
 
 /**
  * 操作反馈提示接口
@@ -41,6 +41,8 @@ const WorkspacesPage: React.FC = () => {
   const [rankingLoading, setRankingLoading] = useState(false);
   const [rankingSortBy, setRankingSortBy] = useState<RankingSortBy>('nodeCount');
   const [starTogglingIds, setStarTogglingIds] = useState<Set<string>>(new Set());
+  // 置顶/取消置顶操作中的工作区 ID 集合，用于按钮禁用与加载态展示
+  const [pinTogglingIds, setPinTogglingIds] = useState<Set<string>>(new Set());
 
   /**
    * 显示操作反馈提示
@@ -147,6 +149,56 @@ const WorkspacesPage: React.FC = () => {
   };
 
   /**
+   * 切换工作区置顶状态
+   * 调用 pin/unpin 接口，并就地更新列表中的 isPinned/pinnedAt 字段
+   * @param workspace - 当前工作区列表项
+   */
+  const handleTogglePin = async (workspace: WorkspaceListItem) => {
+    const workspaceId = workspace.id;
+    if (pinTogglingIds.has(workspaceId)) return;
+    const currentPinned = workspace.isPinned === true;
+    setPinTogglingIds((prev) => {
+      const next = new Set(prev);
+      next.add(workspaceId);
+      return next;
+    });
+    try {
+      if (currentPinned) {
+        await workspacesApi.unpinWorkspace(workspaceId);
+        showToast('success', '已取消置顶');
+      } else {
+        await workspacesApi.pinWorkspace(workspaceId);
+        showToast('success', '已置顶工作区');
+      }
+      // 就地更新当前页数据，避免重新请求造成跳页
+      setData((prev) => {
+        if (!prev) return prev;
+        return {
+          ...prev,
+          items: prev.items.map((item) =>
+            item.id === workspaceId
+              ? {
+                  ...item,
+                  isPinned: !currentPinned,
+                  pinnedAt: !currentPinned ? new Date().toISOString() : undefined,
+                }
+              : item
+          ),
+        };
+      });
+    } catch (error) {
+      console.error('切换置顶状态失败:', error);
+      showToast('error', '切换置顶状态失败，请重试');
+    } finally {
+      setPinTogglingIds((prev) => {
+        const next = new Set(prev);
+        next.delete(workspaceId);
+        return next;
+      });
+    }
+  };
+
+  /**
    * 获取排名对应的样式类名
    * 前三名使用金银铜色高亮
    * @param rank - 排名序号（从 1 开始）
@@ -226,42 +278,92 @@ const WorkspacesPage: React.FC = () => {
                     </tr>
                   </thead>
                   <tbody>
-                    {data.items.map((ws) => (
-                      <tr key={ws._id} className="border-b border-gray-50 hover:bg-gray-50">
-                        <td className="py-3 px-4 text-sm font-medium">{ws.name}</td>
-                        <td className="py-3 px-4 text-sm text-gray-500">{ws.creator.nickname}</td>
-                        <td className="py-3 px-4">
-                          <span className={`px-2 py-0.5 rounded-full text-xs font-medium ${
-                            ws.type === 'public' ? 'bg-green-50 text-green-600' : 'bg-gray-50 text-gray-600'
-                          }`}>{ws.type === 'public' ? '公开' : '私有'}</span>
-                        </td>
-                        <td className="py-3 px-4 text-sm text-gray-500">{ws.stats.memberCount}</td>
-                        <td className="py-3 px-4 text-sm text-gray-500">{ws.stats.nodeCount}</td>
-                        <td className="py-3 px-4">
-                          <div className="flex gap-2">
-                            <button className="p-1 text-gray-400 hover:text-blue-600" title="查看"><Eye className="w-4 h-4" /></button>
-                            <button onClick={() => handleClose(ws.id)} className="p-1 text-gray-400 hover:text-red-600" title="关闭"><XCircle className="w-4 h-4" /></button>
-                          </div>
-                        </td>
-                      </tr>
-                    ))}
+                    {data.items.map((ws) => {
+                      const isPinned = ws.isPinned === true;
+                      const pinLoading = pinTogglingIds.has(ws.id);
+                      return (
+                        <tr key={ws._id} className={`border-b border-gray-50 hover:bg-gray-50 ${isPinned ? 'bg-blue-50/40' : ''}`}>
+                          <td className="py-3 px-4 text-sm font-medium">
+                            <div className="flex items-center gap-1.5">
+                              {isPinned && (
+                                <span className="inline-flex items-center gap-0.5 px-1.5 py-0.5 rounded-full text-[10px] font-medium bg-blue-100 text-blue-700">
+                                  <Pin className="w-3 h-3" />
+                                  置顶
+                                </span>
+                              )}
+                              <span>{ws.name}</span>
+                            </div>
+                          </td>
+                          <td className="py-3 px-4 text-sm text-gray-500">{ws.creator.nickname}</td>
+                          <td className="py-3 px-4">
+                            <span className={`px-2 py-0.5 rounded-full text-xs font-medium ${
+                              ws.type === 'public' ? 'bg-green-50 text-green-600' : 'bg-gray-50 text-gray-600'
+                            }`}>{ws.type === 'public' ? '公开' : '私有'}</span>
+                          </td>
+                          <td className="py-3 px-4 text-sm text-gray-500">{ws.stats.memberCount}</td>
+                          <td className="py-3 px-4 text-sm text-gray-500">{ws.stats.nodeCount}</td>
+                          <td className="py-3 px-4">
+                            <div className="flex gap-2">
+                              <button className="p-1 text-gray-400 hover:text-blue-600" title="查看"><Eye className="w-4 h-4" /></button>
+                              <button
+                                onClick={() => handleTogglePin(ws)}
+                                disabled={pinLoading}
+                                className={`p-1 transition-colors ${
+                                  isPinned
+                                    ? 'text-blue-600 hover:text-blue-700'
+                                    : 'text-gray-400 hover:text-blue-600'
+                                } ${pinLoading ? 'opacity-50 cursor-not-allowed' : ''}`}
+                                title={isPinned ? '取消置顶' : '置顶为推荐工作区'}
+                              >
+                                {isPinned ? <PinOff className="w-4 h-4" /> : <Pin className="w-4 h-4" />}
+                              </button>
+                              <button onClick={() => handleClose(ws.id)} className="p-1 text-gray-400 hover:text-red-600" title="关闭"><XCircle className="w-4 h-4" /></button>
+                            </div>
+                          </td>
+                        </tr>
+                      );
+                    })}
                   </tbody>
                 </table>
               </div>
               <div className="md:hidden divide-y divide-gray-50">
-                {data.items.map((ws) => (
-                  <div key={ws._id} className="p-4">
-                    <div className="flex justify-between items-start mb-1">
-                      <span className="font-medium text-gray-800">{ws.name}</span>
-                      <span className={`px-2 py-0.5 rounded-full text-xs font-medium ${
-                        ws.type === 'public' ? 'bg-green-50 text-green-600' : 'bg-gray-50 text-gray-600'
-                      }`}>{ws.type === 'public' ? '公开' : '私有'}</span>
+                {data.items.map((ws) => {
+                  const isPinned = ws.isPinned === true;
+                  const pinLoading = pinTogglingIds.has(ws.id);
+                  return (
+                    <div key={ws._id} className={`p-4 ${isPinned ? 'bg-blue-50/40' : ''}`}>
+                      <div className="flex justify-between items-start mb-1">
+                        <div className="flex items-center gap-1.5 min-w-0">
+                          {isPinned && (
+                            <span className="inline-flex items-center gap-0.5 px-1.5 py-0.5 rounded-full text-[10px] font-medium bg-blue-100 text-blue-700 flex-shrink-0">
+                              <Pin className="w-3 h-3" />
+                              置顶
+                            </span>
+                          )}
+                          <span className="font-medium text-gray-800 truncate">{ws.name}</span>
+                        </div>
+                        <span className={`px-2 py-0.5 rounded-full text-xs font-medium flex-shrink-0 ${
+                          ws.type === 'public' ? 'bg-green-50 text-green-600' : 'bg-gray-50 text-gray-600'
+                        }`}>{ws.type === 'public' ? '公开' : '私有'}</span>
+                      </div>
+                      <div className="text-xs text-gray-400 flex items-center justify-between">
+                        <span>
+                          创建者：{ws.creator.nickname} · 成员：{ws.stats.memberCount} · 节点：{ws.stats.nodeCount}
+                        </span>
+                        <button
+                          onClick={() => handleTogglePin(ws)}
+                          disabled={pinLoading}
+                          className={`p-1 transition-colors flex-shrink-0 ${
+                            isPinned ? 'text-blue-600' : 'text-gray-300'
+                          } ${pinLoading ? 'opacity-50' : ''}`}
+                          title={isPinned ? '取消置顶' : '置顶为推荐工作区'}
+                        >
+                          {isPinned ? <PinOff className="w-4 h-4" /> : <Pin className="w-4 h-4" />}
+                        </button>
+                      </div>
                     </div>
-                    <div className="text-xs text-gray-400">
-                      创建者：{ws.creator.nickname} · 成员：{ws.stats.memberCount} · 节点：{ws.stats.nodeCount}
-                    </div>
-                  </div>
-                ))}
+                  );
+                })}
               </div>
               {data.totalPages > 1 && (
                 <div className="p-4 border-t border-gray-100 flex justify-center gap-2">

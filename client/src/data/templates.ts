@@ -8,6 +8,7 @@
  * 因为模板节点在导入到实际工作区时会生成新的 ID。
  */
 import type { RelationType } from '../stores/relationStore';
+import type { PresetAnswer } from './templateAnswers';
 
 /**
  * 模板节点定义
@@ -24,6 +25,14 @@ export interface TemplateNode {
   isRoot: boolean;
   /** 预置的引导问题（可选），用于自动发起AI对话 */
   presetQuestion?: string;
+  /**
+   * 预置的引导回答（可选）
+   *
+   * 配合 presetQuestion 使用：当存在预设答案时，导入模板后
+   * 将直接以预设问答对写入对话历史，跳过 AI 调用，避免响应慢导致弹窗卡住。
+   * 字段未填写（zh/en 为空字符串）时视为未配置，调用方应跳过该节点。
+   */
+  presetAnswer?: PresetAnswer;
 }
 
 /**

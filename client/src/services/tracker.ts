@@ -46,6 +46,18 @@ export const TRACK_EVENT_BRANCH_SUGGESTION_ACCEPTED = 'branch_suggestion_accepte
 export const TRACK_EVENT_BRANCH_SUGGESTION_DISMISSED = 'branch_suggestion_dismissed';
 
 /**
+ * 地图优先大纲生成事件（Task 4 使用）
+ * 用户确认"展开成地图"后，AI 成功生成结构化大纲并创建分支节点时上报
+ */
+export const TRACK_EVENT_MAP_FIRST_OUTLINE_GENERATED = 'map_first_outline_generated';
+
+/**
+ * 地图优先提示展示事件（Task 4 使用）
+ * 当检测到宽泛问题并展示"是否先展开成地图"提示气泡时上报
+ */
+export const TRACK_EVENT_MAP_FIRST_PROMPT_SHOWN = 'map_first_prompt_shown';
+
+/**
  * 模板使用事件（用户选择模板创建地图）
  */
 export const TRACK_EVENT_TEMPLATE_USED = 'template_used';
@@ -83,14 +95,27 @@ export interface TrackerEventCommonProps {
 
 /**
  * 埋点事件数据接口
+ * 采用扁平结构，与服务端 events.ts 的 AnalyticsEvent 接口字段对齐
  */
 export interface TrackerEvent {
   /** 事件类型 */
   eventType: string;
-  /** 事件公共属性 */
-  commonProps: TrackerEventCommonProps;
+  /** 访客唯一标识 */
+  visitorId: string | null;
+  /** 当前工作区ID */
+  workspaceId: string | null;
+  /** 事件触发时间戳（毫秒） */
+  timestamp: number;
+  /** 当前页面URL */
+  url: string;
+  /** 浏览器 UserAgent */
+  userAgent: string;
   /** 事件自定义负载 */
   payload: Record<string, unknown>;
+  /** 关联节点ID（与服务端 AnalyticsEvent.nodeId 对齐，可选） */
+  nodeId?: string;
+  /** 关联地图（工作区）ID（与服务端 AnalyticsEvent.mapId 对齐，可选） */
+  mapId?: string;
 }
 
 /**
@@ -278,13 +303,11 @@ export class Tracker {
   private buildTrackerEvent(item: PendingEventItem): TrackerEvent {
     return {
       eventType: item.eventType,
-      commonProps: {
-        visitorId: getLocalVisitorId(),
-        workspaceId: getLocalWorkspaceId(),
-        timestamp: Date.now(),
-        url: getCurrentUrl(),
-        userAgent: getUserAgent(),
-      },
+      visitorId: getLocalVisitorId(),
+      workspaceId: getLocalWorkspaceId(),
+      timestamp: Date.now(),
+      url: getCurrentUrl(),
+      userAgent: getUserAgent(),
       payload: item.payload,
     };
   }

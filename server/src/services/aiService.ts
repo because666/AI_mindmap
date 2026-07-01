@@ -1,9 +1,44 @@
 import OpenAI from 'openai';
+import { ObjectId } from 'mongodb';
 import { config, AIProvider } from '../config';
 import { AIResponse, EmbeddingRequest, EmbeddingResponse } from '../types';
 import { vectorDBService } from '../data/vector/connection';
 import { mongoDBService } from '../data/mongodb/connection';
 import { aiQueue, AIPriority } from './aiQueue';
+
+/**
+ * AI 模型配置文档接口（数据库读取用）
+ * 与 admin 后台写入 ai_model_configs 集合的结构保持一致
+ * _id 使用 mongodb 的 ObjectId 类型，由 Collection<AIModelConfigDocument> 返回时自动填充
+ */
+interface AIModelConfigDocument {
+  /** 文档唯一标识，MongoDB 自动生成 */
+  _id: ObjectId;
+  /** 模型配置名称 */
+  name: string;
+  /** 服务商类型 */
+  provider: string;
+  /** API 密钥 */
+  apiKey: string;
+  /** API 基础 URL */
+  baseUrl: string;
+  /** 模型 ID */
+  modelId: string;
+  /** 采样温度 */
+  temperature: number;
+  /** 最大输出 token 数 */
+  maxTokens: number;
+  /** 是否启用 */
+  isActive: boolean;
+  /** 是否默认模型 */
+  isDefault: boolean;
+  /** 优先级 */
+  priority: number;
+  /** 创建时间 */
+  createdAt: Date;
+  /** 更新时间 */
+  updatedAt: Date;
+}
 
 /**
  * AI用量记录接口
@@ -462,6 +497,72 @@ class AIService {
    */
   updateProviders(newProviders: AIProvider[]): void {
     this.providers = [...newProviders].sort((a, b) => a.priority - b.priority);
+  }
+
+  /**
+   * 从 MongoDB 加载启用的 AI 模型配置并覆盖内存中的 providers 列表
+   * 主服务启动时调用，若数据库存在启用配置则覆盖环境变量默认值
+   * 数据库不可用或无配置时保持环境变量配置不变（向后兼容）
+   * 异常时仅输出警告，不抛出错误，保证服务可启动
+   * @returns 加载到的启用配置数量，未加载或异常返回 0
+   */
+  async loadModelConfigsFromDB(): Promise<number> {
+    try {
+      const collectionName = config.ai.aiModelConfigsCollection;
+      const collection = mongoDBService.getCollection<AIModelConfigDocument>(collectionName);
+      if (!collection) {
+        console.warn('[AI模型] MongoDB 未连接，跳过 DB 配置加载，使用环境变量默认值');
+        return 0;
+      }
+
+      const docs = await collection
+        .find({ isActive: true })
+        .sort({ priority: 1, createdAt: 1 })
+        .toArray();
+
+      if (docs.length === 0) {
+        console.log('[AI模型] 数据库未找到启用的模型配置，使用环境变量默认值');
+        return 0;
+      }
+
+      const providers: AIProvider[] = docs.map((doc) => ({
+        // 使用数据库 _id 作为 provider 唯一标识，避免与环境变量配置冲突
+        id: doc._id.toString(),
+        name: doc.name,
+        url: doc.baseUrl || '',
+        apiKey: doc.apiKey,
+        model: doc.modelId,
+        priority: doc.priority,
+      }));
+
+      this.updateProviders(providers);
+      console.log(`[AI模型] 已从数据库加载 ${providers.length} 个启用的模型配置`);
+
+      // 若存在默认模型，输出日志便于排查（不输出 apiKey 明文）
+      const defaultDoc = docs.find((d) => d.isDefault);
+      if (defaultDoc) {
+        console.log(
+          `[AI模型] 默认模型：${defaultDoc.name} (${defaultDoc.provider}/${defaultDoc.modelId})`
+        );
+      }
+
+      return providers.length;
+    } catch (error: unknown) {
+      const errorMsg = error instanceof Error ? error.message : String(error);
+      console.warn(`[AI模型] 从数据库加载模型配置失败，使用环境变量默认值: ${errorMsg}`);
+      return 0;
+    }
+  }
+
+  /**
+   * 刷新 AI 模型配置（重新从数据库加载）
+   * 供后台内部 API 调用，管理员在后台修改模型配置后触发主服务刷新内存缓存
+   * 异常时仅输出警告，不抛出错误，保证不影响调用方主流程
+   * @returns 加载到的启用配置数量
+   */
+  async refreshModelConfigs(): Promise<number> {
+    console.log('[AI模型] 收到刷新请求，重新加载模型配置...');
+    return await this.loadModelConfigsFromDB();
   }
 
   /**

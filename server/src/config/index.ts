@@ -90,6 +90,12 @@ export const config = {
     systemPrompt: process.env.SYSTEM_PROMPT || '',
     fallbackChain: (process.env.AI_FALLBACK_CHAIN || 'zhipu,deepseek,openai').split(',').map(s => s.trim()).filter(s => s.length > 0),
     aiProviders: parseAIProviders(),
+    /**
+     * AI 模型配置集合名称
+     * 主服务启动时从该集合加载启用的模型配置覆盖环境变量默认值
+     * 默认值与 admin 后台写入的集合名保持一致
+     */
+    aiModelConfigsCollection: process.env.AI_MODEL_CONFIGS_COLLECTION || 'ai_model_configs',
   },
   
   redis: {

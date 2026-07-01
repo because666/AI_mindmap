@@ -107,6 +107,90 @@ router.post('/', workspaceMemberAuth, async (req: Request, res: Response) => {
 });
 
 /**
+ * 导出工作区数据
+ * 包含节点、关系和对话的完整数据
+ * 支持格式：json（默认）、markdown
+ * 注意：此路由必须定义在 /:id 等参数路由之前，否则 'export' 会被当作 :id 参数匹配导致 404
+ */
+router.get('/export', workspaceMemberAuth, async (req: Request, res: Response) => {
+  try {
+    const workspaceId = req.workspaceId!;
+    const format = (req.query.format as string) || 'json';
+    const nodes = await nodeService.getAllNodes(workspaceId);
+    const relations = await nodeService.getRelations(workspaceId);
+    const conversations = await conversationService.getConversationsByWorkspaceId(workspaceId);
+
+    if (format === 'markdown') {
+      const markdown = convertToMarkdown(nodes, relations);
+      res.setHeader('Content-Type', 'text/markdown; charset=utf-8');
+      res.setHeader('Content-Disposition', `attachment; filename="deepmindmap-export.md"`);
+      return res.send(markdown);
+    }
+
+    const exportData = {
+      version: '2.0',
+      appName: 'DeepMindMap',
+      exportedAt: new Date().toISOString(),
+      workspaceId,
+      nodes: nodes.map(({ workspaceId: _ws, createdBy: _cb, ...rest }) => rest),
+      relations: relations.map(({ workspaceId: _ws, ...rest }) => rest),
+      // 异步从独立 messages 集合查询每个对话的消息，不再读取 conversation 文档的 messages 数组
+      conversations: await Promise.all(conversations.map(async (conv) => ({
+        id: conv.id,
+        nodeId: conv.nodeId,
+        messages: await conversationService.getConversationMessages(conv.id),
+        contextConfig: conv.contextConfig,
+        createdAt: conv.createdAt,
+        updatedAt: conv.updatedAt,
+      }))),
+    };
+
+    res.setHeader('Content-Type', 'application/json; charset=utf-8');
+    res.setHeader('Content-Disposition', `attachment; filename="deepmindmap-export.json"`);
+    res.json(exportData);
+  } catch (error: unknown) {
+    const message = error instanceof Error ? error.message : String(error);
+    res.status(500).json({ success: false, error: message });
+  }
+});
+
+/**
+ * 批量导入数据到工作区
+ * 支持格式：json、markdown
+ * 导入时会重新生成ID以避免冲突，并关联到当前工作区
+ * 注意：此路由必须定义在 /:id 等参数路由之前，避免被参数路由提前匹配
+ */
+router.post('/import', workspaceMemberAuth, async (req: Request, res: Response) => {
+  try {
+    const workspaceId = req.workspaceId!;
+    const visitorId = req.visitorId!;
+    const { format, data } = req.body;
+
+    if (!data || typeof data !== 'string') {
+      return res.status(400).json({ success: false, error: '导入数据不能为空' });
+    }
+
+    let importedCount = { nodes: 0, relations: 0, conversations: 0 };
+
+    if (format === 'markdown') {
+      importedCount = await importMarkdown(data, workspaceId, visitorId);
+    } else {
+      importedCount = await importJson(data, workspaceId, visitorId);
+    }
+
+    await historyService.recordAction(
+      'import', `导入数据: ${importedCount.nodes}个节点, ${importedCount.relations}个关系`,
+      undefined, undefined, workspaceId, visitorId
+    );
+
+    res.json({ success: true, data: importedCount });
+  } catch (error: unknown) {
+    const message = error instanceof Error ? error.message : String(error);
+    res.status(500).json({ success: false, error: message });
+  }
+});
+
+/**
  * 获取单个节点
  */
 router.get('/:id', workspaceMemberAuth, async (req: Request, res: Response) => {
@@ -419,88 +503,6 @@ router.delete('/relations/:id', workspaceMemberAuth, async (req: Request, res: R
       return res.status(404).json({ success: false, error: '关系不存在' });
     }
     res.json({ success: true });
-  } catch (error: unknown) {
-    const message = error instanceof Error ? error.message : String(error);
-    res.status(500).json({ success: false, error: message });
-  }
-});
-
-/**
- * 导出工作区数据
- * 包含节点、关系和对话的完整数据
- * 支持格式：json（默认）、markdown
- */
-router.get('/export', workspaceMemberAuth, async (req: Request, res: Response) => {
-  try {
-    const workspaceId = req.workspaceId!;
-    const format = (req.query.format as string) || 'json';
-    const nodes = await nodeService.getAllNodes(workspaceId);
-    const relations = await nodeService.getRelations(workspaceId);
-    const conversations = await conversationService.getConversationsByWorkspaceId(workspaceId);
-
-    if (format === 'markdown') {
-      const markdown = convertToMarkdown(nodes, relations);
-      res.setHeader('Content-Type', 'text/markdown; charset=utf-8');
-      res.setHeader('Content-Disposition', `attachment; filename="deepmindmap-export.md"`);
-      return res.send(markdown);
-    }
-
-    const exportData = {
-      version: '2.0',
-      appName: 'DeepMindMap',
-      exportedAt: new Date().toISOString(),
-      workspaceId,
-      nodes: nodes.map(({ workspaceId: _ws, createdBy: _cb, ...rest }) => rest),
-      relations: relations.map(({ workspaceId: _ws, ...rest }) => rest),
-      // 异步从独立 messages 集合查询每个对话的消息，不再读取 conversation 文档的 messages 数组
-      conversations: await Promise.all(conversations.map(async (conv) => ({
-        id: conv.id,
-        nodeId: conv.nodeId,
-        messages: await conversationService.getConversationMessages(conv.id),
-        contextConfig: conv.contextConfig,
-        createdAt: conv.createdAt,
-        updatedAt: conv.updatedAt,
-      }))),
-    };
-
-    res.setHeader('Content-Type', 'application/json; charset=utf-8');
-    res.setHeader('Content-Disposition', `attachment; filename="deepmindmap-export.json"`);
-    res.json(exportData);
-  } catch (error: unknown) {
-    const message = error instanceof Error ? error.message : String(error);
-    res.status(500).json({ success: false, error: message });
-  }
-});
-
-/**
- * 批量导入数据到工作区
- * 支持格式：json、markdown
- * 导入时会重新生成ID以避免冲突，并关联到当前工作区
- */
-router.post('/import', workspaceMemberAuth, async (req: Request, res: Response) => {
-  try {
-    const workspaceId = req.workspaceId!;
-    const visitorId = req.visitorId!;
-    const { format, data } = req.body;
-
-    if (!data || typeof data !== 'string') {
-      return res.status(400).json({ success: false, error: '导入数据不能为空' });
-    }
-
-    let importedCount = { nodes: 0, relations: 0, conversations: 0 };
-
-    if (format === 'markdown') {
-      importedCount = await importMarkdown(data, workspaceId, visitorId);
-    } else {
-      importedCount = await importJson(data, workspaceId, visitorId);
-    }
-
-    await historyService.recordAction(
-      'import', `导入数据: ${importedCount.nodes}个节点, ${importedCount.relations}个关系`,
-      undefined, undefined, workspaceId, visitorId
-    );
-
-    res.json({ success: true, data: importedCount });
   } catch (error: unknown) {
     const message = error instanceof Error ? error.message : String(error);
     res.status(500).json({ success: false, error: message });

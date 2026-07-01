@@ -525,4 +525,217 @@ describe('workspaces 路由', () => {
       expect(respState.jsonBody).toMatchObject({ success: false, error: '工作区不存在' });
     });
   });
+
+  /**
+   * 测试组：POST /:id/pin 置顶工作区
+   */
+  describe('POST /:id/pin', () => {
+    it('置顶工作区成功，应更新 isPinned 与 pinnedAt 并触发缓存清除通知', async () => {
+      mockFindOne.mockResolvedValue({ id: 'ws-1', name: '工作区A' });
+      mockUpdateOne.mockResolvedValue(true);
+
+      const req = createMockRequest({}, { id: 'ws-1' });
+      const respState = createMockResponse();
+
+      await callRoute('post', '/.*/pin$', req, respState.res);
+
+      expect(respState.statusCode).toBe(200);
+      expect(respState.jsonBody).toMatchObject({ success: true, message: '已置顶工作区' });
+      // 验证 isPinned=true 与 pinnedAt 已被设置
+      expect(mockUpdateOne).toHaveBeenCalledWith('workspaces', { id: 'ws-1' }, expect.objectContaining({
+        $set: expect.objectContaining({
+          isPinned: true,
+          pinnedAt: expect.any(Date),
+        }),
+      }));
+      // 验证缓存清除通知被触发
+      expect(mockNotifyWorkspaceCacheClear).toHaveBeenCalledWith('ws-1');
+    });
+
+    it('工作区不存在返回 404', async () => {
+      mockFindOne.mockResolvedValue(null);
+
+      const req = createMockRequest({}, { id: 'nonexistent' });
+      const respState = createMockResponse();
+
+      await callRoute('post', '/.*/pin$', req, respState.res);
+
+      expect(respState.statusCode).toBe(404);
+      expect(respState.jsonBody).toMatchObject({ success: false, error: '工作区不存在' });
+      expect(mockUpdateOne).not.toHaveBeenCalled();
+    });
+
+    it('数据库更新失败返回 500', async () => {
+      mockFindOne.mockResolvedValue({ id: 'ws-1', name: '工作区A' });
+      mockUpdateOne.mockResolvedValue(false);
+
+      const req = createMockRequest({}, { id: 'ws-1' });
+      const respState = createMockResponse();
+
+      await callRoute('post', '/.*/pin$', req, respState.res);
+
+      expect(respState.statusCode).toBe(500);
+      expect(respState.jsonBody).toMatchObject({ success: false, error: '置顶工作区失败' });
+    });
+
+    it('数据库异常时返回 500', async () => {
+      mockFindOne.mockRejectedValue(new Error('数据库异常'));
+
+      const req = createMockRequest({}, { id: 'ws-1' });
+      const respState = createMockResponse();
+
+      await callRoute('post', '/.*/pin$', req, respState.res);
+
+      expect(respState.statusCode).toBe(500);
+      expect(respState.jsonBody).toMatchObject({ success: false, error: '置顶工作区失败' });
+    });
+  });
+
+  /**
+   * 测试组：DELETE /:id/pin 取消置顶
+   */
+  describe('DELETE /:id/pin', () => {
+    it('取消置顶成功，应将 isPinned 设为 false 并清空 pinnedAt', async () => {
+      mockFindOne.mockResolvedValue({ id: 'ws-1', name: '工作区A', isPinned: true, pinnedAt: new Date() });
+      mockUpdateOne.mockResolvedValue(true);
+
+      const req = createMockRequest({}, { id: 'ws-1' });
+      const respState = createMockResponse();
+
+      await callRoute('delete', '/.*/pin$', req, respState.res);
+
+      expect(respState.statusCode).toBe(200);
+      expect(respState.jsonBody).toMatchObject({ success: true, message: '已取消置顶' });
+      expect(mockUpdateOne).toHaveBeenCalledWith('workspaces', { id: 'ws-1' }, expect.objectContaining({
+        $set: expect.objectContaining({
+          isPinned: false,
+          pinnedAt: null,
+        }),
+      }));
+      expect(mockNotifyWorkspaceCacheClear).toHaveBeenCalledWith('ws-1');
+    });
+
+    it('工作区不存在返回 404', async () => {
+      mockFindOne.mockResolvedValue(null);
+
+      const req = createMockRequest({}, { id: 'nonexistent' });
+      const respState = createMockResponse();
+
+      await callRoute('delete', '/.*/pin$', req, respState.res);
+
+      expect(respState.statusCode).toBe(404);
+      expect(respState.jsonBody).toMatchObject({ success: false, error: '工作区不存在' });
+    });
+
+    it('数据库更新失败返回 500', async () => {
+      mockFindOne.mockResolvedValue({ id: 'ws-1', name: '工作区A' });
+      mockUpdateOne.mockResolvedValue(false);
+
+      const req = createMockRequest({}, { id: 'ws-1' });
+      const respState = createMockResponse();
+
+      await callRoute('delete', '/.*/pin$', req, respState.res);
+
+      expect(respState.statusCode).toBe(500);
+      expect(respState.jsonBody).toMatchObject({ success: false, error: '取消置顶失败' });
+    });
+
+    it('数据库异常时返回 500', async () => {
+      mockFindOne.mockRejectedValue(new Error('数据库异常'));
+
+      const req = createMockRequest({}, { id: 'ws-1' });
+      const respState = createMockResponse();
+
+      await callRoute('delete', '/.*/pin$', req, respState.res);
+
+      expect(respState.statusCode).toBe(500);
+      expect(respState.jsonBody).toMatchObject({ success: false, error: '取消置顶失败' });
+    });
+  });
+
+  /**
+   * 测试组：GET / 列表返回 isPinned/pinnedAt 字段
+   */
+  describe('GET / 置顶字段', () => {
+    it('置顶工作区应返回 isPinned=true 与 pinnedAt 字符串', async () => {
+      const pinnedAt = new Date('2025-06-15T10:00:00.000Z');
+      mockFind.mockImplementation(async () => [
+        {
+          _id: { toString: () => 'obj-id-1' },
+          id: 'ws-1',
+          name: '置顶工作区',
+          description: '',
+          type: 'public',
+          createdAt: new Date('2024-01-01'),
+          updatedAt: new Date('2024-06-01'),
+          ownerId: 'visitor-1',
+          members: [{ visitorId: 'visitor-1', role: 'owner' }],
+          isPinned: true,
+          pinnedAt,
+        },
+      ]);
+      mockCountDocuments.mockResolvedValue(1);
+      mockAggregate.mockResolvedValue([]);
+
+      const req = createMockRequest({}, {}, { page: '1', limit: '20' });
+      const respState = createMockResponse();
+
+      await callRoute('get', '^/$', req, respState.res);
+
+      expect(respState.statusCode).toBe(200);
+      const body = respState.jsonBody as { data: { items: Array<{ isPinned?: boolean; pinnedAt?: string }> } };
+      expect(body.data.items[0].isPinned).toBe(true);
+      // pinnedAt 应被序列化为 ISO 字符串
+      expect(typeof body.data.items[0].pinnedAt).toBe('string');
+      expect(body.data.items[0].pinnedAt).toBe(pinnedAt.toISOString());
+    });
+
+    it('未置顶工作区应返回 isPinned=false', async () => {
+      mockFind.mockImplementation(async () => [
+        {
+          _id: { toString: () => 'obj-id-2' },
+          id: 'ws-2',
+          name: '普通工作区',
+          description: '',
+          type: 'public',
+          createdAt: new Date('2024-01-01'),
+          updatedAt: new Date('2024-06-01'),
+          ownerId: 'visitor-1',
+          members: [],
+          // 不设置 isPinned/pinnedAt，模拟未置顶状态
+        },
+      ]);
+      mockCountDocuments.mockResolvedValue(1);
+      mockAggregate.mockResolvedValue([]);
+
+      const req = createMockRequest({}, {}, { page: '1', limit: '20' });
+      const respState = createMockResponse();
+
+      await callRoute('get', '^/$', req, respState.res);
+
+      expect(respState.statusCode).toBe(200);
+      const body = respState.jsonBody as { data: { items: Array<{ isPinned?: boolean; pinnedAt?: string }> } };
+      expect(body.data.items[0].isPinned).toBe(false);
+      expect(body.data.items[0].pinnedAt).toBeUndefined();
+    });
+
+    it('列表查询排序参数应包含 isPinned 与 pinnedAt', async () => {
+      mockFind.mockResolvedValue([]);
+      mockCountDocuments.mockResolvedValue(0);
+
+      const req = createMockRequest({}, {}, { page: '1', limit: '20' });
+      const respState = createMockResponse();
+
+      await callRoute('get', '^/$', req, respState.res);
+
+      // 验证 find 调用时第三参数 sort 字段包含 isPinned/pinnedAt/createdAt
+      expect(mockFind).toHaveBeenCalledWith('workspaces', expect.any(Object), expect.objectContaining({
+        sort: expect.objectContaining({
+          isPinned: -1,
+          pinnedAt: -1,
+          createdAt: -1,
+        }),
+      }));
+    });
+  });
 });

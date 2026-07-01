@@ -71,12 +71,12 @@ describe('Tracker', () => {
 
     const body = mockPost.mock.calls[0][1] as { events: TrackerEvent[] };
     const event = body.events[0];
-    expect(event.commonProps.visitorId).toBe('visitor-001');
-    expect(event.commonProps.workspaceId).toBe('workspace-001');
-    expect(typeof event.commonProps.timestamp).toBe('number');
-    expect(event.commonProps.timestamp).toBeGreaterThan(0);
-    expect(event.commonProps.url).toBe(window.location.href);
-    expect(event.commonProps.userAgent).toBe(navigator.userAgent);
+    expect(event.visitorId).toBe('visitor-001');
+    expect(event.workspaceId).toBe('workspace-001');
+    expect(typeof event.timestamp).toBe('number');
+    expect(event.timestamp).toBeGreaterThan(0);
+    expect(event.url).toBe(window.location.href);
+    expect(event.userAgent).toBe(navigator.userAgent);
 
     instance.destroy();
   });

@@ -2,6 +2,7 @@ import { Collection, Document } from 'mongodb';
 import axios from 'axios';
 import { Parser } from 'json2csv';
 import { adminDB } from '../config/database';
+import { AIModelUsageSummaryItem } from '../types';
 
 /**
  * AI用量汇总统计接口
@@ -525,6 +526,78 @@ class AIUsageService {
       throw new Error('导出CSV数据失败');
     }
   }
+
+  /**
+   * 按模型聚合统计调用量、token 消耗、失败率
+   * 用于后台展示各模型用量明细
+   * @param startDate - 起始日期字符串（可选）
+   * @param endDate - 结束日期字符串（可选）
+   * @returns AIModelUsageSummaryItem 数组，按调用次数降序排列，异常或空集合返回空数组
+   */
+  async getModelSummary(startDate?: string, endDate?: string): Promise<AIModelUsageSummaryItem[]> {
+    const collection = this.getCollection();
+    if (!collection) {
+      return [];
+    }
+
+    const matchFilter = this.buildMatchFilter(startDate, endDate);
+
+    try {
+      const pipeline: Document[] = [
+        { $match: matchFilter },
+        {
+          $group: {
+            _id: { model: '$model', provider: '$provider' },
+            totalCalls: { $sum: 1 },
+            successCalls: { $sum: { $cond: ['$isSuccess', 1, 0] } },
+            failedCalls: { $sum: { $cond: ['$isSuccess', 0, 1] } },
+            promptTokens: { $sum: '$promptTokens' },
+            completionTokens: { $sum: '$completionTokens' },
+            totalTokens: { $sum: '$totalTokens' },
+            avgResponseTime: { $avg: '$responseTimeMs' },
+          },
+        },
+        { $sort: { totalCalls: -1 } },
+      ];
+
+      const results = await collection.aggregate<ModelSummaryAggregationResult>(pipeline).toArray();
+
+      return results.map((r) => {
+        const totalCalls = r.totalCalls || 0;
+        const failedCalls = r.failedCalls || 0;
+        return {
+          model: r._id.model || 'unknown',
+          provider: r._id.provider || 'unknown',
+          totalCalls,
+          successCalls: r.successCalls || 0,
+          failedCalls,
+          failureRate: totalCalls > 0 ? Math.round((failedCalls / totalCalls) * 10000) / 100 : 0,
+          promptTokens: r.promptTokens || 0,
+          completionTokens: r.completionTokens || 0,
+          totalTokens: r.totalTokens || 0,
+          avgResponseTime: Math.round(r.avgResponseTime || 0),
+        };
+      });
+    } catch (error) {
+      console.error('获取模型用量汇总失败:', error);
+      return [];
+    }
+  }
+}
+
+/**
+ * 模型用量聚合结果接口
+ * 用于按模型+服务商维度聚合的中间结果
+ */
+interface ModelSummaryAggregationResult {
+  _id: { model: string; provider: string };
+  totalCalls: number;
+  successCalls: number;
+  failedCalls: number;
+  promptTokens: number;
+  completionTokens: number;
+  totalTokens: number;
+  avgResponseTime: number;
 }
 
 export const aiUsageService = new AIUsageService();

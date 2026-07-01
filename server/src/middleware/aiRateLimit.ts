@@ -158,3 +158,20 @@ export function createAIRateLimit(config: RateLimitConfig) {
     next()
   }
 }
+
+/**
+ * 创建地图大纲生成的独立限流中间件（5 次/分钟）
+ *
+ * 与对话限流策略（aiChatRateLimit）独立计数，避免大纲生成请求与对话流式请求
+ * 共享同一限流窗口导致相互影响（如大纲生成耗尽配额后阻塞对话）。
+ *
+ * 设计说明：
+ * - 时间窗口：1 分钟（60 * 1000 ms）
+ * - 最大请求数：5 次/分钟，大纲生成为低频重操作，5 次足够满足正常使用
+ * - 复用 createAIRateLimit 的 Redis/内存双通道实现，保证降级一致性
+ *
+ * @returns Express 异步限流中间件，限流维度为访客ID
+ */
+export function createMapOutlineRateLimit() {
+  return createAIRateLimit({ windowMs: 60 * 1000, maxRequests: 5 })
+}

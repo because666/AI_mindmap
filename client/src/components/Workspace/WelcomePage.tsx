@@ -1,6 +1,6 @@
-import React, { useState } from 'react';
+import React, { useState, useEffect } from 'react';
 import { useTranslation } from 'react-i18next';
-import { Network, Plus, LogIn, Globe, Lock, Copy, Check, Search, Users, Sparkles } from 'lucide-react';
+import { Network, Plus, LogIn, Globe, Lock, Copy, Check, Search, Users, Sparkles, Pin } from 'lucide-react';
 import { useVisitorWorkspaceStore } from '../../stores/visitorWorkspaceStore';
 import useMobile from '../../hooks/useMobile';
 import type { WorkspaceType, IWorkspace } from '../../types';
@@ -34,6 +34,63 @@ const WelcomePage: React.FC = () => {
   const [publicWorkspaces, setPublicWorkspaces] = useState<IWorkspace[]>([]);
   const [publicLoading, setPublicLoading] = useState(false);
   const [copiedId, setCopiedId] = useState<string | null>(null);
+  // 推荐工作区（管理员置顶的公开工作区）列表与加载状态
+  const [recommendedWorkspaces, setRecommendedWorkspaces] = useState<IWorkspace[]>([]);
+  const [recommendedLoading, setRecommendedLoading] = useState(false);
+  // 已加入的推荐工作区 ID 集合，用于在加入成功后隐藏对应卡片
+  const [joinedRecommendedIds, setJoinedRecommendedIds] = useState<Set<string>>(new Set());
+
+  /**
+   * 加载推荐工作区列表
+   * 复用 fetchPublicWorkspaces 接口（已按 isPinned 优先排序），仅筛选 isPinned=true 的工作区
+   * 已加入的工作区会在服务端通过 excludeVisitorId 过滤，因此前端无需再次排除
+   */
+  const loadRecommendedWorkspaces = async () => {
+    if (!visitor) return;
+    setRecommendedLoading(true);
+    try {
+      const list = await fetchPublicWorkspaces();
+      // 仅展示置顶工作区作为推荐
+      const pinned = list.filter((ws) => ws.isPinned === true);
+      setRecommendedWorkspaces(pinned);
+    } catch (err) {
+      console.error('加载推荐工作区失败:', err);
+      setRecommendedWorkspaces([]);
+    } finally {
+      setRecommendedLoading(false);
+    }
+  };
+
+  /**
+   * 访客身份就绪后（且尚未选择工作区时）自动加载推荐工作区
+   */
+  useEffect(() => {
+    if (visitor && !currentWorkspace) {
+      loadRecommendedWorkspaces();
+    }
+    // 仅在 visitor/currentWorkspace 变化时触发，避免重复加载
+  }, [visitor, currentWorkspace]);
+
+  /**
+   * 处理推荐工作区卡片点击
+   * 由于项目暂未提供工作区复制接口，此处改为调用加入接口
+   * 加入成功后将其标记为已加入，从推荐列表中移除，并切换至该工作区
+   * @param workspace - 推荐工作区对象
+   */
+  const handleJoinRecommended = async (workspace: IWorkspace) => {
+    haptic('medium');
+    const success = await joinPublicWorkspace(workspace.id);
+    if (success) {
+      setJoinedRecommendedIds((prev) => {
+        const next = new Set(prev);
+        next.add(workspace.id);
+        return next;
+      });
+      notifyHaptic('success');
+    } else {
+      notifyHaptic('error');
+    }
+  };
 
   const handleNicknameSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
@@ -196,6 +253,61 @@ const WelcomePage: React.FC = () => {
                     )}
                   </div>
                 ))}
+              </div>
+            </div>
+          )}
+
+          {/* 推荐工作区区域：仅展示管理员置顶（isPinned=true）的工作区 */}
+          {recommendedWorkspaces.length > 0 && (
+            <div className="mb-6 animate-in-delay-1">
+              <h3 className="text-xs font-semibold text-primary-400 uppercase tracking-wider mb-3 flex items-center gap-1.5">
+                <Pin className="w-3.5 h-3.5" />
+                {t('recommendedWorkspaces')}
+              </h3>
+              <div className="space-y-1.5">
+                {recommendedWorkspaces
+                  .filter((ws) => !joinedRecommendedIds.has(ws.id))
+                  .map((ws) => (
+                    <div
+                      key={ws.id}
+                      className="w-full flex items-center gap-3 p-3 rounded-xl text-left bg-primary-600/5 border border-primary-500/20 hover:border-primary-500/40 transition-all duration-200 group"
+                    >
+                      <div className="w-9 h-9 bg-primary-600/15 rounded-lg flex items-center justify-center flex-shrink-0">
+                        <Pin className="w-4 h-4 text-primary-400" />
+                      </div>
+                      <div className="flex-1 min-w-0">
+                        <div className="text-white font-medium text-sm truncate group-hover:text-primary-300 transition-colors">{ws.name}</div>
+                        <div className="text-dark-500 text-xs flex items-center gap-2">
+                          <span className="flex items-center gap-1">
+                            <Users className="w-3 h-3" />
+                            {ws.members.length}
+                          </span>
+                          {ws.description && (
+                            <span className="truncate">{ws.description}</span>
+                          )}
+                        </div>
+                      </div>
+                      <button
+                        onClick={() => handleJoinRecommended(ws)}
+                        disabled={isLoading}
+                        className="px-3 py-1.5 bg-primary-600/20 text-primary-300 rounded-xl text-xs font-medium hover:bg-primary-600/30 border border-primary-500/30 transition-all disabled:opacity-50 flex-shrink-0"
+                        title={t('joinRecommendedTip')}
+                      >
+                        {t('joinBtn')}
+                      </button>
+                    </div>
+                  ))}
+              </div>
+            </div>
+          )}
+          {recommendedLoading && recommendedWorkspaces.length === 0 && (
+            <div className="mb-6 animate-in-delay-1">
+              <h3 className="text-xs font-semibold text-primary-400 uppercase tracking-wider mb-3 flex items-center gap-1.5">
+                <Pin className="w-3.5 h-3.5" />
+                {t('recommendedWorkspaces')}
+              </h3>
+              <div className="text-center py-3">
+                <div className="w-5 h-5 border-2 border-primary-500/30 border-t-primary-400 rounded-full mx-auto" style={{ animation: 'spin-slow 1s linear infinite' }} />
               </div>
             </div>
           )}

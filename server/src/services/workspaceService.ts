@@ -266,8 +266,9 @@ class WorkspaceService {
 
   /**
    * 获取所有公开工作区
+   * 排序规则：置顶工作区优先（isPinned desc, pinnedAt desc），其后按创建时间倒序
    * @param excludeVisitorId - 排除已加入的访客ID
-   * @returns 公开工作区列表
+   * @returns 公开工作区列表，置顶工作区排在最前
    */
   async getPublicWorkspaces(excludeVisitorId?: string): Promise<Workspace[]> {
     await this.ensureInitialized();
@@ -300,6 +301,27 @@ class WorkspaceService {
         console.error('[WorkspaceService] 从DB获取公开工作区失败:', error);
       }
     }
+
+    // 排序：置顶工作区优先（isPinned desc, pinnedAt desc），其后按创建时间倒序
+    workspaces.sort((a, b) => {
+      const aPinned = a.isPinned === true ? 1 : 0;
+      const bPinned = b.isPinned === true ? 1 : 0;
+      if (aPinned !== bPinned) {
+        return bPinned - aPinned;
+      }
+      if (aPinned === 1) {
+        // 置顶工作区之间按 pinnedAt 倒序
+        const aPinnedAt = a.pinnedAt ? new Date(a.pinnedAt).getTime() : 0;
+        const bPinnedAt = b.pinnedAt ? new Date(b.pinnedAt).getTime() : 0;
+        if (aPinnedAt !== bPinnedAt) {
+          return bPinnedAt - aPinnedAt;
+        }
+      }
+      // 非置顶或 pinnedAt 相同时，按创建时间倒序
+      const aCreatedAt = a.createdAt ? new Date(a.createdAt).getTime() : 0;
+      const bCreatedAt = b.createdAt ? new Date(b.createdAt).getTime() : 0;
+      return bCreatedAt - aCreatedAt;
+    });
 
     return workspaces;
   }

@@ -3,10 +3,15 @@ import type {
   SegmentRule,
   GrayRule,
   AIProvider,
+  AIModelConfig,
+  AIModelConfigInput,
+  AIModelUsageSummaryItem,
   EventOverviewData,
   EventTrendData,
   EventFunnelData,
   RecentEventItem,
+  FeatureAdoptionData,
+  OnlineStatusData,
 } from '../types';
 
 const API_BASE_URL = import.meta.env.VITE_API_URL || '/api';
@@ -149,10 +154,23 @@ export const dashboardApi = {
    */
   getRecentEvents: (limit: number = 20) =>
     typedGet<RecentEventItem[]>('/dashboard/events/recent', { params: { limit } }),
+  /**
+   * 获取功能采用矩阵数据
+   * @param days - 统计天数，默认7天，范围1-90
+   * @returns 各功能采用率与总独立访客数
+   */
+  getFeatureAdoption: (days: number = 7) =>
+    typedGet<FeatureAdoptionData>('/dashboard/feature-adoption', { params: { days } }),
+  /**
+   * 获取实时在线状态数据
+   * @returns 当前在线用户数和最近 30 分钟活跃曲线
+   */
+  getOnlineStatus: () =>
+    typedGet<OnlineStatusData>('/dashboard/online-status'),
 };
 
 export const usersApi = {
-  getList: (params: { page?: number; limit?: number; status?: string; search?: string }) =>
+  getList: (params: { page?: number; limit?: number; status?: string; search?: string; activityTier?: string }) =>
     typedGet<unknown>('/admin/users', { params }),
   getDetail: (id: string) => typedGet<unknown>(`/admin/users/${id}`),
   /**
@@ -222,6 +240,22 @@ export const workspacesApi = {
    */
   toggleStar: (id: string, starred: boolean) =>
     typedPut<void>(`/admin/workspaces/${id}/star`, { starred }),
+  /**
+   * 置顶工作区
+   * 将指定工作区标记为推荐工作区，使其在客户端"推荐工作区"区域优先展示
+   * @param id - 工作区 ID
+   * @returns 成功时返回最新 isPinned/pinnedAt 状态
+   */
+  pinWorkspace: (id: string) =>
+    typedPost<{ isPinned: boolean; pinnedAt: string }>(`/admin/workspaces/${id}/pin`),
+  /**
+   * 取消置顶工作区
+   * 清除指定工作区的推荐标记，使其不再在客户端"推荐工作区"区域展示
+   * @param id - 工作区 ID
+   * @returns 成功时返回 isPinned:false 与 pinnedAt:null
+   */
+  unpinWorkspace: (id: string) =>
+    typedDelete<{ isPinned: boolean; pinnedAt: null }>(`/admin/workspaces/${id}/pin`),
 };
 
 export const auditApi = {
@@ -239,8 +273,13 @@ export const auditApi = {
     typedGet<unknown>('/admin/audit/conversations', { params }),
   getConversationDetail: (id: string) =>
     typedGet<unknown>(`/admin/audit/conversations/${id}`),
-  deleteConversationMessage: (convId: string, msgIndex: number, reason: string) =>
-    typedDelete<void>(`/admin/audit/conversations/${convId}/messages/${msgIndex}`, { data: { reason } }),
+  /**
+   * 删除指定消息（按消息 ID 删除，迁移后不再依赖对话 ID 与数组索引）
+   * @param messageId - 消息 UUID
+   * @param reason - 删除原因
+   */
+  deleteConversationMessage: (messageId: string, reason: string) =>
+    typedDelete<void>(`/admin/audit/messages/${messageId}`, { data: { reason } }),
 };
 
 export const pushApi = {
@@ -351,6 +390,18 @@ export const aiUsageApi = {
     if (params?.endDate) query.set('endDate', params.endDate);
     return typedGet<unknown>(`/admin/ai-usage/model-distribution?${query.toString()}`);
   },
+  /**
+   * 获取模型用量汇总
+   * 按模型维度聚合统计调用量、token 消耗、失败率
+   * @param params - 起始/结束日期，可选
+   * @returns AIModelUsageSummaryItem 数组
+   */
+  getModelSummary: (params?: { startDate?: string; endDate?: string }) => {
+    const query = new URLSearchParams();
+    if (params?.startDate) query.set('startDate', params.startDate);
+    if (params?.endDate) query.set('endDate', params.endDate);
+    return typedGet<AIModelUsageSummaryItem[]>(`/admin/ai-usage/model-summary?${query.toString()}`);
+  },
   getQueueStatus: () => typedGet<unknown>('/admin/ai-usage/queue-status'),
   exportCSV: (params?: { startDate?: string; endDate?: string; model?: string }) => {
     const query = new URLSearchParams();
@@ -359,6 +410,50 @@ export const aiUsageApi = {
     if (params?.model) query.set('model', params.model);
     return api.get(`/admin/ai-usage/export?${query.toString()}`, { responseType: 'blob' });
   },
+};
+
+/**
+ * AI 模型管理 API
+ * 提供模型配置的增删改查与默认模型设置
+ */
+export const aiModelApi = {
+  /**
+   * 获取所有模型配置列表
+   * 返回数据中 apiKey 已做掩码处理
+   */
+  getAll: () => typedGet<AIModelConfig[]>('/admin/ai-models'),
+  /**
+   * 创建新的模型配置
+   * @param data - 模型配置数据
+   * @returns 新创建的模型 ID
+   */
+  create: (data: AIModelConfigInput) =>
+    typedPost<{ id: string }>('/admin/ai-models', data),
+  /**
+   * 更新指定模型配置
+   * @param id - 模型 ID
+   * @param data - 待更新的字段
+   */
+  update: (id: string, data: Partial<AIModelConfigInput>) =>
+    typedPut<void>(`/admin/ai-models/${id}`, data),
+  /**
+   * 删除指定模型配置
+   * @param id - 模型 ID
+   */
+  delete: (id: string) => typedDelete<void>(`/admin/ai-models/${id}`),
+  /**
+   * 将指定模型设置为默认模型
+   * @param id - 模型 ID
+   */
+  setDefault: (id: string) =>
+    typedPut<void>(`/admin/ai-models/${id}/default`),
+  /**
+   * 切换模型启用/禁用状态
+   * @param id - 模型 ID
+   * @param isActive - 目标启用状态
+   */
+  toggle: (id: string, isActive: boolean) =>
+    typedPut<{ isActive: boolean }>(`/admin/ai-models/${id}/toggle`, { isActive }),
 };
 
 export const exportApi = {

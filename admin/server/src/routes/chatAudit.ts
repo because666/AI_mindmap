@@ -117,7 +117,29 @@ router.get('/messages', requireAuth, async (req: Request, res: Response) => {
 });
 
 /**
+ * messages 集合文档结构
+ * 主应用已将对话消息从 conversations 内嵌数组迁移至独立的 messages 集合
+ */
+interface MessageDocument {
+  /** 消息 UUID */
+  id: string;
+  /** 所属对话 ID */
+  conversationId: string;
+  /** 所属节点 ID */
+  nodeId?: string;
+  /** 所属工作区 ID */
+  workspaceId?: string;
+  /** 消息角色 */
+  role: 'user' | 'assistant' | 'system';
+  /** 消息文本内容 */
+  content: string;
+  /** 消息时间戳 */
+  timestamp: Date;
+}
+
+/**
  * 扫描消息（手动触发敏感词检测）
+ * 迁移后从 messages 集合查询 role='user' 的消息进行敏感词匹配
  */
 router.post('/scan', requireAuth, auditLog('SCAN_MESSAGES', 'audit'), async (req: Request, res: Response) => {
   try {
@@ -131,49 +153,53 @@ router.post('/scan', requireAuth, auditLog('SCAN_MESSAGES', 'audit'), async (req
       return;
     }
 
-    const filter: Record<string, unknown> = {};
+    // 仅扫描用户消息，支持按时间范围过滤
+    const messageFilter: Record<string, unknown> = { role: 'user' };
     if (startTime || endTime) {
-      filter.createdAt = {};
-      if (startTime) (filter.createdAt as Record<string, unknown>).$gte = new Date(startTime);
-      if (endTime) (filter.createdAt as Record<string, unknown>).$lte = new Date(endTime);
+      messageFilter.timestamp = {};
+      if (startTime) (messageFilter.timestamp as Record<string, unknown>).$gte = new Date(startTime);
+      if (endTime) (messageFilter.timestamp as Record<string, unknown>).$lte = new Date(endTime);
     }
 
-    const conversations = await adminDB.find('conversations', filter as never, { limit: 1000 });
+    // 从 messages 集合查询用户消息，按时间倒序限制 1000 条避免全表扫描
+    const messages = await adminDB.find<MessageDocument>('messages', messageFilter as never, {
+      sort: { timestamp: -1 },
+      limit: 1000,
+    });
 
     let scanned = 0;
     let flagged = 0;
 
-    for (const conv of conversations) {
-      const messages = (conv as Record<string, unknown>).messages as Array<Record<string, unknown>> || [];
-      for (const msg of messages) {
-        if ((msg.role as string) !== 'user') continue;
-        scanned++;
+    for (const msg of messages) {
+      scanned++;
 
-        const content = (msg.content as string) || '';
-        const matchedWords = sensitiveWords.filter((word) => content.includes(word));
+      const content = msg.content || '';
+      const matchedWords = sensitiveWords.filter((word) => content.includes(word));
 
-        if (matchedWords.length > 0) {
-          flagged++;
-          const riskLevel = matchedWords.length >= 3 ? 'high' : matchedWords.length >= 2 ? 'medium' : 'low';
+      if (matchedWords.length > 0) {
+        flagged++;
+        const riskLevel: 'low' | 'medium' | 'high' =
+          matchedWords.length >= 3 ? 'high' : matchedWords.length >= 2 ? 'medium' : 'low';
 
-          await adminDB.insertOne('chat_audits', {
-            messageId: msg._id,
-            workspaceId: (conv as Record<string, unknown>).workspaceId,
-            sender: {
-              id: (conv as Record<string, unknown>).createdBy || 'unknown',
-              nickname: 'unknown',
-            },
-            content: content.substring(0, 500),
-            createdAt: msg.timestamp || new Date(),
-            auditResult: {
-              scannedAt: new Date(),
-              hasSensitiveWord: true,
-              matchedWords,
-              riskLevel,
-              status: 'pending',
-            },
-          });
-        }
+        // 命中敏感词时写入 chat_audits 集合
+        // messages 集合没有 createdBy 字段，使用 conversationId 作为 sender.id
+        await adminDB.insertOne('chat_audits', {
+          messageId: msg.id,
+          workspaceId: msg.workspaceId,
+          sender: {
+            id: msg.conversationId || 'unknown',
+            nickname: 'unknown',
+          },
+          content: content.substring(0, 500),
+          createdAt: msg.timestamp || new Date(),
+          auditResult: {
+            scannedAt: new Date(),
+            hasSensitiveWord: true,
+            matchedWords,
+            riskLevel,
+            status: 'pending',
+          },
+        });
       }
     }
 
@@ -256,6 +282,7 @@ router.delete('/:id/message', requireAuth, auditLog('DELETE_AUDIT_MESSAGE', 'aud
 /**
  * 获取对话列表
  * 查看主应用中所有对话记录，用于内容审核
+ * 迁移后消息存储于独立的 messages 集合，需通过 conversationId 关联查询统计
  */
 router.get('/conversations', requireAuth, async (req: Request, res: Response) => {
   try {
@@ -267,9 +294,9 @@ router.get('/conversations', requireAuth, async (req: Request, res: Response) =>
     if (workspaceId) {
       filter.workspaceId = workspaceId;
     }
+    // 消息已迁移至独立 messages 集合，原 messages.content 内嵌查询失效，仅保留 title 搜索
     if (search) {
       filter.$or = [
-        { 'messages.content': { $regex: search, $options: 'i' } },
         { title: { $regex: search, $options: 'i' } },
       ];
     }
@@ -282,26 +309,38 @@ router.get('/conversations', requireAuth, async (req: Request, res: Response) =>
 
     const total = await adminDB.countDocuments('conversations', filter as never);
 
-    const items = conversations.map((conv: Record<string, unknown>) => {
-      const messages = (conv.messages as Array<Record<string, unknown>>) || [];
-      const userMessages = messages.filter((m) => m.role === 'user');
-      const assistantMessages = messages.filter((m) => m.role === 'assistant');
+    // 对每条对话，并行查询 messages 集合统计消息数与最后一条消息预览
+    const items = await Promise.all(conversations.map(async (conv: Record<string, unknown>) => {
+      const convId = conv.id as string;
+
+      const [messageCount, userMessageCount, assistantMessageCount, lastMessages] = await Promise.all([
+        adminDB.countDocuments('messages', { conversationId: convId } as never),
+        adminDB.countDocuments('messages', { conversationId: convId, role: 'user' } as never),
+        adminDB.countDocuments('messages', { conversationId: convId, role: 'assistant' } as never),
+        adminDB.find<MessageDocument>('messages', { conversationId: convId } as never, {
+          sort: { timestamp: -1 },
+          limit: 1,
+        }),
+      ]);
+
+      const lastMessage = lastMessages.length > 0
+        ? (lastMessages[0].content || '').substring(0, 100)
+        : '';
+
       return {
         _id: (conv._id as { toString(): string }).toString(),
-        id: conv.id as string,
+        id: convId,
         title: conv.title as string || '未命名对话',
         workspaceId: conv.workspaceId as string,
         createdBy: conv.createdBy as string,
         createdAt: conv.createdAt as string,
         updatedAt: conv.updatedAt as string,
-        messageCount: messages.length,
-        userMessageCount: userMessages.length,
-        assistantMessageCount: assistantMessages.length,
-        lastMessage: messages.length > 0
-          ? (messages[messages.length - 1].content as string || '').substring(0, 100)
-          : '',
+        messageCount,
+        userMessageCount,
+        assistantMessageCount,
+        lastMessage,
       };
-    });
+    }));
 
     const result: PaginationResult<unknown> = {
       items,
@@ -321,6 +360,7 @@ router.get('/conversations', requireAuth, async (req: Request, res: Response) =>
 /**
  * 获取对话详情
  * 查看指定对话的完整消息记录，用于内容审核
+ * 迁移后从独立的 messages 集合按 conversationId 查询消息列表，按时间升序排列
  */
 router.get('/conversations/:id', requireAuth, async (req: Request, res: Response) => {
   try {
@@ -340,7 +380,10 @@ router.get('/conversations/:id', requireAuth, async (req: Request, res: Response
       return;
     }
 
-    const messages = (conversation.messages as Array<Record<string, unknown>>) || [];
+    // 从 messages 集合查询对话消息，按时间升序排列
+    const messages = await adminDB.find<MessageDocument>('messages', { conversationId: conversation.id } as never, {
+      sort: { timestamp: 1 },
+    });
 
     res.json({
       success: true,
@@ -352,10 +395,12 @@ router.get('/conversations/:id', requireAuth, async (req: Request, res: Response
         createdBy: conversation.createdBy,
         createdAt: conversation.createdAt,
         updatedAt: conversation.updatedAt,
+        // 返回 id 字段供前端调用删除接口使用
         messages: messages.map((msg) => ({
-          role: msg.role as string,
-          content: msg.content as string,
-          timestamp: msg.timestamp as string,
+          id: msg.id,
+          role: msg.role,
+          content: msg.content,
+          timestamp: msg.timestamp,
         })),
       },
     });
@@ -366,47 +411,54 @@ router.get('/conversations/:id', requireAuth, async (req: Request, res: Response
 });
 
 /**
- * 删除对话中的指定消息
+ * 删除指定消息
  * 用于移除不安全内容
+ * 迁移后消息存储于独立 messages 集合，按消息 id 删除（更 RESTful，不再依赖数组索引）
+ * 删除同时同步将 chat_audits 集合中对应 messageId 的审计记录状态置为 deleted
  */
-router.delete('/conversations/:convId/messages/:msgIndex', requireAuth, auditLog('DELETE_MESSAGE', 'chat'), async (req: Request, res: Response) => {
+router.delete('/messages/:messageId', requireAuth, auditLog('DELETE_MESSAGE', 'chat'), async (req: Request, res: Response) => {
   try {
-    const { convId, msgIndex } = req.params;
-    const index = parseInt(msgIndex, 10);
+    const { messageId } = req.params;
+    const { reason } = req.body;
+    const adminReq = req as Request & { adminNickname?: string; adminIp?: string };
 
-    if (isNaN(index) || index < 0) {
-      res.status(400).json({ success: false, error: '无效的消息索引' });
+    if (!messageId) {
+      res.status(400).json({ success: false, error: '消息ID不能为空' });
       return;
     }
 
-    let conversation: Record<string, unknown> | null = null;
-
-    if (/^[0-9a-fA-F]{24}$/.test(convId)) {
-      conversation = await adminDB.findOne('conversations', { _id: convId } as never) as Record<string, unknown> | null;
-    }
-    if (!conversation) {
-      conversation = await adminDB.findOne('conversations', { id: convId } as never) as Record<string, unknown> | null;
-    }
-
-    if (!conversation) {
-      res.status(404).json({ success: false, error: '对话不存在' });
+    // 删除前先查询消息内容，用于返回预览
+    const message = await adminDB.findOne<MessageDocument>('messages', { id: messageId } as never);
+    if (!message) {
+      res.status(404).json({ success: false, error: '消息不存在' });
       return;
     }
 
-    const messages = (conversation.messages as Array<Record<string, unknown>>) || [];
-    if (index >= messages.length) {
-      res.status(400).json({ success: false, error: '消息索引超出范围' });
+    const deletedContentPreview = (message.content || '').substring(0, 100);
+
+    // 从 messages 集合按 id 字段删除该消息
+    const deleted = await adminDB.deleteOne('messages', { id: messageId } as never);
+    if (!deleted) {
+      res.status(404).json({ success: false, error: '消息删除失败' });
       return;
     }
 
-    const deletedContent = (messages[index].content as string || '').substring(0, 100);
-    messages.splice(index, 1);
-
-    await adminDB.updateOne('conversations', { _id: conversation._id } as never, {
-      $set: { messages },
+    // 同步更新 chat_audits 集合中对应 messageId 的审计记录状态为 deleted
+    // 使用 updateMany 以覆盖重复扫描产生的多条审计记录
+    await adminDB.updateMany('chat_audits', { messageId } as never, {
+      $set: {
+        'auditResult.status': 'deleted',
+        action: {
+          adminNickname: adminReq.adminNickname || 'unknown',
+          adminIp: adminReq.adminIp || 'unknown',
+          action: 'delete',
+          reason,
+          timestamp: new Date(),
+        },
+      },
     });
 
-    res.json({ success: true, message: '消息已删除', deletedContentPreview: deletedContent });
+    res.json({ success: true, message: '消息已删除', deletedContentPreview });
   } catch (error) {
     console.error('删除消息失败:', error);
     res.status(500).json({ success: false, error: '删除消息失败' });

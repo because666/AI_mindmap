@@ -1,14 +1,49 @@
-import { Router } from 'express';
+import { Router, Request, Response, NextFunction } from 'express';
+import crypto from 'crypto';
 import { pushService } from '../services/pushService';
+import { visitorAuth } from '../middleware';
 
 const router = Router();
+
+/**
+ * 内部 API token 校验中间件
+ * 从请求头 x-internal-token 读取 token，与环境变量 INTERNAL_API_TOKEN 进行恒定时间比较
+ * 使用 crypto.timingSafeEqual 防止时序攻击，长度不同时直接拒绝避免抛出异常
+ * @param req - Express 请求对象
+ * @param res - Express 响应对象
+ * @param next - 下一个中间件函数
+ */
+function internalTokenAuth(req: Request, res: Response, next: NextFunction): void {
+  const internalToken = req.headers['x-internal-token'];
+  const expectedToken = process.env.INTERNAL_API_TOKEN;
+
+  if (typeof internalToken !== 'string' || typeof expectedToken !== 'string') {
+    res.status(403).json({ success: false, error: '无权访问' });
+    return;
+  }
+
+  const inputBuffer = Buffer.from(internalToken);
+  const expectedBuffer = Buffer.from(expectedToken);
+
+  if (inputBuffer.length !== expectedBuffer.length) {
+    res.status(403).json({ success: false, error: '无权访问' });
+    return;
+  }
+
+  if (!crypto.timingSafeEqual(inputBuffer, expectedBuffer)) {
+    res.status(403).json({ success: false, error: '无权访问' });
+    return;
+  }
+
+  next();
+}
 
 /**
  * 设备注册接口
  * POST /api/push/register
  * 客户端调用，将极光SDK获取的Registration ID与用户关联
  */
-router.post('/register', async (req, res) => {
+router.post('/register', visitorAuth, async (req, res) => {
   try {
     const { registrationId, platform, deviceModel, appVersion } = req.body;
 
@@ -46,7 +81,7 @@ router.post('/register', async (req, res) => {
  * GET /api/push/messages?page=1&limit=20&type=all
  * 支持分页和类型过滤
  */
-router.get('/messages', async (req, res) => {
+router.get('/messages', visitorAuth, async (req, res) => {
   try {
     const userId = (req.headers['x-visitor-id'] as string) || 'anonymous';
     const page = parseInt(req.query.page as string) || 1;
@@ -82,7 +117,7 @@ router.get('/messages', async (req, res) => {
  * 用于显示红点提示和未读数
  * 注意：此路由必须放在 /messages/:id 之前，否则 unread-count 会被当作 :id 参数匹配
  */
-router.get('/messages/unread-count', async (req, res) => {
+router.get('/messages/unread-count', visitorAuth, async (req, res) => {
   try {
     const userId = (req.headers['x-visitor-id'] as string) || 'anonymous';
 
@@ -164,7 +199,7 @@ router.get('/messages/:id', async (req, res) => {
  * 标记单条消息已读
  * POST /api/push/messages/:id/read
  */
-router.post('/messages/:id/read', async (req, res) => {
+router.post('/messages/:id/read', visitorAuth, async (req, res) => {
   try {
     const { id } = req.params;
     const userId = (req.headers['x-visitor-id'] as string) || 'anonymous';
@@ -223,7 +258,7 @@ router.post('/callback/delivery', async (req, res) => {
  * POST /api/push/broadcast
  * 场景A - 超级广播
  */
-router.post('/broadcast', async (req, res) => {
+router.post('/broadcast', internalTokenAuth, async (req, res) => {
   try {
     const { title, content, summary, targetType, targetUserIds, scheduledAt, forceRead, forceReadDeadline } =
       req.body;
@@ -282,7 +317,7 @@ router.post('/broadcast', async (req, res) => {
  * 获取消息已读统计（管理员用）
  * GET /api/push/messages/:id/stats
  */
-router.get('/messages/:id/stats', async (req, res) => {
+router.get('/messages/:id/stats', internalTokenAuth, async (req, res) => {
   try {
     const { id } = req.params;
 
@@ -313,7 +348,7 @@ router.get('/messages/:id/stats', async (req, res) => {
  * 推送记录列表（管理员用）
  * GET /api/push/messages/admin/list?page=1&limit=20
  */
-router.get('/messages/admin/list', async (req, res) => {
+router.get('/messages/admin/list', internalTokenAuth, async (req, res) => {
   try {
     const page = parseInt(req.query.page as string) || 1;
     const limit = parseInt(req.query.limit as string) || 20;

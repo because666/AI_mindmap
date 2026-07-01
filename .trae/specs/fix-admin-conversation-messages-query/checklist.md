@@ -1,0 +1,10 @@
+- [x] `GET /conversations` 从 `messages` 集合聚合统计消息数，不再读 `conv.messages`
+- [x] `GET /conversations/:id` 从 `messages` 集合查询消息列表，按 timestamp 升序
+- [x] `POST /scan` 从 `messages` 集合查询 `role='user'` 消息进行扫描
+- [x] DELETE 消息接口从 `messages` 集合按消息 ID 删除（路由改为 `DELETE /messages/:messageId`）
+- [x] 前端 api.ts 和 ChatAuditPage.tsx 同步适配新删除接口
+- [x] 仪表盘趋势缓存 TTL 从 5 分钟降低到 1 分钟
+- [x] `npx tsc -b` 无错误（admin/server）
+- [x] 后台服务构建成功（admin/server + admin/client）
+- [x] 已部署到服务器并重启 PM2 `deepmindmap-admin` 进程
+- [x] 后台服务端口 3002 正常运行，MongoDB 已连接 messages 集合

@@ -21,20 +21,29 @@ router.get('/check-ip', async (_req: Request, res: Response) => {
     const enableHoneypot = adminConfig?.security?.enableHoneypot ?? true;
 
     res.json({
-      allowed: true,
-      isFirstVisit,
-      hasPassword: hasPwd,
-      enableHoneypot,
-      nickname: '',
-      message: isFirstVisit ? '首次访问，请初始化管理员系统' : '请输入密码登录',
+      success: true,
+      data: {
+        allowed: true,
+        isFirstVisit,
+        hasPassword: hasPwd,
+        enableHoneypot,
+        nickname: '',
+        message: isFirstVisit ? '首次访问，请初始化管理员系统' : '请输入密码登录',
+      },
     });
   } catch (error) {
     console.error('检查系统状态失败:', error);
+    // 异常时返回安全默认值，同样使用 success+data 包装以便前端解析
     res.json({
-      allowed: true,
-      isFirstVisit: true,
-      hasPassword: false,
-      enableHoneypot: true,
+      success: true,
+      data: {
+        allowed: true,
+        isFirstVisit: true,
+        hasPassword: false,
+        enableHoneypot: true,
+        nickname: '',
+        message: '首次访问，请初始化管理员系统',
+      },
     });
   }
 });
@@ -113,17 +122,23 @@ router.post('/login', loginLimiter, async (req: Request, res: Response) => {
 
     res.json({
       success: true,
-      needNickname: false,
-      isHoneypot: true,
-      sessionId: uuidv4(),
-      nickname: '管理员',
+      data: {
+        needNickname: false,
+        isHoneypot: true,
+        sessionId: uuidv4(),
+        nickname: '管理员',
+      },
     });
   } catch (error) {
     console.error('蜜罐登录记录失败:', error);
+    // 蜜罐即使记录失败也伪装登录成功，保持 success+data 包装格式
     res.json({
       success: true,
-      isHoneypot: true,
-      sessionId: uuidv4(),
+      data: {
+        isHoneypot: true,
+        sessionId: uuidv4(),
+        nickname: '管理员',
+      },
     });
   }
 });
@@ -214,7 +229,7 @@ router.post('/set-nickname', async (req: Request, res: Response) => {
       $set: { nickname: nickname.trim() },
     });
 
-    res.json({ success: true, nickname: nickname.trim() });
+    res.json({ success: true, data: { nickname: nickname.trim() } });
   } catch (error) {
     console.error('设置昵称失败:', error);
     res.status(500).json({ success: false, error: '设置昵称失败' });
@@ -264,9 +279,12 @@ router.get('/me', async (req: Request, res: Response) => {
     }
 
     res.json({
-      ipAddress: session.ipAddress,
-      nickname: session.nickname,
-      loginAt: session.createdAt,
+      success: true,
+      data: {
+        ipAddress: session.ipAddress,
+        nickname: session.nickname,
+        loginAt: session.createdAt,
+      },
     });
   } catch (error) {
     console.error('获取管理员信息失败:', error);

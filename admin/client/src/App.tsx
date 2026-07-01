@@ -1,5 +1,6 @@
 import React, { useEffect } from 'react';
 import { BrowserRouter, Routes, Route, Navigate } from 'react-router-dom';
+import { Capacitor } from '@capacitor/core';
 import { useAuthStore } from './stores/authStore';
 import AdminLayout from './components/Layout/AdminLayout';
 import FakeLoginPage from './pages/Login/FakeLoginPage';
@@ -14,6 +15,7 @@ import SettingsPage from './pages/Settings/SettingsPage';
 import IpBansPage from './pages/IpBans/IpBansPage';
 import FeedbackPage from './pages/Feedback/FeedbackPage';
 import AIUsagePage from './pages/AIUsage/AIUsagePage';
+import AIModelsPage from './pages/AIModels/AIModelsPage';
 import AuditLogsPage from './pages/AuditLogs/AuditLogsPage';
 import ExportCenterPage from './pages/ExportCenter/ExportCenterPage';
 import AdminAccountsPage from './pages/AdminAccounts/AdminAccountsPage';
@@ -59,9 +61,15 @@ const App: React.FC = () => {
   return (
     <BrowserRouter>
       <Routes>
-        {/* 第一层：蜜罐假登录页 */}
+        {/* 第一层：蜜罐假登录页；在 Capacitor 原生环境下跳过蜜罐，直接进入真实登录页 */}
         <Route path="/login" element={
-          isAuthenticated ? <Navigate to="/" replace /> : <FakeLoginPage />
+          isAuthenticated ? (
+            <Navigate to="/" replace />
+          ) : Capacitor.isNativePlatform() ? (
+            <Navigate to="/portal" replace />
+          ) : (
+            <FakeLoginPage />
+          )
         } />
         {/* 第二层：戏耍统计页 */}
         <Route path="/honeypot" element={<HoneypotDashboard />} />
@@ -128,6 +136,13 @@ const App: React.FC = () => {
           <ProtectedRoute>
             <AdminLayout>
               <AIUsagePage />
+            </AdminLayout>
+          </ProtectedRoute>
+        } />
+        <Route path="/ai-models" element={
+          <ProtectedRoute>
+            <AdminLayout>
+              <AIModelsPage />
             </AdminLayout>
           </ProtectedRoute>
         } />

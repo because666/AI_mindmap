@@ -1012,8 +1012,10 @@ const MainLayout: React.FC<{ children: React.ReactNode }> = ({ children }) => {
 
           {!isMobile && (
             <div
-              className={`shrink-0 transition-all duration-300 ease-out overflow-hidden h-full`}
-              style={{ width: isHistoryOpen ? '320px' : 0, opacity: isHistoryOpen ? 1 : 0 }}
+              className={`shrink-0 border-l border-dark-700/30 flex flex-col bg-dark-950/30 backdrop-blur-sm transition-[width] duration-300 ease-out overflow-hidden h-full ${
+                isHistoryOpen ? '' : 'pointer-events-none'
+              }`}
+              style={{ width: isHistoryOpen ? '320px' : 0 }}
             >
               <HistoryPanel
                 isOpen={isHistoryOpen}
@@ -1024,8 +1026,10 @@ const MainLayout: React.FC<{ children: React.ReactNode }> = ({ children }) => {
 
           {!isMobile && (
             <div
-              className={`shrink-0 transition-all duration-300 ease-out overflow-hidden h-full`}
-              style={{ width: isMapLibraryOpen ? '320px' : 0, opacity: isMapLibraryOpen ? 1 : 0 }}
+              className={`shrink-0 border-l border-dark-700/30 flex flex-col bg-dark-950/30 backdrop-blur-sm transition-[width] duration-300 ease-out overflow-hidden h-full ${
+                isMapLibraryOpen ? '' : 'pointer-events-none'
+              }`}
+              style={{ width: isMapLibraryOpen ? '320px' : 0 }}
             >
               <MapLibrary
                 isOpen={isMapLibraryOpen}

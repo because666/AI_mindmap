@@ -47,6 +47,37 @@ interface RateLimitRecord {
 const rateLimitMap = new Map<string, RateLimitRecord>();
 
 /**
+ * 内存清理间隔（毫秒），每 5 分钟清理一次过期记录
+ */
+const CLEANUP_INTERVAL_MS = 5 * 60 * 1000;
+
+/**
+ * 记录最大闲置时间（毫秒），超过 10 分钟未访问的 IP 记录将被清理
+ */
+const MAX_RECORD_AGE_MS = 10 * 60 * 1000;
+
+/**
+ * 定时清理过期的 IP 限流记录，防止 Map 内存持续增长
+ * 每 5 分钟执行一次，清理超过 10 分钟未访问的 IP 记录
+ */
+const rateLimitCleanupTimer = setInterval(() => {
+  const now = Date.now();
+  for (const [ip, record] of rateLimitMap) {
+    if (now - record.firstRequestTime > MAX_RECORD_AGE_MS) {
+      rateLimitMap.delete(ip);
+    }
+  }
+}, CLEANUP_INTERVAL_MS);
+
+// 允许进程在事件循环为空时退出，防止定时器阻止进程退出
+rateLimitCleanupTimer.unref();
+
+// 进程退出时清除定时器，避免资源泄漏
+process.on('exit', () => {
+  clearInterval(rateLimitCleanupTimer);
+});
+
+/**
  * 限流时间窗口（毫秒）
  */
 const RATE_LIMIT_WINDOW = 60 * 1000;

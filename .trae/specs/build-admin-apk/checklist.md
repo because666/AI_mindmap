@@ -1,0 +1,11 @@
+- [x] admin/client 已安装 Capacitor 依赖
+- [x] admin/client/capacitor.config.ts 已创建并指向 `https://admin.deepmindmap.work`
+- [x] admin/client/android 平台已添加
+- [x] App.tsx 在 Capacitor 环境下跳过蜜罐假登录页
+- [x] `npm run build` 构建成功
+- [x] `npx cap sync android` 同步成功
+- [x] Gradle 构建成功
+- [x] APK 文件在标准路径 `admin/client/android/app/build/outputs/apk/debug/app-debug.apk`
+- [x] 没有额外复制 APK 到项目根目录
+- [x] 应用名称为 "DeepMindMap Admin"，与主网站 APK 区分
+- [x] 图标已更换为后台专属深蓝盾牌图表齿轮图标

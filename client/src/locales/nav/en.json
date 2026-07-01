@@ -43,5 +43,12 @@
   "mapLibrarySortCreated": "Created Time",
   "mapLibraryNodes": "{{count}} nodes",
   "mapLibraryCurrentMap": "Current",
-  "mapLibraryLastEdited": "Last edited"
+  "relativeTimeJustNow": "Just now",
+  "relativeTimeMinutesAgo": "{{count}} minutes ago",
+  "relativeTimeHoursAgo": "{{count}} hours ago",
+  "relativeTimeYesterday": "Yesterday",
+  "relativeTimeDaysAgo": "{{count}} days ago",
+  "relativeTimeMonthsAgo": "{{count}} months ago",
+  "relativeTimeYearsAgo": "{{count}} years ago",
+  "newMapDefaultName": "New Map"
 }

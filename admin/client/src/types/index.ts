@@ -19,6 +19,15 @@ export interface DashboardStats {
   };
 }
 
+/**
+ * 用户活跃度分层类型
+ * new_user: 新用户，createdAt 在最近 24 小时内
+ * high_active: 高活跃，lastSeen 在最近 24 小时内（且非新用户）
+ * churn_risk: 流失风险，lastSeen 在 7-30 天前
+ * dormant: 沉睡，lastSeen 超过 30 天，或 lastSeen 为空
+ */
+export type ActivityTier = 'new_user' | 'high_active' | 'churn_risk' | 'dormant';
+
 export interface UserListItem {
   _id: string;
   id: string;
@@ -37,6 +46,8 @@ export interface UserListItem {
   lastIp?: string;
   ipHistory?: string[];
   tags?: string[];
+  /** 活跃度分层，基于 lastSeen/createdAt 计算 */
+  activityTier: ActivityTier;
 }
 
 export interface WorkspaceListItem {
@@ -58,6 +69,16 @@ export interface WorkspaceListItem {
   };
   isReported: boolean;
   reportCount: number;
+  /**
+   * 是否被管理员置顶
+   * 为 true 时该工作区会在客户端"推荐工作区"区域优先展示
+   */
+  isPinned?: boolean;
+  /**
+   * 置顶时间（ISO 字符串）
+   * 与 isPinned 配套，用于置顶工作区之间的时间倒序排序
+   */
+  pinnedAt?: string;
 }
 
 export interface ChatAuditItem {
@@ -444,6 +465,93 @@ export interface AIProvider {
 }
 
 /**
+ * AI 模型提供商类型
+ * zhipu: 智谱GLM
+ * deepseek: DeepSeek
+ * openai: OpenAI
+ * custom: 自定义 OpenAI 兼容服务商
+ */
+export type AIModelProvider = 'zhipu' | 'deepseek' | 'openai' | 'custom';
+
+/**
+ * AI 模型配置接口（客户端展示用）
+ * apiKey 字段已做掩码处理，不输出明文
+ */
+export interface AIModelConfig {
+  /** 文档唯一标识字符串 */
+  _id: string;
+  /** 模型配置名称 */
+  name: string;
+  /** 服务商类型 */
+  provider: AIModelProvider;
+  /** API 密钥掩码，如 "sk-***abcd" */
+  apiKeyMasked: string;
+  /** API 基础 URL */
+  baseUrl: string;
+  /** 模型 ID */
+  modelId: string;
+  /** 采样温度 */
+  temperature: number;
+  /** 最大输出 token 数 */
+  maxTokens: number;
+  /** 是否启用 */
+  isActive: boolean;
+  /** 是否默认模型 */
+  isDefault: boolean;
+  /** 优先级，数值越小优先级越高 */
+  priority: number;
+  /** 创建时间 */
+  createdAt: string;
+  /** 更新时间 */
+  updatedAt: string;
+}
+
+/**
+ * 创建/更新模型配置请求体接口
+ * 创建时除 isActive/isDefault/priority 外均为必填
+ * 更新时 apiKey 可为空字符串，表示不更新原值
+ */
+export interface AIModelConfigInput {
+  name: string;
+  provider: AIModelProvider;
+  apiKey: string;
+  baseUrl: string;
+  modelId: string;
+  temperature: number;
+  maxTokens: number;
+  isActive: boolean;
+  isDefault: boolean;
+  priority: number;
+}
+
+/**
+ * 模型用量聚合统计接口
+ * 用于后台展示各模型的调用量、token 消耗、失败率
+ */
+export interface AIModelUsageSummaryItem {
+  /** 模型 ID */
+  model: string;
+  /** 服务商名称 */
+  provider: string;
+  /** 调用总次数 */
+  totalCalls: number;
+  /** 成功调用次数 */
+  successCalls: number;
+  /** 失败调用次数 */
+  failedCalls: number;
+  /** 失败率（百分比，0-100） */
+  failureRate: number;
+  /** Prompt token 总消耗 */
+  promptTokens: number;
+  /** Completion token 总消耗 */
+  completionTokens: number;
+  /** 总 token 消耗 */
+  totalTokens: number;
+  /** 平均响应时间（毫秒） */
+  avgResponseTime: number;
+}
+
+/**
  * 事件统计概览数据接口
  */
 export interface EventOverviewData {
@@ -507,4 +615,52 @@ export interface RecentEventItem {
   userAgent?: string;
   /** 事件发生时间 */
   timestamp: string;
+}
+
+/**
+ * 功能采用矩阵单项接口
+ * 描述单个功能的采用情况：触发该事件的独立访客数与采用率
+ */
+export interface FeatureAdoptionItem {
+  /** 功能显示名称 */
+  name: string;
+  /** 对应事件类型 */
+  eventType: string;
+  /** 触发过该事件的独立访客数 */
+  uniqueUsers: number;
+  /** 采用率（百分比，0-100） */
+  adoptionRate: number;
+}
+
+/**
+ * 功能采用矩阵数据接口
+ * 包含各功能采用情况和总独立访客数
+ */
+export interface FeatureAdoptionData {
+  /** 功能采用列表 */
+  features: FeatureAdoptionItem[];
+  /** 最近 N 天内有活动的独立访客总数 */
+  totalUsers: number;
+}
+
+/**
+ * 实时在线曲线单点接口
+ * 描述某一分钟内的活跃独立访客数
+ */
+export interface OnlineCurvePoint {
+  /** 时间字符串，格式 HH:mm */
+  time: string;
+  /** 该分钟内的独立访客数 */
+  activeUsers: number;
+}
+
+/**
+ * 实时在线状态数据接口
+ * 包含当前在线用户数和最近 30 分钟活跃曲线
+ */
+export interface OnlineStatusData {
+  /** 当前在线用户数（lastSeen >= now-5分钟） */
+  onlineNow: number;
+  /** 最近 30 分钟活跃曲线（每分钟一个点，共 30 个点） */
+  recentActiveCurve: OnlineCurvePoint[];
 }

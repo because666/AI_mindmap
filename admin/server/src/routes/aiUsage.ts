@@ -76,6 +76,24 @@ router.get('/model-distribution', requireAuth, async (req: Request, res: Respons
 });
 
 /**
+ * 获取模型用量汇总
+ * 按模型维度聚合统计调用量、token 消耗、失败率
+ * @query startDate - 起始日期（可选）
+ * @query endDate - 结束日期（可选）
+ */
+router.get('/model-summary', requireAuth, async (req: Request, res: Response) => {
+  try {
+    const { startDate, endDate } = req.query as Record<string, string | undefined>;
+    const summary = await aiUsageService.getModelSummary(startDate, endDate);
+    res.json({ success: true, data: summary });
+  } catch (error) {
+    const message = error instanceof Error ? error.message : '获取模型用量汇总失败';
+    console.error('获取模型用量汇总失败:', error);
+    res.status(500).json({ success: false, error: message });
+  }
+});
+
+/**
  * 获取队列状态
  * 代理调用主服务的队列状态API
  */

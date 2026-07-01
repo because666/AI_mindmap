@@ -1,0 +1,8 @@
+- [x] `ipWhitelistMiddleware` 在白名单非空时先检查 session
+- [x] 已登录用户（sessionId 存在）直接放行，不检查 IP
+- [x] 未登录用户仍受 IP 白名单保护
+- [x] 白名单为空时保持原有逻辑（放行所有）
+- [x] `npx tsc -b` 无错误（admin/server 目录）
+- [x] `npm run build` 构建成功（admin/server 目录）
+- [x] 已部署到服务器并重启 PM2（健康检查 200）
+- [x] ipWhitelist 修改已验证生效（grep 确认）

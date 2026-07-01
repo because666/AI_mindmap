@@ -3,10 +3,10 @@ import { aiService, AI_TOOLS, ToolCallChunk } from '../services/aiService';
 import type { AIUsageRecord } from '../services/aiService';
 import { fileService } from '../services/fileService';
 import { optionalVisitorAuth, visitorAuth } from '../middleware';
-import { createAIRateLimit } from '../middleware/aiRateLimit';
+import { createAIRateLimit, createMapOutlineRateLimit } from '../middleware/aiRateLimit';
 import { sensitiveWordService } from '../services/sensitiveWordService';
 import { config as appConfig } from '../config/index.js';
-import { DEFAULT_SYSTEM_PROMPT, getLanguageInstruction } from '../config/prompts.js';
+import { DEFAULT_SYSTEM_PROMPT, getLanguageInstruction, MAP_OUTLINE_PROMPT } from '../config/prompts.js';
 import { truncateContextByNode } from '../utils/contextUtils.js';
 import { aiQueue, AIPriority } from '../services/aiQueue';
 
@@ -25,6 +25,13 @@ function extractUserText(messages: Array<{ role: string; content: string }>): st
 }
 
 const aiChatRateLimit = createAIRateLimit({ windowMs: 60 * 1000, maxRequests: 20 });
+
+/**
+ * 地图优先大纲生成接口独立限流策略
+ * 限制每用户每分钟 5 次，避免高频调用导致 AI 资源被耗尽
+ * 与对话限流（20 次/分钟）独立计数，互不影响
+ */
+const mapOutlineRateLimit = createMapOutlineRateLimit();
 
 /**
  * 流式聊天接口（SSE）- 客户端驱动模式
@@ -384,6 +391,326 @@ router.get('/queue/stats', visitorAuth, (_req: Request, res: Response) => {
     success: true,
     data: aiQueue.getStats(),
   });
+});
+
+/**
+ * 地图大纲分支数据结构
+ */
+export interface MapOutlineBranch {
+  /** 分支标题 */
+  title: string;
+  /** 分支简短描述 */
+  description: string;
+}
+
+/**
+ * 地图大纲数据结构
+ */
+export interface MapOutlineData {
+  /** 根节点标题（主题） */
+  rootTitle: string;
+  /** 分支列表 */
+  branches: MapOutlineBranch[];
+}
+
+/**
+ * 大纲分支数量上限（超出截取前 N 个），保证地图简洁可控
+ */
+const MAP_OUTLINE_MAX_BRANCHES = 6;
+
+/**
+ * 大纲分支数量下限（少于则视为生成失败返回 null），保证大纲具备基本完整性
+ */
+const MAP_OUTLINE_MIN_BRANCHES = 4;
+
+/**
+ * 从文本中提取首个完整的 JSON 对象片段
+ *
+ * 通过花括号深度匹配定位首个完整对象，扫描时跳过字符串字面量中的花括号
+ * 与转义字符，避免多个 JSON 对象串联时 lastIndexOf('}') 跨对象取值导致
+ * 解析失败（如 AI 输出了两个对象 `{...}{...}` 时仅提取第一个）。
+ *
+ * @param text - 待提取的文本
+ * @returns 首个完整 JSON 对象字符串；未找到匹配的闭合花括号时返回 null
+ */
+function extractFirstJsonObject(text: string): string | null {
+  const start = text.indexOf('{');
+  if (start === -1) return null;
+
+  let depth = 0;
+  let inString = false;
+  let escape = false;
+
+  for (let i = start; i < text.length; i++) {
+    const char = text[i];
+
+    if (escape) {
+      // 上一字符为反斜杠，当前字符被转义，跳过
+      escape = false;
+      continue;
+    }
+
+    if (inString) {
+      if (char === '\\') {
+        // 字符串内的反斜杠，标记下一字符为转义
+        escape = true;
+        continue;
+      }
+      if (char === '"') {
+        // 字符串结束
+        inString = false;
+      }
+      continue;
+    }
+
+    // 非字符串上下文
+    if (char === '"') {
+      // 字符串开始
+      inString = true;
+    } else if (char === '{') {
+      depth++;
+    } else if (char === '}') {
+      depth--;
+      if (depth === 0) {
+        // 花括号深度归零，找到首个完整对象
+        return text.substring(start, i + 1);
+      }
+    }
+  }
+
+  // 扫描到末尾仍未找到匹配的闭合花括号
+  return null;
+}
+
+/**
+ * 从 AI 输出文本中提取并解析 JSON 大纲
+ *
+ * 容错处理：AI 输出可能包含 Markdown 代码块包裹或前后多余文字，
+ * 先尝试提取首个 JSON 对象片段再解析，解析失败时返回 null。
+ * 强制 4-6 分支数量限制：超出上限截取，不足下限拒绝（返回 null）。
+ *
+ * @param content - AI 原始输出文本
+ * @returns 解析后的大纲数据，解析失败返回 null
+ */
+export function parseMapOutlineJson(content: string): MapOutlineData | null {
+  if (!content || typeof content !== 'string') {
+    return null;
+  }
+
+  // 去除 Markdown 代码块标记：仅清理首尾的 ``` 或 ```json 包裹，
+  // 避免全局替换误删 JSON 值中合法包含的 ``` 字符
+  const cleaned = content.trim()
+    .replace(/^```(?:json)?\s*/i, '')
+    .replace(/\s*```$/, '')
+    .trim();
+
+  // 提取首个完整的 JSON 对象片段（使用花括号深度匹配，
+  // 避免多个对象串联时 lastIndexOf('}') 跨对象取值导致解析失败）
+  const jsonStr = extractFirstJsonObject(cleaned);
+  if (!jsonStr) {
+    return null;
+  }
+
+  let parsed: unknown;
+  try {
+    parsed = JSON.parse(jsonStr);
+  } catch {
+    return null;
+  }
+
+  // 类型与字段校验，确保 rootTitle 为字符串且 branches 为非空数组
+  if (typeof parsed !== 'object' || parsed === null) {
+    return null;
+  }
+  const obj = parsed as Record<string, unknown>;
+  const rootTitle = obj.rootTitle;
+  const branches = obj.branches;
+  if (typeof rootTitle !== 'string' || !rootTitle.trim()) {
+    return null;
+  }
+  if (!Array.isArray(branches) || branches.length === 0) {
+    return null;
+  }
+
+  // 逐项校验分支结构，过滤掉不合规的项
+  const validBranches: MapOutlineBranch[] = [];
+  for (const branch of branches) {
+    if (typeof branch !== 'object' || branch === null) {
+      continue;
+    }
+    const b = branch as Record<string, unknown>;
+    const title = b.title;
+    const description = b.description;
+    if (typeof title !== 'string' || !title.trim()) {
+      continue;
+    }
+    validBranches.push({
+      title: title.trim(),
+      description: typeof description === 'string' ? description.trim() : '',
+    });
+  }
+
+  if (validBranches.length === 0) {
+    return null;
+  }
+
+  // 分支数量校验：超出上限截取前 N 个，不足下限拒绝（返回 null）
+  if (validBranches.length > MAP_OUTLINE_MAX_BRANCHES) {
+    validBranches.length = MAP_OUTLINE_MAX_BRANCHES;
+  }
+  if (validBranches.length < MAP_OUTLINE_MIN_BRANCHES) {
+    return null;
+  }
+
+  return {
+    rootTitle: rootTitle.trim(),
+    branches: validBranches,
+  };
+}
+
+/**
+ * 地图优先大纲生成接口
+ *
+ * 接收用户的宽泛问题，调用 AI 生成结构化思维导图大纲（根节点 + 多个分支）。
+ * 使用 visitorAuth 确保访客身份合法，使用独立的 mapOutlineRateLimit 限流策略
+ * （5 次/分钟），与对话流式接口（aiChatRateLimit）独立计数，避免相互影响。
+ * 通过优先级队列调度，后台任务使用 P1_BACKGROUND 优先级，避免阻塞实时对话。
+ *
+ * workspaceId 通过请求头 x-workspace-id 传递，与对话接口保持一致。
+ * temperature 设为 0.3，偏低温以获得更稳定的结构化 JSON 输出。
+ *
+ * 请求体：
+ * - question: string  用户问题
+ * - config?: { model?, apiKey?, provider?, baseUrl?, providerId? }  AI 配置（可选，缺省使用内置配置）
+ * - language?: string  语言偏好
+ *
+ * 响应：
+ * - 成功：{ success: true, data: { rootTitle, branches: [{ title, description }] } }
+ * - 失败：{ success: false, error: string }
+ */
+router.post('/map-outline', visitorAuth, mapOutlineRateLimit, async (req: Request, res: Response) => {
+  const startTime = Date.now();
+  let currentProvider = '';
+  let currentModel = '';
+  /** 工作区ID：从请求头读取，用于用量记录归属，缺失时为空字符串 */
+  const workspaceId = (req.headers['x-workspace-id'] as string) || '';
+
+  try {
+    const { question, config, language } = req.body;
+
+    // 入参校验
+    if (!question || typeof question !== 'string' || !question.trim()) {
+      return res.status(400).json({
+        success: false,
+        error: '问题不能为空',
+      });
+    }
+
+    // 敏感词检查，避免违规内容触发 AI 生成
+    const checkResult = await sensitiveWordService.check(question);
+    if (checkResult.hasSensitiveWord) {
+      return res.status(400).json({
+        success: false,
+        error: '消息包含敏感内容，请修改后重试',
+        sensitiveWords: checkResult.matchedWords,
+        riskLevel: checkResult.riskLevel,
+      });
+    }
+
+    // 构造系统提示（含语言偏好）
+    const languageInstruction = getLanguageInstruction(language);
+    const systemPrompt = MAP_OUTLINE_PROMPT + languageInstruction;
+
+    const messages = [
+      { role: 'system' as const, content: systemPrompt },
+      { role: 'user' as const, content: question },
+    ];
+
+    const chatModel = config?.model;
+    const chatProvider = config?.provider;
+    const apiKey = config?.apiKey;
+    const baseUrl = config?.baseUrl;
+    const providerId = config?.providerId;
+
+    currentProvider = chatProvider || appConfig.ai.defaultProvider;
+    currentModel = chatModel || appConfig.ai.defaultModel;
+
+    // 通过优先级队列调用 AI（非流式），后台任务使用 P1 优先级
+    // temperature 设为 0.3，偏低温以获得更稳定的结构化 JSON 输出
+    const aiResponse = await aiService.chatWithQueue(
+      AIPriority.P1_BACKGROUND,
+      {
+        messages,
+        model: chatModel,
+        temperature: 0.3,
+        provider: chatProvider,
+        apiKey,
+        baseUrl,
+        providerId,
+      },
+      '地图优先大纲生成',
+    );
+
+    if (!aiResponse.success || !aiResponse.content) {
+      return res.status(500).json({
+        success: false,
+        error: aiResponse.error || 'AI 生成大纲失败，请稍后重试',
+      });
+    }
+
+    // 解析 AI 输出中的 JSON 大纲（容错处理）
+    const outline = parseMapOutlineJson(aiResponse.content);
+    if (!outline) {
+      return res.status(500).json({
+        success: false,
+        error: 'AI 输出格式异常，无法解析为大纲结构',
+      });
+    }
+
+    // 记录用量：workspaceId 从请求头读取，避免依赖请求体透传
+    const record: AIUsageRecord = {
+      visitorId: req.visitorId || '',
+      workspaceId,
+      model: currentModel,
+      provider: currentProvider,
+      promptTokens: aiResponse.usage?.promptTokens || 0,
+      completionTokens: aiResponse.usage?.completionTokens || 0,
+      totalTokens: aiResponse.usage?.totalTokens || 0,
+      responseTimeMs: Date.now() - startTime,
+      isSuccess: true,
+      createdAt: new Date(),
+    };
+    aiService.recordUsage(record).catch(() => {});
+
+    return res.json({
+      success: true,
+      data: outline,
+    });
+  } catch (error: unknown) {
+    const message = error instanceof Error ? error.message : String(error);
+    console.error('[AI Map Outline] 生成地图大纲失败:', message);
+
+    // 记录失败用量：workspaceId 从请求头读取，避免依赖请求体透传
+    const record: AIUsageRecord = {
+      visitorId: req.visitorId || '',
+      workspaceId,
+      model: currentModel,
+      provider: currentProvider,
+      promptTokens: 0,
+      completionTokens: 0,
+      totalTokens: 0,
+      responseTimeMs: Date.now() - startTime,
+      isSuccess: false,
+      errorMessage: message,
+      createdAt: new Date(),
+    };
+    aiService.recordUsage(record).catch(() => {});
+
+    return res.status(500).json({
+      success: false,
+      error: message || '生成地图大纲时发生未知错误',
+    });
+  }
 });
 
 export default router;

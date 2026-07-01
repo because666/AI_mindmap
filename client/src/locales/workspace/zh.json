@@ -69,5 +69,7 @@
   "refreshInviteCodeFailed": "刷新邀请码失败",
   "joinPublicWorkspaceFailed": "加入公开工作区失败",
   "removeMemberFailed": "移除成员失败",
-  "updateWorkspaceFailed": "更新工作区失败"
+  "updateWorkspaceFailed": "更新工作区失败",
+  "recommendedWorkspaces": "推荐工作区",
+  "joinRecommendedTip": "加入该工作区开始浏览其公开地图"
 }

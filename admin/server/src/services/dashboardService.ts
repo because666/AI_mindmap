@@ -10,7 +10,29 @@ import {
   EventTrendData,
   EventFunnelData,
   RecentEventItem,
+  FeatureAdoptionData,
+  FeatureAdoptionItem,
+  OnlineStatusData,
+  OnlineCurvePoint,
 } from '../types';
+
+/**
+ * 功能采用矩阵事件映射项
+ * 描述事件类型到展示名称的映射关系
+ */
+interface FeatureEventMapping {
+  eventType: string;
+  displayName: string;
+}
+
+/**
+ * 按分钟聚合结果接口
+ * 表示单分钟内的独立访客数
+ */
+interface MinuteAggregationResult {
+  _id: string;
+  uniqueVisitors: string[];
+}
 
 /**
  * 聚合结果条目接口
@@ -65,9 +87,9 @@ interface CacheEntry {
 class DashboardService {
   private memoryCache: Map<string, CacheEntry> = new Map();
 
-  private static readonly CACHE_TTL_MS = 5 * 60 * 1000;
+  private static readonly CACHE_TTL_MS = 60 * 1000;
 
-  private static readonly CACHE_TTL_SECONDS = 300;
+  private static readonly CACHE_TTL_SECONDS = 60;
 
   private static readonly CACHE_KEY_PREFIX = 'dashboard_cache';
 
@@ -135,6 +157,8 @@ class DashboardService {
    * 获取核心统计指标
    * 包括用户、工作区、内容三维度数据
    * 消息统计已从 $unwind 改为直接对 messages 集合查询
+   * onlineNow 查询 visitors 集合中 lastSeen >= now-5min 的数量，
+   * 与 getOnlineStatus 中的在线判定逻辑保持一致
    * @returns DashboardStats 统计数据
    */
   async getStats(): Promise<DashboardStats> {
@@ -155,6 +179,20 @@ class DashboardService {
       lastSeen: { $gte: weekAgo },
     } as never);
 
+    // 当前在线用户数：lastSeen >= now-5min，与 getOnlineStatus 的判定一致
+    // 单独 try/catch，失败时降级为 0，不影响其他统计指标
+    const fiveMinutesAgo = new Date(Date.now() - 5 * 60 * 1000);
+    let onlineNow = 0;
+    try {
+      onlineNow = await adminDB.countDocuments('visitors', {
+        lastSeen: { $gte: fiveMinutesAgo },
+      } as never);
+    } catch (error: unknown) {
+      const errorMsg = error instanceof Error ? error.message : String(error);
+      console.warn(`⚠️ 当前在线用户数统计失败，使用 0: ${errorMsg}`);
+      onlineNow = 0;
+    }
+
     const totalWorkspaces = await adminDB.countDocuments('workspaces');
     const activeTodayWorkspaces = await adminDB.countDocuments('workspaces', {
       updatedAt: { $gte: today },
@@ -166,7 +204,9 @@ class DashboardService {
     let totalNodes = 0;
     try {
       totalNodes = await adminDB.countDocuments('nodes');
-    } catch {
+    } catch (error: unknown) {
+      const errorMsg = error instanceof Error ? error.message : String(error);
+      console.warn(`⚠️ 节点总数统计失败，使用 0: ${errorMsg}`);
       totalNodes = 0;
     }
     const totalConversations = await adminDB.countDocuments('conversations');
@@ -199,7 +239,7 @@ class DashboardService {
         todayNew: todayNewVisitors,
         todayActive: todayActiveVisitors,
         weekActive: weekActiveVisitors,
-        onlineNow: 0,
+        onlineNow,
       },
       workspaces: {
         total: totalWorkspaces,
@@ -255,7 +295,9 @@ class DashboardService {
         map[result._id] = result.count;
       }
       return map;
-    } catch {
+    } catch (error: unknown) {
+      const errorMsg = error instanceof Error ? error.message : String(error);
+      console.warn(`⚠️ 按日聚合 "${collection}" 查询失败，返回空映射: ${errorMsg}`);
       return {};
     }
   }
@@ -281,7 +323,7 @@ class DashboardService {
    * 使用 MongoDB 聚合管道一次性查询4个集合的按日统计数据，
    * 替代原有的逐天 countDocuments 方案，将30次查询优化为4次聚合查询。
    * messages 集合使用 timestamp 字段进行聚合。
-   * 缓存策略：优先使用 Redis（TTL 5分钟），Redis 不可用时降级为内存 Map 缓存。
+   * 缓存策略：优先使用 Redis（TTL 1分钟），Redis 不可用时降级为内存 Map 缓存。
    * @param days - 统计天数，默认30天
    * @returns TrendData 包含4个集合的按日趋势数据
    */
@@ -500,7 +542,9 @@ class DashboardService {
       ];
       const convResult = await adminDB.aggregate<DistinctCountResult>('conversations', convPipeline);
       conversationUserCount = convResult.length > 0 ? convResult[0].count : 0;
-    } catch {
+    } catch (error: unknown) {
+      const errorMsg = error instanceof Error ? error.message : String(error);
+      console.warn(`⚠️ 首次对话用户数统计失败，使用 0: ${errorMsg}`);
       conversationUserCount = 0;
     }
 
@@ -513,7 +557,9 @@ class DashboardService {
       ];
       const nodeResult = await adminDB.aggregate<DistinctCountResult>('nodes', nodePipeline);
       conclusionUserCount = nodeResult.length > 0 ? nodeResult[0].count : 0;
-    } catch {
+    } catch (error: unknown) {
+      const errorMsg = error instanceof Error ? error.message : String(error);
+      console.warn(`⚠️ 首次结论用户数统计失败，使用 0: ${errorMsg}`);
       conclusionUserCount = 0;
     }
 
@@ -526,7 +572,9 @@ class DashboardService {
       ];
       const exportResult = await adminDB.aggregate<DistinctCountResult>('export_tasks', exportPipeline);
       exportUserCount = exportResult.length > 0 ? exportResult[0].count : 0;
-    } catch {
+    } catch (error: unknown) {
+      const errorMsg = error instanceof Error ? error.message : String(error);
+      console.warn(`⚠️ 首次导出用户数统计失败，使用 0: ${errorMsg}`);
       exportUserCount = 0;
     }
 
@@ -737,6 +785,175 @@ class DashboardService {
       console.warn(`⚠️ 最近事件查询失败: ${errorMsg}`);
       return [];
     }
+  }
+
+  /**
+   * 功能采用矩阵事件类型到展示名称的映射
+   * 与前端展示保持一致，定义需要统计的功能列表
+   */
+  private static readonly FEATURE_EVENT_MAPPINGS: FeatureEventMapping[] = [
+    { eventType: 'extension_direction_click', displayName: '延伸方向' },
+    { eventType: 'branch_created', displayName: '分支创建' },
+    { eventType: 'summary_generated', displayName: '节点摘要' },
+    { eventType: 'map_created', displayName: '地图创建' },
+  ];
+
+  /**
+   * 获取功能采用矩阵数据
+   * 对每个功能统计最近 N 天内触发过该事件的独立 visitorId 数量，
+   * 采用率 = 该数 / 总独立访客数 * 100
+   * 总独立访客数：events 集合中最近 N 天有活动的独立 visitorId 数
+   * @param days - 统计天数，默认7天，范围 1-90
+   * @returns FeatureAdoptionData 功能采用矩阵数据
+   */
+  async getFeatureAdoptionMatrix(days: number = 7): Promise<FeatureAdoptionData> {
+    // 计算 N 天前的起始时间（含今日）
+    const startDate = new Date();
+    startDate.setDate(startDate.getDate() - days + 1);
+    startDate.setHours(0, 0, 0, 0);
+
+    // 1. 统计最近 N 天的总独立访客数
+    let totalUsers = 0;
+    try {
+      const totalPipeline: Document[] = [
+        {
+          $match: {
+            timestamp: { $gte: startDate },
+            visitorId: { $ne: null, $exists: true },
+          },
+        },
+        { $group: { _id: '$visitorId' } },
+        { $count: 'count' },
+      ];
+      const totalResult = await adminDB.aggregate<DistinctCountResult>('events', totalPipeline);
+      totalUsers = totalResult.length > 0 ? totalResult[0].count : 0;
+    } catch (error: unknown) {
+      const errorMsg = error instanceof Error ? error.message : String(error);
+      console.warn(`⚠️ 功能采用矩阵总访客数统计失败: ${errorMsg}`);
+    }
+
+    // 2. 对每个功能统计独立访客数
+    const features: FeatureAdoptionItem[] = [];
+    const baseCount = totalUsers || 1; // 避免除零
+    for (const mapping of DashboardService.FEATURE_EVENT_MAPPINGS) {
+      let uniqueUsers = 0;
+      try {
+        const featurePipeline: Document[] = [
+          {
+            $match: {
+              eventType: mapping.eventType,
+              timestamp: { $gte: startDate },
+              visitorId: { $ne: null, $exists: true },
+            },
+          },
+          { $group: { _id: '$visitorId' } },
+          { $count: 'count' },
+        ];
+        const featureResult = await adminDB.aggregate<DistinctCountResult>('events', featurePipeline);
+        uniqueUsers = featureResult.length > 0 ? featureResult[0].count : 0;
+      } catch (error: unknown) {
+        const errorMsg = error instanceof Error ? error.message : String(error);
+        console.warn(`⚠️ 功能 "${mapping.displayName}" 统计失败: ${errorMsg}`);
+      }
+
+      features.push({
+        name: mapping.displayName,
+        eventType: mapping.eventType,
+        uniqueUsers,
+        // 保留两位小数
+        adoptionRate: Math.round((uniqueUsers / baseCount) * 10000) / 100,
+      });
+    }
+
+    return {
+      features,
+      totalUsers,
+    };
+  }
+
+  /**
+   * 获取实时在线状态数据
+   * 当前在线用户数：visitors 集合中 lastSeen >= (now - 5分钟) 的文档数
+   * 30 分钟活跃曲线：按分钟聚合 events 集合最近 30 分钟的独立 visitorId 数
+   * （每分钟一个点，共 30 个点，时间格式 HH:mm）
+   * 注意：聚合管道使用与服务器本地时区一致的偏移量，
+   * 以保证返回的时间标签与前端展示的本地时间一致。
+   * @returns OnlineStatusData 实时在线状态数据
+   */
+  async getOnlineStatus(): Promise<OnlineStatusData> {
+    const now = new Date();
+    const fiveMinutesAgo = new Date(now.getTime() - 5 * 60 * 1000);
+    const thirtyMinutesAgo = new Date(now.getTime() - 30 * 60 * 1000);
+
+    // 1. 统计当前在线用户数
+    let onlineNow = 0;
+    try {
+      onlineNow = await adminDB.countDocuments('visitors', {
+        lastSeen: { $gte: fiveMinutesAgo },
+      } as never);
+    } catch (error: unknown) {
+      const errorMsg = error instanceof Error ? error.message : String(error);
+      console.warn(`⚠️ 当前在线用户数统计失败: ${errorMsg}`);
+    }
+
+    // 2. 按分钟聚合最近 30 分钟的独立访客数
+    // 使用聚合管道按 %H:%M 分组，分组键为分钟字符串
+    // 通过 timezone 参数将 UTC 时间转换为服务器本地时间，确保与下方 JS 时间键匹配
+    const timezoneOffsetMinutes = -now.getTimezoneOffset(); // UTC+8 返回 480
+    const timezoneSign = timezoneOffsetMinutes >= 0 ? '+' : '-';
+    const absOffset = Math.abs(timezoneOffsetMinutes);
+    const timezoneHours = String(Math.floor(absOffset / 60)).padStart(2, '0');
+    const timezoneMinutes = String(absOffset % 60).padStart(2, '0');
+    const timezoneStr = `${timezoneSign}${timezoneHours}:${timezoneMinutes}`;
+
+    let minuteMap: Map<string, number> = new Map();
+    try {
+      const minutePipeline: Document[] = [
+        {
+          $match: {
+            timestamp: { $gte: thirtyMinutesAgo },
+            visitorId: { $ne: null, $exists: true },
+          },
+        },
+        {
+          $group: {
+            _id: {
+              $dateToString: { format: '%H:%M', date: '$timestamp', timezone: timezoneStr },
+            },
+            uniqueVisitors: { $addToSet: '$visitorId' },
+          },
+        },
+        { $sort: { _id: 1 } },
+      ];
+      const minuteResults = await adminDB.aggregate<MinuteAggregationResult>('events', minutePipeline);
+      minuteMap = new Map<string, number>();
+      for (const result of minuteResults) {
+        minuteMap.set(result._id, result.uniqueVisitors.length);
+      }
+    } catch (error: unknown) {
+      const errorMsg = error instanceof Error ? error.message : String(error);
+      console.warn(`⚠️ 30 分钟活跃曲线查询失败: ${errorMsg}`);
+    }
+
+    // 3. 生成完整 30 分钟时间序列，对缺失的分钟补 0
+    // 时间序列从 (now-30min) 到 (now-1min)，共 30 个点，覆盖完整 30 分钟跨度
+    // 使用本地时区时间作为 timeKey，与聚合管道的 timezone 参数保持一致
+    const recentActiveCurve: OnlineCurvePoint[] = [];
+    for (let i = 30; i >= 1; i--) {
+      const pointTime = new Date(now.getTime() - i * 60 * 1000);
+      const hours = String(pointTime.getHours()).padStart(2, '0');
+      const minutes = String(pointTime.getMinutes()).padStart(2, '0');
+      const timeKey = `${hours}:${minutes}`;
+      recentActiveCurve.push({
+        time: timeKey,
+        activeUsers: minuteMap.get(timeKey) || 0,
+      });
+    }
+
+    return {
+      onlineNow,
+      recentActiveCurve,
+    };
   }
 }
 

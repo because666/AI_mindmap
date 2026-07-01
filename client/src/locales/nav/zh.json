@@ -43,5 +43,12 @@
   "mapLibrarySortCreated": "创建时间",
   "mapLibraryNodes": "{{count}} 个节点",
   "mapLibraryCurrentMap": "当前",
-  "mapLibraryLastEdited": "最后编辑"
+  "relativeTimeJustNow": "刚刚",
+  "relativeTimeMinutesAgo": "{{count}}分钟前",
+  "relativeTimeHoursAgo": "{{count}}小时前",
+  "relativeTimeYesterday": "昨天",
+  "relativeTimeDaysAgo": "{{count}}天前",
+  "relativeTimeMonthsAgo": "{{count}}个月前",
+  "relativeTimeYearsAgo": "{{count}}年前",
+  "newMapDefaultName": "新地图"
 }

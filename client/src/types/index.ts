@@ -80,6 +80,16 @@ export interface IWorkspace {
   members: WorkspaceMember[];
   createdAt: string;
   updatedAt: string;
+  /**
+   * 是否被管理员置顶
+   * 为 true 时该工作区会在工作区选择页"推荐工作区"区域优先展示
+   */
+  isPinned?: boolean;
+  /**
+   * 置顶时间（ISO 字符串）
+   * 与 isPinned 配套使用，用于在置顶工作区之间按时间倒序排序
+   */
+  pinnedAt?: string;
 }
 
 /**

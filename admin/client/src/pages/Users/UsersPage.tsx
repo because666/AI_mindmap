@@ -1,6 +1,6 @@
 import React, { useState, useEffect, useCallback } from 'react';
 import { usersApi } from '../../services/api';
-import type { UserListItem, PaginationResult, TimelineEvent } from '../../types';
+import type { UserListItem, PaginationResult, TimelineEvent, ActivityTier } from '../../types';
 import { Search, Ban, Unlock, Eye, Globe, X, ShieldBan, PlusCircle, MessageSquare, Lightbulb, Download, ChevronDown, ChevronUp } from 'lucide-react';
 
 interface ToastMessage {
@@ -20,6 +20,52 @@ interface IpVisitor {
 
 /** 用户详情弹窗中的标签页类型 */
 type DetailTab = 'detail' | 'timeline';
+
+/**
+ * 活跃度分层徽章配置映射
+ * 定义每个分层对应的展示文本与彩色徽章样式
+ * 新用户=蓝、高活跃=绿、流失风险=橙、沉睡=灰
+ */
+const ACTIVITY_TIER_CONFIG: Record<ActivityTier, { label: string; className: string }> = {
+  new_user: { label: '新用户', className: 'bg-blue-50 text-blue-600' },
+  high_active: { label: '高活跃', className: 'bg-green-50 text-green-600' },
+  churn_risk: { label: '流失风险', className: 'bg-orange-50 text-orange-600' },
+  dormant: { label: '沉睡', className: 'bg-gray-100 text-gray-500' },
+};
+
+/**
+ * 未知活跃度分层的兜底徽章配置
+ * 当 user.activityTier 为异常值（undefined/未知字符串）时使用，避免渲染崩溃
+ */
+const UNKNOWN_TIER_CONFIG: { label: string; className: string } = {
+  label: '未知',
+  className: 'bg-gray-100 text-gray-500',
+};
+
+/**
+ * 安全获取指定活跃度分层对应的徽章配置
+ * 当 activityTier 未匹配到已知分层时，返回 UNKNOWN_TIER_CONFIG 兜底
+ * @param tier - 活跃度分层值（可能为异常值）
+ * @returns 徽章配置对象，保证总有 label 与 className
+ */
+function getTierConfig(tier: ActivityTier | string | undefined | null): { label: string; className: string } {
+  if (tier && Object.prototype.hasOwnProperty.call(ACTIVITY_TIER_CONFIG, tier as ActivityTier)) {
+    return ACTIVITY_TIER_CONFIG[tier as ActivityTier];
+  }
+  return UNKNOWN_TIER_CONFIG;
+}
+
+/**
+ * 活跃度分层下拉选项配置
+ * 用于筛选器中的下拉选择
+ */
+const ACTIVITY_TIER_OPTIONS: Array<{ value: string; label: string }> = [
+  { value: '', label: '全部活跃度' },
+  { value: 'new_user', label: '新用户' },
+  { value: 'high_active', label: '高活跃' },
+  { value: 'churn_risk', label: '流失风险' },
+  { value: 'dormant', label: '沉睡' },
+];
 
 /**
  * 时间线事件类型配置映射
@@ -118,6 +164,8 @@ const UsersPage: React.FC = () => {
   const [loading, setLoading] = useState(true);
   const [search, setSearch] = useState('');
   const [statusFilter, setStatusFilter] = useState('');
+  /** 活跃度分层筛选值，空字符串表示不筛选 */
+  const [activityTier, setActivityTier] = useState<string>('');
   const [page, setPage] = useState(1);
   const [banModal, setBanModal] = useState<{ id: string; nickname: string } | null>(null);
   const [banReason, setBanReason] = useState('');
@@ -151,12 +199,19 @@ const UsersPage: React.FC = () => {
 
   useEffect(() => {
     loadUsers();
-  }, [page, statusFilter]);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [page, statusFilter, activityTier]);
 
   const loadUsers = async () => {
     setLoading(true);
     try {
-      const res = await usersApi.getList({ page, limit: 20, status: statusFilter || undefined, search: search || undefined });
+      const res = await usersApi.getList({
+        page,
+        limit: 20,
+        status: statusFilter || undefined,
+        search: search || undefined,
+        activityTier: activityTier || undefined,
+      });
       setData(res.data.data as PaginationResult<UserListItem>);
     } catch (error) {
       console.error('加载用户列表失败:', error);
@@ -230,6 +285,11 @@ const UsersPage: React.FC = () => {
   const handleBan = async () => {
     if (!banModal) return;
     if (actionLoading) return;
+    // 封禁原因非空校验，避免无原因封禁
+    if (!banReason.trim()) {
+      showToast('error', '请填写封禁原因');
+      return;
+    }
     setActionLoading(true);
     try {
       await usersApi.ban(banModal.id, banReason, banDuration);
@@ -334,6 +394,16 @@ const UsersPage: React.FC = () => {
             <option value="active">正常</option>
             <option value="banned">封禁</option>
           </select>
+          <select
+            value={activityTier}
+            onChange={(e) => { setActivityTier(e.target.value); setPage(1); }}
+            className="px-3 py-2 border border-gray-200 rounded-lg text-sm"
+            aria-label="按活跃度筛选"
+          >
+            {ACTIVITY_TIER_OPTIONS.map((option) => (
+              <option key={option.value} value={option.value}>{option.label}</option>
+            ))}
+          </select>
         </div>
 
         {loading ? (
@@ -350,12 +420,15 @@ const UsersPage: React.FC = () => {
                     <th className="text-left py-3 px-4 text-xs font-medium text-gray-500">IP地址</th>
                     <th className="text-left py-3 px-4 text-xs font-medium text-gray-500">注册时间</th>
                     <th className="text-left py-3 px-4 text-xs font-medium text-gray-500">状态</th>
+                    <th className="text-left py-3 px-4 text-xs font-medium text-gray-500">活跃度</th>
                     <th className="text-left py-3 px-4 text-xs font-medium text-gray-500">工作区</th>
                     <th className="text-left py-3 px-4 text-xs font-medium text-gray-500">操作</th>
                   </tr>
                 </thead>
                 <tbody>
-                  {data.items.map((user) => (
+                  {data.items.map((user) => {
+                    const tierConfig = getTierConfig(user.activityTier);
+                    return (
                     <tr key={user._id} className="border-b border-gray-50 hover:bg-gray-50">
                       <td className="py-3 px-4 text-sm">{user.nickname}</td>
                       <td className="py-3 px-4 text-sm">
@@ -376,6 +449,11 @@ const UsersPage: React.FC = () => {
                           user.isBanned ? 'bg-red-50 text-red-600' : 'bg-green-50 text-green-600'
                         }`}>
                           {user.isBanned ? '封禁' : '正常'}
+                        </span>
+                      </td>
+                      <td className="py-3 px-4">
+                        <span className={`inline-flex items-center px-2 py-0.5 rounded-full text-xs font-medium ${tierConfig.className}`}>
+                          {tierConfig.label}
                         </span>
                       </td>
                       <td className="py-3 px-4 text-sm text-gray-500">{user.stats.workspaceCount}</td>
@@ -401,13 +479,16 @@ const UsersPage: React.FC = () => {
                         </div>
                       </td>
                     </tr>
-                  ))}
+                    );
+                  })}
                 </tbody>
               </table>
             </div>
 
             <div className="md:hidden divide-y divide-gray-50">
-              {data.items.map((user) => (
+              {data.items.map((user) => {
+                const tierConfig = getTierConfig(user.activityTier);
+                return (
                 <div key={user._id} className="p-4">
                   <div className="flex justify-between items-start mb-2">
                     <div>
@@ -416,6 +497,9 @@ const UsersPage: React.FC = () => {
                         user.isBanned ? 'bg-red-50 text-red-600' : 'bg-green-50 text-green-600'
                       }`}>
                         {user.isBanned ? '封禁' : '正常'}
+                      </span>
+                      <span className={`ml-1 inline-flex items-center px-2 py-0.5 rounded-full text-xs font-medium ${tierConfig.className}`}>
+                        {tierConfig.label}
                       </span>
                     </div>
                     <div className="flex gap-2">
@@ -436,7 +520,8 @@ const UsersPage: React.FC = () => {
                     注册：{new Date(user.createdAt).toLocaleDateString()} · 工作区：{user.stats.workspaceCount}个
                   </div>
                 </div>
-              ))}
+                );
+              })}
             </div>
 
             {data.totalPages > 1 && (

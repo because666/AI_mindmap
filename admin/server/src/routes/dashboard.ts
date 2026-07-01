@@ -184,4 +184,40 @@ router.get('/events/recent', requireAuth, async (req: Request, res: Response) =>
   }
 });
 
+/**
+ * 获取功能采用矩阵数据
+ * 返回各功能（延伸方向、分支创建、节点摘要、地图创建）的采用率
+ * @query days - 统计天数，默认7天，范围1-90
+ */
+router.get('/feature-adoption', requireAuth, async (req: Request, res: Response) => {
+  try {
+    const days = parseInt(req.query.days as string) || 7;
+
+    if (days < 1 || days > 90) {
+      res.status(400).json({ success: false, error: '天数范围应为1-90' });
+      return;
+    }
+
+    const data = await dashboardService.getFeatureAdoptionMatrix(days);
+    res.json({ success: true, data });
+  } catch (error) {
+    console.error('获取功能采用矩阵失败:', error);
+    res.status(500).json({ success: false, error: '获取功能采用矩阵失败' });
+  }
+});
+
+/**
+ * 获取实时在线状态数据
+ * 返回当前在线用户数和最近 30 分钟活跃曲线
+ */
+router.get('/online-status', requireAuth, async (_req: Request, res: Response) => {
+  try {
+    const data = await dashboardService.getOnlineStatus();
+    res.json({ success: true, data });
+  } catch (error) {
+    console.error('获取实时在线状态失败:', error);
+    res.status(500).json({ success: false, error: '获取实时在线状态失败' });
+  }
+});
+
 export default router;

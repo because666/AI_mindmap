@@ -8,12 +8,14 @@
 import type { RelationData } from './relationStore';
 import type { ConversationData } from './conversationStore';
 import type { AppState } from './appStore';
+import type { IMessage } from '../types';
 import { useAppStore } from './appStore';
 import { generateId } from './storeUtils';
 import { nodeApi, getLocalWorkspaceId, conversationApi } from '../services/api';
 import type { NodeData as ApiNodeData } from '../services/api';
 import { track, TRACK_EVENT_NODE_CREATED, TRACK_EVENT_TEMPLATE_USED } from '../services/tracker';
 import type { TemplateData, TemplateNode } from '../data/templates';
+import { getPresetAnswer } from '../data/templateAnswers';
 import i18n from 'i18next';
 
 /**
@@ -1605,24 +1607,30 @@ export const createNodeSlice = (set: SliceSet, get: SliceGet): NodeSlice => ({
   },
 
   /**
-   * 为模板创建的节点批量发起预置AI对话
+   * 为模板创建的节点批量写入预设问答对话
    *
-   * 按顺序为每个节点发送预置问题，等待AI回答后更新节点的 conversationId。
+   * 替代原先调用 AI 生成回答的实现：改为直接通过 conversationApi.saveMessage
+   * 将预设问答对写入对话历史，避免 AI 响应慢导致弹窗卡住。
+   *
    * 实现流程：
-   * 1. 遍历 nodeIds，对每个节点通过索引获取对应的 templateNode
-   * 2. 检查 shouldContinue()，若返回 false 则中断
-   * 3. 若 templateNode.presetQuestion 存在：
-   *    - 调用 conversationApi.sendMessage(nodeId, presetQuestion)
-   *    - 成功后通过 conversationApi.getByNodeId 获取 conversationId
-   *    - 更新节点的 conversationId 和 summary
-   * 4. 每个节点处理完毕后调用 onProgress 回调
-   * 5. 单个节点失败时 catch 异常并跳过继续
+   * 1. 根据当前 i18n 语言确定取用 zh 或 en 字段
+   * 2. 遍历 nodeIds，对每个节点通过索引获取对应的 templateNode
+   * 3. 检查 shouldContinue()，若返回 false 则中断（保留参数兼容性）
+   * 4. 若 templateNode.presetQuestion 存在，通过 getPresetAnswer 查询预设答案
+   * 5. 答案非空时：
+   *    - 调用 conversationApi.saveMessage(nodeId, 'user', presetQuestion) 写入问题
+   *    - 调用 conversationApi.saveMessage(nodeId, 'assistant', answerText) 写入答案
+   *    - 通过 conversationApi.getByNodeId 获取 conversationId 并更新节点
+   *    - 若模板节点有 summary，更新节点 summary
+   * 6. 答案为空字符串时跳过该节点并 console.warn 输出警告
+   * 7. 每个节点处理完毕后调用 onProgress 回调（仅作信息通知，不再阻塞）
+   * 8. 单个节点失败时 catch 异常并跳过继续，不阻塞整体流程
    *
-   * @param nodeIds - 节点 ID 列表（按创建顺序）
+   * @param nodeIds - 节点 ID 列表（按创建顺序，与 template.nodes 索引一一对应）
    * @param template - 模板数据
-   * @param onProgress - 进度回调（currentIndex 从 0 开始，totalCount 为总数）
-   * @param shouldContinue - 取消检查函数，返回 false 时中断创建
-   * @returns 创建成功的节点 ID 列表
+   * @param onProgress - 进度回调（currentIndex 从 0 开始，totalCount 为总数）；保留参数兼容性
+   * @param shouldContinue - 取消检查函数，返回 false 时中断；保留参数兼容性
+   * @returns 写入成功的节点 ID 列表
    */
   createPresetConversationsForTemplate: async (
     nodeIds: string[],
@@ -1633,8 +1641,11 @@ export const createNodeSlice = (set: SliceSet, get: SliceGet): NodeSlice => ({
     const successNodeIds: string[] = [];
     const totalCount = nodeIds.length;
 
+    // 根据当前 i18n 语言确定取用 zh 还是 en 字段
+    const lang: 'zh' | 'en' = i18n.language?.startsWith('en') ? 'en' : 'zh';
+
     for (let i = 0; i < totalCount; i++) {
-      // 检查是否需要中断（用户取消）
+      // 检查是否需要中断（保留参数兼容性，进度弹窗已移除但调用方仍可能传入）
       if (shouldContinue && !shouldContinue()) {
         break;
       }
@@ -1654,49 +1665,117 @@ export const createNodeSlice = (set: SliceSet, get: SliceGet): NodeSlice => ({
         continue;
       }
 
+      // 通过 getPresetAnswer 查询预设答案（按模板 ID 与节点索引）
+      const presetAnswer = getPresetAnswer(template.id, i, lang);
+      const answerText = presetAnswer ? presetAnswer[lang] : '';
+
+      // 无预设答案或答案为空字符串时跳过该节点并输出警告
+      if (!answerText || answerText.trim().length === 0) {
+        console.warn(`[nodeStore] 节点 ${nodeId} 无预设答案，跳过对话写入`);
+        onProgress?.(i, totalCount);
+        continue;
+      }
+
       try {
-        // 发送预置问题，触发AI回答
-        const response = await conversationApi.sendMessage(
+        // 写入用户问题
+        const userResponse = await conversationApi.saveMessage(
           nodeId,
+          'user',
           templateNode.presetQuestion,
         );
-
         // 响应拦截器已返回 response.data，需断言为实际业务结构
-        const result = response as unknown as {
+        const userResult = userResponse as unknown as {
           success: boolean;
-          data: { userMessage: string; assistantMessage?: string; error?: string };
+          data: { _id: string; role: string; content: string; timestamp: string };
         };
 
-        if (result.success && !result.data.error) {
-          // 获取对话 ID（sendMessage 后后端会自动创建 conversation）
-          try {
-            const convResponse = await conversationApi.getByNodeId(nodeId);
-            const convResult = convResponse as unknown as {
-              success: boolean;
-              data: { id: string };
-            };
-            if (convResult.success && convResult.data?.id) {
-              get().updateNode(nodeId, { conversationId: convResult.data.id });
-            }
-          } catch (convError) {
-            // 获取对话 ID 失败不影响整体流程，静默处理
-            console.error(
-              `[nodeStore] 获取节点 ${nodeId} 对话ID失败:`,
-              convError,
-            );
-          }
-
-          // 更新节点摘要（如果模板节点提供了摘要）
-          if (templateNode.summary) {
-            get().updateNode(nodeId, { summary: templateNode.summary });
-          }
-
-          successNodeIds.push(nodeId);
+        if (!userResult.success) {
+          console.error(`[nodeStore] 节点 ${nodeId} 写入用户问题失败`);
+          onProgress?.(i, totalCount);
+          continue;
         }
+
+        // 写入助手答案
+        const assistantResponse = await conversationApi.saveMessage(
+          nodeId,
+          'assistant',
+          answerText,
+        );
+        const assistantResult = assistantResponse as unknown as {
+          success: boolean;
+          data: { _id: string; role: string; content: string; timestamp: string };
+        };
+
+        if (!assistantResult.success) {
+          console.error(`[nodeStore] 节点 ${nodeId} 写入助手答案失败`);
+          onProgress?.(i, totalCount);
+          continue;
+        }
+
+        // 获取对话 ID（saveMessage 后通过 getByNodeId 获取 conversationId 并更新节点）
+        try {
+          const convResponse = await conversationApi.getByNodeId(nodeId);
+          const convResult = convResponse as unknown as {
+            success: boolean;
+            data: { id: string };
+          };
+          if (convResult.success && convResult.data?.id) {
+            const conversationId = convResult.data.id;
+            get().updateNode(nodeId, { conversationId });
+
+            // 将预设问答同步写入前端 Store 的 conversations Map，
+            // 确保 ChatPanel 从本地状态即可读取到刚创建的问答对
+            const presetMessages: IMessage[] = [
+              {
+                _id: userResult.data._id,
+                role: userResult.data.role as IMessage['role'],
+                content: userResult.data.content,
+                timestamp: new Date(userResult.data.timestamp),
+              },
+              {
+                _id: assistantResult.data._id,
+                role: assistantResult.data.role as IMessage['role'],
+                content: assistantResult.data.content,
+                timestamp: new Date(assistantResult.data.timestamp),
+              },
+            ];
+
+            const conversationData: ConversationData = {
+              id: conversationId,
+              nodeId,
+              messages: presetMessages,
+              contextConfig: {
+                includeParentHistory: true,
+                includeRelatedNodes: [],
+              },
+              createdAt: new Date(),
+              updatedAt: new Date(),
+            };
+
+            set((state) => {
+              const newConversations = new Map(state.conversations);
+              newConversations.set(conversationId, conversationData);
+              return { conversations: newConversations };
+            });
+          }
+        } catch (convError) {
+          // 获取对话 ID 失败不影响整体流程，静默处理
+          console.error(
+            `[nodeStore] 获取节点 ${nodeId} 对话ID失败:`,
+            convError,
+          );
+        }
+
+        // 更新节点摘要（如果模板节点提供了摘要）
+        if (templateNode.summary) {
+          get().updateNode(nodeId, { summary: templateNode.summary });
+        }
+
+        successNodeIds.push(nodeId);
       } catch (error) {
         // 单个节点失败时跳过继续，不阻塞整体流程
         console.error(
-          `[nodeStore] 为节点 ${nodeId} 创建预置对话失败:`,
+          `[nodeStore] 为节点 ${nodeId} 写入预设对话失败:`,
           error,
         );
       }

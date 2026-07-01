@@ -1,0 +1,9 @@
+- [x] `buildTrackerEvent` 返回扁平结构，字段直接在顶层
+- [x] `TrackerEvent` 接口改为扁平结构
+- [x] `handleBeforeUnload` 的 sendBeacon 路径使用扁平结构
+- [x] tracker.test.ts 测试断言同步更新
+- [x] `npx tsc -b` 无错误（client 目录）
+- [x] `npm run build` 构建成功（client 目录）
+- [x] 单元测试 9 个全部通过
+- [x] 客户端已部署到 `/www/wwwroot/AI_mindmap/client/dist/`
+- [x] 服务器 `curl http://127.0.0.1/` 返回 200

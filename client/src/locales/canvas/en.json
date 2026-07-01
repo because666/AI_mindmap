@@ -73,5 +73,6 @@
   "templateLibraryDesc": "Choose a template to start, or create a blank map",
   "createBlankMap": "Create Blank Map",
   "nodesCount": "{{count}} nodes",
-  "selectTemplate": "Select Template"
+  "selectTemplate": "Select Template",
+  "templateCreateFailed": "Failed to create mind map from template, please retry"
 }

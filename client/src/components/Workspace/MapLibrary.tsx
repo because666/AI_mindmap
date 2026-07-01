@@ -23,10 +23,12 @@ interface MapLibraryProps {
 
 /**
  * 将时间戳转换为相对时间文本
+ * 使用 i18n 翻译键返回本地化的相对时间文本
  * @param dateString - ISO时间字符串
+ * @param t - i18n 翻译函数
  * @returns 相对时间文本（如"刚刚"、"昨天"、"3天前"）
  */
-function getRelativeTime(dateString: string): string {
+function getRelativeTime(dateString: string, t: (key: string, options?: Record<string, unknown>) => string): string {
   const now = Date.now();
   const date = new Date(dateString).getTime();
   const diffMs = now - date;
@@ -35,13 +37,13 @@ function getRelativeTime(dateString: string): string {
   const diffHour = Math.floor(diffMin / 60);
   const diffDay = Math.floor(diffHour / 24);
 
-  if (diffSec < 60) return '刚刚';
-  if (diffMin < 60) return `${diffMin}分钟前`;
-  if (diffHour < 24) return `${diffHour}小时前`;
-  if (diffDay === 1) return '昨天';
-  if (diffDay < 30) return `${diffDay}天前`;
-  if (diffDay < 365) return `${Math.floor(diffDay / 30)}个月前`;
-  return `${Math.floor(diffDay / 365)}年前`;
+  if (diffSec < 60) return t('relativeTimeJustNow');
+  if (diffMin < 60) return t('relativeTimeMinutesAgo', { count: diffMin });
+  if (diffHour < 24) return t('relativeTimeHoursAgo', { count: diffHour });
+  if (diffDay === 1) return t('relativeTimeYesterday');
+  if (diffDay < 30) return t('relativeTimeDaysAgo', { count: diffDay });
+  if (diffDay < 365) return t('relativeTimeMonthsAgo', { count: Math.floor(diffDay / 30) });
+  return t('relativeTimeYearsAgo', { count: Math.floor(diffDay / 365) });
 }
 
 /**
@@ -142,20 +144,17 @@ const MapLibrary: React.FC<MapLibraryProps> = ({ isOpen, onClose }) => {
 
   /**
    * 创建新地图
+   * 使用 i18n 翻译键作为默认地图名称
    */
   const handleCreateMap = useCallback(async () => {
-    const newWs = await createWorkspace('新地图');
+    const newWs = await createWorkspace(t('newMapDefaultName'));
     if (newWs) {
       onClose();
     }
-  }, [createWorkspace, onClose]);
+  }, [createWorkspace, onClose, t]);
 
   return (
-    <div
-      className={`bg-dark-800 border-l border-dark-700 h-full overflow-hidden flex flex-col transition-opacity duration-300 ease-out ${
-        isOpen ? 'opacity-100' : 'opacity-0 pointer-events-none'
-      }`}
-    >
+    <div className="bg-dark-800 h-full overflow-hidden flex flex-col">
       {/* 标题栏 */}
       <div className="flex items-center justify-between px-4 py-3 border-b border-dark-700">
         <div className="flex items-center gap-2">
@@ -268,7 +267,7 @@ const MapLibrary: React.FC<MapLibraryProps> = ({ isOpen, onClose }) => {
                     {(meta?.lastNodeUpdatedAt || ws.updatedAt) && (
                       <span className="flex items-center gap-1">
                         <Clock className="w-3 h-3" />
-                        {getRelativeTime(meta?.lastNodeUpdatedAt || ws.updatedAt)}
+                        {getRelativeTime(meta?.lastNodeUpdatedAt || ws.updatedAt, t)}
                       </span>
                     )}
                   </div>

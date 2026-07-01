@@ -69,5 +69,7 @@
   "refreshInviteCodeFailed": "Failed to refresh invite code",
   "joinPublicWorkspaceFailed": "Failed to join public workspace",
   "removeMemberFailed": "Failed to remove member",
-  "updateWorkspaceFailed": "Failed to update workspace"
+  "updateWorkspaceFailed": "Failed to update workspace",
+  "recommendedWorkspaces": "Recommended Workspaces",
+  "joinRecommendedTip": "Join this workspace to browse its public maps"
 }

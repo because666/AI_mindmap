@@ -9,6 +9,7 @@ import {
   TrendingUp,
   TrendingDown,
   AlertCircle,
+  Cpu,
 } from 'lucide-react';
 import {
   LineChart,
@@ -25,6 +26,7 @@ import {
 } from 'recharts';
 import { format } from 'date-fns';
 import { aiUsageApi } from '../../services/api';
+import type { AIModelUsageSummaryItem } from '../../types';
 
 interface AIUsageStats {
   totalTokens: number;
@@ -80,6 +82,7 @@ const AIUsagePage: React.FC = () => {
   const [stats, setStats] = useState<AIUsageStats | null>(null);
   const [trendData, setTrendData] = useState<TrendItem[]>([]);
   const [modelDistribution, setModelDistribution] = useState<ModelDistributionItem[]>([]);
+  const [modelSummary, setModelSummary] = useState<AIModelUsageSummaryItem[]>([]);
   const [queueStatus, setQueueStatus] = useState<QueueStatusData | null>(null);
   const [loading, setLoading] = useState(true);
   const [refreshing, setRefreshing] = useState(false);
@@ -139,7 +142,7 @@ const AIUsagePage: React.FC = () => {
       if (endDate) statsParams.endDate = endDate;
       if (selectedModel) statsParams.model = selectedModel;
 
-      const [statsRes, trendsRes, modelRes, queueRes] = await Promise.all([
+      const [statsRes, trendsRes, modelRes, queueRes, modelSummaryRes] = await Promise.all([
         aiUsageApi.getStats(statsParams),
         aiUsageApi.getTrends({
           startDate: startDate || format(new Date(), 'yyyy-MM-dd'),
@@ -151,6 +154,9 @@ const AIUsagePage: React.FC = () => {
           startDate || endDate ? { startDate, endDate } : undefined
         ),
         aiUsageApi.getQueueStatus(),
+        aiUsageApi.getModelSummary(
+          startDate || endDate ? { startDate, endDate } : undefined
+        ),
       ]);
 
       if (statsRes.data?.data) {
@@ -166,6 +172,10 @@ const AIUsagePage: React.FC = () => {
       }
       if (queueRes.data?.data) {
         setQueueStatus(queueRes.data.data as QueueStatusData);
+      }
+      if (modelSummaryRes.data?.data) {
+        const summary = modelSummaryRes.data.data;
+        setModelSummary(Array.isArray(summary) ? (summary as AIModelUsageSummaryItem[]) : []);
       }
     } catch (err) {
       const message = err instanceof Error ? err.message : '加载数据失败';
@@ -546,6 +556,69 @@ const AIUsagePage: React.FC = () => {
         {queueStatus?.lastUpdatedAt && (
           <div className="mt-4 text-xs text-gray-400">
             最后更新：{format(new Date(queueStatus.lastUpdatedAt), 'yyyy-MM-dd HH:mm:ss')}
+          </div>
+        )}
+      </div>
+
+      {/* 模型用量明细 */}
+      <div className="bg-white rounded-xl p-5 shadow-sm border border-gray-100">
+        <div className="flex items-center justify-between mb-4">
+          <h3 className="text-base font-medium text-gray-700 flex items-center gap-2">
+            <Cpu className="w-4 h-4 text-gray-500" />
+            模型用量明细
+          </h3>
+          <span className="text-xs text-gray-400">按模型聚合统计调用量、Token 消耗、失败率</span>
+        </div>
+        {modelSummary.length > 0 ? (
+          <div className="overflow-x-auto">
+            <table className="w-full text-sm">
+              <thead className="bg-gray-50 border-b border-gray-200">
+                <tr>
+                  <th className="text-left px-3 py-2 font-medium text-gray-600">模型</th>
+                  <th className="text-left px-3 py-2 font-medium text-gray-600">服务商</th>
+                  <th className="text-right px-3 py-2 font-medium text-gray-600">调用次数</th>
+                  <th className="text-right px-3 py-2 font-medium text-gray-600">成功</th>
+                  <th className="text-right px-3 py-2 font-medium text-gray-600">失败</th>
+                  <th className="text-right px-3 py-2 font-medium text-gray-600">失败率</th>
+                  <th className="text-right px-3 py-2 font-medium text-gray-600">Prompt Tokens</th>
+                  <th className="text-right px-3 py-2 font-medium text-gray-600">Completion Tokens</th>
+                  <th className="text-right px-3 py-2 font-medium text-gray-600">总 Tokens</th>
+                  <th className="text-right px-3 py-2 font-medium text-gray-600">平均响应</th>
+                </tr>
+              </thead>
+              <tbody className="divide-y divide-gray-100">
+                {modelSummary.map((item) => (
+                  <tr key={`${item.provider}-${item.model}`} className="hover:bg-gray-50">
+                    <td className="px-3 py-2 font-mono text-xs text-gray-700">{item.model}</td>
+                    <td className="px-3 py-2 text-gray-600 text-xs">{item.provider}</td>
+                    <td className="px-3 py-2 text-right text-gray-800">{formatNumber(item.totalCalls)}</td>
+                    <td className="px-3 py-2 text-right text-green-600">{formatNumber(item.successCalls)}</td>
+                    <td className="px-3 py-2 text-right text-red-600">{formatNumber(item.failedCalls)}</td>
+                    <td className="px-3 py-2 text-right">
+                      <span
+                        className={`px-1.5 py-0.5 rounded text-xs ${
+                          item.failureRate >= 20
+                            ? 'bg-red-50 text-red-600'
+                            : item.failureRate >= 5
+                            ? 'bg-yellow-50 text-yellow-600'
+                            : 'bg-green-50 text-green-600'
+                        }`}
+                      >
+                        {item.failureRate.toFixed(2)}%
+                      </span>
+                    </td>
+                    <td className="px-3 py-2 text-right text-gray-600">{formatNumber(item.promptTokens)}</td>
+                    <td className="px-3 py-2 text-right text-gray-600">{formatNumber(item.completionTokens)}</td>
+                    <td className="px-3 py-2 text-right font-medium text-gray-800">{formatNumber(item.totalTokens)}</td>
+                    <td className="px-3 py-2 text-right text-gray-600">{item.avgResponseTime}ms</td>
+                  </tr>
+                ))}
+              </tbody>
+            </table>
+          </div>
+        ) : (
+          <div className="flex items-center justify-center h-32 text-gray-400 text-sm">
+            暂无模型用量数据
           </div>
         )}
       </div>

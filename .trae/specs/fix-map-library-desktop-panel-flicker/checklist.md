@@ -1,0 +1,8 @@
+- [x] 桌面端 MapLibrary 包装 div 改用 `transition-[width]` + `pointer-events-none`
+- [x] 桌面端 HistoryPanel 包装 div 同步修复（相同 bug 模式）
+- [x] MapLibrary 根 div 移除重复的 opacity/pointer-events 切换
+- [x] 移动端渲染路径未修改
+- [x] `npx tsc -b` 无错误
+- [x] `npm run build` 构建成功
+- [x] 客户端已部署到 `/www/wwwroot/AI_mindmap/client/dist/`
+- [x] 服务器 `curl http://127.0.0.1/` 返回 200

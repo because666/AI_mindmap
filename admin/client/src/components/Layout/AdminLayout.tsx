@@ -18,6 +18,7 @@ import {
   Download,
   UserCog,
   UserCheck,
+  Cpu,
 } from 'lucide-react';
 import { useAuthStore } from '../../stores/authStore';
 import GlobalSearch from '../Common/GlobalSearch';
@@ -25,6 +26,7 @@ import GlobalSearch from '../Common/GlobalSearch';
 const navItems = [
   { path: '/', label: '数据大盘', icon: LayoutDashboard },
   { path: '/ai-usage', label: 'AI 用量', icon: Activity },
+  { path: '/ai-models', label: 'AI 模型', icon: Cpu },
   { path: '/users', label: '用户管理', icon: Users },
   { path: '/user-segments', label: '用户分群', icon: UserCheck },
   { path: '/workspaces', label: '工作区管理', icon: Briefcase },

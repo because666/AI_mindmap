@@ -1,7 +1,7 @@
 import React, { useState, useRef, useEffect, useMemo, useCallback } from 'react';
 import { useTranslation } from 'react-i18next';
 import i18n from 'i18next';
-import { Send, Loader2, Trash2, User, Bot, Sparkles, GitBranch, MessageSquare, Copy, Check, Plus, Brain, ChevronDown, ChevronUp, Paperclip, X, FileText, File, Image, RefreshCw, Lightbulb, AlertTriangle, Settings, MoreVertical } from 'lucide-react';
+import { Send, Loader2, Trash2, User, Bot, Sparkles, GitBranch, MessageSquare, Copy, Check, Plus, Brain, ChevronDown, ChevronUp, Paperclip, X, FileText, File, Image, RefreshCw, Lightbulb, AlertTriangle, Settings, MoreVertical, Map as MapIcon } from 'lucide-react';
 import { useAppStore } from '../../stores/appStore';
 import { useAPIConfigStore } from '../../stores/apiConfigStore';
 import { useChatStore } from '../../stores/chatStore';
@@ -17,6 +17,8 @@ import {
   TRACK_EVENT_BRANCH_SUGGESTION_SHOWN,
   TRACK_EVENT_BRANCH_SUGGESTION_ACCEPTED,
   TRACK_EVENT_BRANCH_SUGGESTION_DISMISSED,
+  TRACK_EVENT_MAP_FIRST_OUTLINE_GENERATED,
+  TRACK_EVENT_MAP_FIRST_PROMPT_SHOWN,
 } from '../../services/tracker';
 import useMobile from '../../hooks/useMobile';
 import useIsMobile from '../../hooks/useIsMobile';
@@ -31,6 +33,7 @@ import { MODEL_CONTEXT_WINDOWS, estimateTokens } from '../../constants/modelCont
 import { parseExtensionDirections } from '../../utils/extensionDirections';
 import { detectBranchSuggestion } from '../../utils/branchSuggestion';
 import type { BranchSuggestionResult, RecentMessage } from '../../utils/branchSuggestion';
+import { isBroadQuestion } from '../../utils/broadQuestion';
 
 interface ChatPanelProps {
   nodeId?: string | null;
@@ -352,6 +355,13 @@ const ChatPanel: React.FC<ChatPanelProps> = ({ nodeId }) => {
   /** 分叉提示检测结果，null 表示当前不展示提示 */
   const [branchSuggestion, setBranchSuggestion] = useState<BranchSuggestionResult | null>(null);
   /**
+   * 地图优先模式提示状态
+   * visible 为 true 时展示"是否先展开成地图"提示气泡；question 为触发该提示的用户原始问题
+   */
+  const [mapFirstPrompt, setMapFirstPrompt] = useState<{ visible: boolean; question: string }>({ visible: false, question: '' });
+  /** 是否正在生成地图大纲（用于禁用按钮与展示加载态） */
+  const [isGeneratingMapOutline, setIsGeneratingMapOutline] = useState(false);
+  /**
    * 最近被忽略的分叉提示标识
    * 用于避免同一输入内容反复弹出相同提示；输入变化或发送消息后会重置
    */
@@ -437,6 +447,22 @@ const ChatPanel: React.FC<ChatPanelProps> = ({ nodeId }) => {
    */
   useEffect(() => {
     useChatStore.getState().clearBranchEndDetector();
+  }, [nodeId]);
+
+  /**
+   * 节点切换时清除地图优先模式相关状态
+   * - 清空 mapFirstPrompt：避免上一节点的"是否先展开成地图"提示残留到新节点
+   * - 重置 isGeneratingMapOutline：避免上一节点生成中断后的加载态残留
+   *
+   * 安全性说明：
+   * - 当 handleMapFirstConfirm 中 selectNode(firstChildId) 触发 nodeId 变化时，
+   *   此时 pendingBranchQuestionSendRef 已设置完成，本 effect 在 render 后才执行，
+   *   仅清除 UI 状态，不影响 pendingBranchQuestionSendRef 的自动发送机制。
+   * - isGeneratingMapOutline 此时已被 finally 块重置为 false，重复重置无副作用。
+   */
+  useEffect(() => {
+    setMapFirstPrompt({ visible: false, question: '' });
+    setIsGeneratingMapOutline(false);
   }, [nodeId]);
 
   /**
@@ -689,15 +715,15 @@ const ChatPanel: React.FC<ChatPanelProps> = ({ nodeId }) => {
    * @returns 操作标签
    */
   const getToolActionLabel = (toolName: string): string => {
-    const labels: Record<string, string> = {
-      create_node: '创建节点',
-      create_relation: '创建关系',
-      update_node: '编辑节点',
-      expand_node: '扩展节点',
-      get_mindmap_context: '获取导图结构',
-      get_node_detail: '获取节点详情',
+    const labelMap: Record<string, string> = {
+      create_node: t('toolActionCreateNode'),
+      create_relation: t('toolActionCreateRelation'),
+      update_node: t('toolActionUpdateNode'),
+      expand_node: t('toolActionExpandNode'),
+      get_mindmap_context: t('toolActionGetMindmapContext'),
+      get_node_detail: t('toolActionGetNodeDetail'),
     };
-    return labels[toolName] || toolName;
+    return labelMap[toolName] || toolName;
   };
 
   /**
@@ -706,15 +732,15 @@ const ChatPanel: React.FC<ChatPanelProps> = ({ nodeId }) => {
    * @returns 工具描述
    */
   const getToolDescription = (toolName: string): string => {
-    const descriptions: Record<string, string> = {
-      create_node: '正在思维导图中添加新节点',
-      create_relation: '正在建立节点之间的关联',
-      update_node: '正在修改节点内容',
-      expand_node: '正在生成子主题并布局',
-      get_mindmap_context: '正在分析导图结构',
-      get_node_detail: '正在读取节点详细信息',
+    const descMap: Record<string, string> = {
+      create_node: t('toolDescCreateNode'),
+      create_relation: t('toolDescCreateRelation'),
+      update_node: t('toolDescUpdateNode'),
+      expand_node: t('toolDescExpandNode'),
+      get_mindmap_context: t('toolDescGetMindmapContext'),
+      get_node_detail: t('toolDescGetNodeDetail'),
     };
-    return descriptions[toolName] || '正在执行操作';
+    return descMap[toolName] || t('toolActionInProgress');
   };
 
   /**
@@ -921,9 +947,20 @@ const ChatPanel: React.FC<ChatPanelProps> = ({ nodeId }) => {
           const toolExecutionResults = await executeTools(result.toolCalls);
 
           // 更新工具结果状态
+          // 每个工具的结果独立解析，单个工具解析失败不影响其他工具的结果展示
           const resultDetails = result.toolCalls.map((tc, i) => {
             const execResult = toolExecutionResults[i];
-            const parsedContent = execResult ? JSON.parse(execResult.content) as { success: boolean; message: string } : { success: false, message: '未知错误' };
+            let parsedContent: { success: boolean; message: string };
+            if (!execResult) {
+              parsedContent = { success: false, message: t('toolUnknownError') };
+            } else {
+              // 独立 try-catch：JSON.parse 失败时仅标记当前工具为失败，不污染其他工具结果
+              try {
+                parsedContent = JSON.parse(execResult.content) as { success: boolean; message: string };
+              } catch {
+                parsedContent = { success: false, message: t('toolResultParseError') };
+              }
+            }
             return {
               name: tc.name,
               success: parsedContent.success,
@@ -952,7 +989,7 @@ const ChatPanel: React.FC<ChatPanelProps> = ({ nodeId }) => {
           setToolResults(result.toolCalls.map(tc => ({
             name: tc.name,
             success: false,
-            message: '工具执行异常',
+            message: t('toolExecutionError'),
           })));
           // 工具执行异常时退出循环
           break;
@@ -1050,6 +1087,28 @@ const ChatPanel: React.FC<ChatPanelProps> = ({ nodeId }) => {
     dismissedSuggestionRef.current = null;
 
     const userMessage = input.trim();
+
+    // 地图优先模式拦截：在根节点空画布输入宽泛问题时，提示"是否先展开成地图"
+    // 满足条件时不发送消息、不清空输入框，仅展示提示气泡等待用户选择
+    if (node?.isRoot && messages.length === 0 && isBroadQuestion(userMessage) && !mapFirstPrompt.visible) {
+      setMapFirstPrompt({ visible: true, question: userMessage });
+      try {
+        track(TRACK_EVENT_MAP_FIRST_PROMPT_SHOWN, {
+          nodeId: nodeId || '',
+          question: userMessage,
+          workspaceId: getLocalWorkspaceId() || '',
+        });
+      } catch {
+        // 埋点上报异常静默处理
+      }
+      return;
+    }
+
+    // 用户编辑输入后直接发送时，清除可能残留的地图优先提示
+    if (mapFirstPrompt.visible) {
+      setMapFirstPrompt({ visible: false, question: '' });
+    }
+
     setInput('');
     if (textareaRef.current) {
       textareaRef.current.style.height = 'auto';
@@ -1148,6 +1207,8 @@ const ChatPanel: React.FC<ChatPanelProps> = ({ nodeId }) => {
   const handleKeyDown = (e: React.KeyboardEvent) => {
     if (e.key === 'Enter' && !e.shiftKey) {
       e.preventDefault();
+      // 地图大纲生成期间禁止 Enter 发送，避免竞态条件
+      if (isGeneratingMapOutline) return;
       handleSend();
     }
   };
@@ -1320,6 +1381,191 @@ const ChatPanel: React.FC<ChatPanelProps> = ({ nodeId }) => {
       // 埋点上报异常静默处理
     }
     setBranchSuggestion(null);
+  };
+
+  /**
+   * 处理用户点击"地图优先"提示的"展开成地图"按钮
+   *
+   * 调用 AI 生成结构化大纲，自动创建根节点标题与多个分支子节点。
+   * 创建完成后选中第一个成功创建的分支，并自动发送"请详细讲解：{分支标题}"进入对话。
+   * 生成失败时通过 Toast 提示并回退到直接发送原问题。
+   *
+   * 修复说明：
+   * - 使用索引循环记录首个成功创建的分支索引（firstSuccessIndex），
+   *   避免 branches[0] 与实际首个成功子节点不匹配导致自动发送主题错位。
+   * - 当所有 createChildNode 失败时（firstChildId 为空）：
+   *   1) Toast 提示"创建分支节点失败"
+   *   2) 回退到 await sendMessage(question) 直接发送原问题
+   *   3) 不更新根节点标题、不清空输入、不上报"成功"埋点
+   *
+   * 异常处理：
+   * - AI 调用失败或返回格式异常：Toast 提示并回退到 sendMessage 直接发送原问题
+   * - 节点创建失败：console.warn 记录，继续执行已创建的节点
+   * - 埋点上报失败：静默处理，不阻塞流程
+   * - isLoading 为 true 时：不调用 sendMessage，将问题恢复到输入框让用户手动发送
+   *
+   * 注意事项：生成期间禁用按钮并展示加载态，避免重复触发。
+   */
+  const handleMapFirstConfirm = async () => {
+    if (!mapFirstPrompt.visible || !nodeId || isGeneratingMapOutline) return;
+
+    const question = mapFirstPrompt.question;
+    setIsGeneratingMapOutline(true);
+
+    try {
+      const result = await chatService.generateMapOutline(question);
+
+      if (!result.success || !result.data) {
+        // 生成失败：Toast 提示并回退到直接发送原问题
+        useToastStore.getState().addToast('error', result.error || t('mapFirstGenerateFailed'));
+        setMapFirstPrompt({ visible: false, question: '' });
+        // 清空输入框，原问题已通过 sendMessage 发送
+        setInput('');
+        if (textareaRef.current) {
+          textareaRef.current.style.height = 'auto';
+        }
+        // 失败回退路径：isLoading 为 true 时不调用 sendMessage，将问题恢复到输入框
+        if (isLoading) {
+          setInput(question);
+          if (textareaRef.current) {
+            textareaRef.current.style.height = 'auto';
+          }
+        } else {
+          await sendMessage(question);
+        }
+        return;
+      }
+
+      const { rootTitle, branches } = result.data;
+
+      // 循环创建分支子节点，并将分支描述写入 summary 字段
+      // 使用索引循环，便于记录首个成功创建的分支索引（firstSuccessIndex）
+      // 避免后续自动发送问题的主题与实际选中的子节点不匹配（错位）
+      let firstChildId = '';
+      let firstSuccessIndex = -1;
+      for (let i = 0; i < branches.length; i++) {
+        const branch = branches[i];
+        try {
+          const childId = createChildNode(nodeId, branch.title);
+          if (childId && branch.description) {
+            // 将分支描述写入节点的 summary 字段，作为该分支的简短说明
+            updateNode(childId, { summary: branch.description });
+          }
+          // 同时记录首个成功创建的子节点 ID 与对应的分支索引
+          if (childId && !firstChildId) {
+            firstChildId = childId;
+            firstSuccessIndex = i;
+          }
+        } catch (err) {
+          console.warn('[ChatPanel] 地图优先创建分支节点失败:', err);
+        }
+      }
+
+      // 额外修复：所有 createChildNode 失败时（firstChildId 为空）回退到直接发送原问题
+      // 不更新根节点标题、不清空输入、不上报"成功"埋点
+      if (!firstChildId) {
+        useToastStore.getState().addToast('error', t('mapFirstCreateBranchFailed'));
+        setMapFirstPrompt({ visible: false, question: '' });
+        if (isLoading) {
+          // isLoading 为 true 时将问题恢复到输入框，让用户稍后手动发送
+          setInput(question);
+          if (textareaRef.current) {
+            textareaRef.current.style.height = 'auto';
+          }
+        } else {
+          // 直接发送原问题，清空输入框
+          setInput('');
+          if (textareaRef.current) {
+            textareaRef.current.style.height = 'auto';
+          }
+          await sendMessage(question);
+        }
+        return;
+      }
+
+      // 更新根节点标题：仅当当前标题为默认值或空时更新
+      const DEFAULT_TITLES = [t('newConversation'), t('newBranch')];
+      if (node && (DEFAULT_TITLES.includes(node.title || '') || !node.title?.trim())) {
+        updateNode(nodeId, { title: rootTitle });
+      }
+
+      // 上报埋点（仅在分支创建成功后上报）
+      try {
+        track(TRACK_EVENT_MAP_FIRST_OUTLINE_GENERATED, {
+          nodeId,
+          rootTitle,
+          branchCount: branches.length,
+          workspaceId: getLocalWorkspaceId() || '',
+        });
+      } catch {
+        // 埋点上报异常静默处理
+      }
+
+      // 清空输入框与提示状态
+      setInput('');
+      if (textareaRef.current) {
+        textareaRef.current.style.height = 'auto';
+      }
+      setMapFirstPrompt({ visible: false, question: '' });
+
+      // 选中首个成功创建的分支并自动发送"请详细讲解：{分支标题}"
+      // 使用 branches[firstSuccessIndex] 而非 branches[0]，确保自动发送问题的主题
+      // 与实际选中的子节点严格匹配（避免首个分支创建失败但后续成功时错位）
+      if (firstChildId && firstSuccessIndex >= 0) {
+        const targetBranch = branches[firstSuccessIndex];
+        const autoQuestion = `${t('mapFirstAutoQuestion')}${t('mapFirstAutoQuestionSeparator')}${targetBranch.title}`;
+        // 复用分叉提示的自动发送机制：切换节点后自动发送问题
+        pendingBranchQuestionSendRef.current = { targetNodeId: firstChildId, question: autoQuestion };
+        selectNode(firstChildId);
+      }
+    } catch (err) {
+      console.error('[ChatPanel] 地图优先生成大纲异常:', err);
+      // 异常时回退到直接发送原问题
+      useToastStore.getState().addToast('error', t('mapFirstGenerateFailed'));
+      setMapFirstPrompt({ visible: false, question: '' });
+      setInput('');
+      if (textareaRef.current) {
+        textareaRef.current.style.height = 'auto';
+      }
+      // 异常回退路径：isLoading 为 true 时不调用 sendMessage，将问题恢复到输入框
+      if (isLoading) {
+        setInput(question);
+        if (textareaRef.current) {
+          textareaRef.current.style.height = 'auto';
+        }
+      } else {
+        await sendMessage(question);
+      }
+    } finally {
+      setIsGeneratingMapOutline(false);
+    }
+  };
+
+  /**
+   * 处理用户点击"地图优先"提示的"直接回答"按钮
+   *
+   * 关闭提示气泡，将原问题作为普通对话消息直接发送给 AI。
+   * 不创建任何节点，保持原有对话流程。
+   *
+   * 异常处理：若当前 isLoading 为 true（已有请求进行中），sendMessage 会静默返回，
+   * 此时恢复输入框内容，避免用户问题丢失。
+   */
+  const handleMapFirstDismiss = async () => {
+    if (!mapFirstPrompt.visible) return;
+
+    const question = mapFirstPrompt.question;
+    setMapFirstPrompt({ visible: false, question: '' });
+    // 清空输入框，原问题已通过 sendMessage 发送
+    setInput('');
+    if (textareaRef.current) {
+      textareaRef.current.style.height = 'auto';
+    }
+    // 检查 isLoading：若正在加载则恢复输入框内容，避免 sendMessage 静默返回导致用户问题丢失
+    if (isLoading) {
+      setInput(question);
+    } else {
+      await sendMessage(question);
+    }
   };
 
   /**
@@ -1729,8 +1975,8 @@ const ChatPanel: React.FC<ChatPanelProps> = ({ nodeId }) => {
                 <button
                   onClick={() => setIsMobileMenuOpen((prev) => !prev)}
                   className="p-1.5 text-dark-300 hover:text-white hover:bg-dark-700 rounded-xl transition-colors"
-                  title="更多"
-                  aria-label="更多操作"
+                  title={t('moreActions')}
+                  aria-label={t('moreActions')}
                 >
                   <MoreVertical className="w-4 h-4" />
                 </button>
@@ -2030,7 +2276,7 @@ const ChatPanel: React.FC<ChatPanelProps> = ({ nodeId }) => {
                           </div>
                           <div className="flex flex-col">
                             <span className="text-sm text-primary-300 font-medium">
-                              正在{getToolActionLabel(tc.name)}
+                              {t('toolActionPrefix', { action: getToolActionLabel(tc.name) })}
                             </span>
                             <span className="text-xs text-dark-400 mt-0.5">
                               {getToolDescription(tc.name)}
@@ -2221,6 +2467,42 @@ const ChatPanel: React.FC<ChatPanelProps> = ({ nodeId }) => {
           </div>
         )}
 
+        {/* 地图优先模式提示气泡：根节点空画布输入宽泛问题时展示 */}
+        {mapFirstPrompt.visible && (
+          <div
+            className="flex items-start gap-2 mb-2 px-3 py-2 bg-violet-50 border border-violet-200 rounded-2xl transition-opacity duration-300 animate-fade dark:bg-violet-900/20 dark:border-violet-500/30"
+            role="status"
+            aria-label={t('mapFirstPromptTitle')}
+          >
+            {isGeneratingMapOutline ? (
+              <Loader2 className="w-4 h-4 text-violet-500 flex-shrink-0 mt-0.5 animate-spin dark:text-violet-400" />
+            ) : (
+              <MapIcon className="w-4 h-4 text-violet-500 flex-shrink-0 mt-0.5 dark:text-violet-400" />
+            )}
+            <div className="flex-1 min-w-0">
+              <span className="block text-sm text-violet-700 dark:text-violet-200 break-words">
+                {isGeneratingMapOutline ? t('mapFirstGenerating') : t('mapFirstPromptMessage')}
+              </span>
+              {!isGeneratingMapOutline && (
+                <div className="flex items-center gap-2 mt-1.5">
+                  <button
+                    onClick={handleMapFirstConfirm}
+                    className="flex-shrink-0 px-3 py-1 bg-violet-600 hover:bg-violet-700 text-white rounded-lg text-xs font-medium transition-colors"
+                  >
+                    {t('mapFirstExpand')}
+                  </button>
+                  <button
+                    onClick={handleMapFirstDismiss}
+                    className="flex-shrink-0 px-2 py-1 text-violet-500 hover:text-violet-700 dark:text-violet-400 dark:hover:text-violet-200 text-xs transition-colors"
+                  >
+                    {t('mapFirstDirectAnswer')}
+                  </button>
+                </div>
+              )}
+            </div>
+          </div>
+        )}
+
         <div className="flex gap-2">
           <input
             ref={fileInputRef}
@@ -2244,7 +2526,7 @@ const ChatPanel: React.FC<ChatPanelProps> = ({ nodeId }) => {
             onKeyDown={handleKeyDown}
             placeholder={selectedFileIds.length > 0 ? t('inputWithFilesPlaceholder', { count: selectedFileIds.length }) : t('inputPlaceholder')}
             rows={1}
-            disabled={isLoading}
+            disabled={isLoading || isGeneratingMapOutline}
             className="input-field flex-1 resize-none overflow-y-auto disabled:opacity-50"
           />
           <button
@@ -2256,7 +2538,7 @@ const ChatPanel: React.FC<ChatPanelProps> = ({ nodeId }) => {
           </button>
           <button
             onClick={handleSend}
-            disabled={isLoading || !input.trim()}
+            disabled={isLoading || isGeneratingMapOutline || !input.trim()}
             className="btn-primary disabled:opacity-50 disabled:cursor-not-allowed"
           >
             <Send className="w-4 h-4" />

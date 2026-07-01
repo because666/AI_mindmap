@@ -1,7 +1,7 @@
 import { Router, Request, Response } from 'express';
 import { adminDB } from '../config/database';
 import { WorkspaceListItem, PaginationResult, RankingSortBy, WorkspaceRankingItem } from '../types';
-import { requireAuth } from '../middleware/auth';
+import { requireAuth, requireRole } from '../middleware/auth';
 import { auditLog } from '../middleware/auditLog';
 import { escapeRegex, sanitizePagination } from '../utils/validators';
 import { notifyWorkspaceCacheClear } from '../services/cacheNotify';
@@ -144,7 +144,88 @@ router.put('/:id/star', requireAuth, async (req: Request, res: Response) => {
 });
 
 /**
+ * 置顶工作区
+ * 将指定工作区的 isPinned 设为 true，pinnedAt 设为当前时间
+ * 置顶后的工作区会出现在客户端"推荐工作区"区域
+ * 仅 super_admin / operator 角色可调用
+ * @param id - 工作区 ID
+ * @returns 成功时返回 success:true 与提示文案；失败返回对应状态码与错误信息
+ */
+router.post('/:id/pin', requireAuth, requireRole('super_admin', 'operator'), auditLog('PIN_WORKSPACE', 'workspace'), async (req: Request, res: Response) => {
+  try {
+    const { id } = req.params;
+
+    const workspace = await adminDB.findOne('workspaces', { id } as never);
+    if (!workspace) {
+      res.status(404).json({ success: false, error: '工作区不存在' });
+      return;
+    }
+
+    const now = new Date();
+    const success = await adminDB.updateOne('workspaces', { id } as never, {
+      $set: {
+        isPinned: true,
+        pinnedAt: now,
+      },
+    });
+
+    if (!success) {
+      res.status(500).json({ success: false, error: '置顶工作区失败' });
+      return;
+    }
+
+    // 通知主服务清除该工作区缓存，使置顶状态尽快在公开列表生效
+    await notifyWorkspaceCacheClear(id);
+
+    res.json({ success: true, message: '已置顶工作区', data: { isPinned: true, pinnedAt: now.toISOString() } });
+  } catch (error) {
+    console.error('置顶工作区失败:', error);
+    res.status(500).json({ success: false, error: '置顶工作区失败' });
+  }
+});
+
+/**
+ * 取消置顶工作区
+ * 将指定工作区的 isPinned 设为 false，并清除 pinnedAt 字段
+ * 仅 super_admin / operator 角色可调用
+ * @param id - 工作区 ID
+ * @returns 成功时返回 success:true 与提示文案；失败返回对应状态码与错误信息
+ */
+router.delete('/:id/pin', requireAuth, requireRole('super_admin', 'operator'), auditLog('UNPIN_WORKSPACE', 'workspace'), async (req: Request, res: Response) => {
+  try {
+    const { id } = req.params;
+
+    const workspace = await adminDB.findOne('workspaces', { id } as never);
+    if (!workspace) {
+      res.status(404).json({ success: false, error: '工作区不存在' });
+      return;
+    }
+
+    const success = await adminDB.updateOne('workspaces', { id } as never, {
+      $set: {
+        isPinned: false,
+        pinnedAt: null,
+      },
+    });
+
+    if (!success) {
+      res.status(500).json({ success: false, error: '取消置顶失败' });
+      return;
+    }
+
+    await notifyWorkspaceCacheClear(id);
+
+    res.json({ success: true, message: '已取消置顶', data: { isPinned: false, pinnedAt: null } });
+  } catch (error) {
+    console.error('取消置顶工作区失败:', error);
+    res.status(500).json({ success: false, error: '取消置顶失败' });
+  }
+});
+
+/**
  * 获取工作区列表
+ * 排序规则：置顶工作区优先（isPinned desc, pinnedAt desc），其后按创建时间倒序
+ * 返回项包含 isPinned/pinnedAt 字段，便于前端展示置顶标记
  */
 router.get('/', requireAuth, async (req: Request, res: Response) => {
   try {
@@ -161,7 +242,8 @@ router.get('/', requireAuth, async (req: Request, res: Response) => {
     }
 
     const workspaces = await adminDB.find('workspaces', filter as never, {
-      sort: { createdAt: -1 },
+      // 置顶工作区排在最前（isPinned desc, pinnedAt desc），然后按创建时间倒序
+      sort: { isPinned: -1, pinnedAt: -1, createdAt: -1 },
       skip,
       limit,
     });
@@ -197,6 +279,11 @@ router.get('/', requireAuth, async (req: Request, res: Response) => {
 
     const items: WorkspaceListItem[] = workspaces.map((w: Record<string, unknown>) => {
       const ownerId = w.ownerId as string;
+      const pinnedAtRaw = w.pinnedAt;
+      // pinnedAt 可能是 Date 或字符串，统一序列化为 ISO 字符串
+      const pinnedAtIso = pinnedAtRaw instanceof Date
+        ? pinnedAtRaw.toISOString()
+        : (typeof pinnedAtRaw === 'string' ? pinnedAtRaw : undefined);
       return {
         _id: (w._id as { toString(): string }).toString(),
         id: w.id as string,
@@ -216,6 +303,8 @@ router.get('/', requireAuth, async (req: Request, res: Response) => {
         },
         isReported: false,
         reportCount: 0,
+        isPinned: w.isPinned === true,
+        pinnedAt: pinnedAtIso,
       };
     });
 

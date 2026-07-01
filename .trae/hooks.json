@@ -1,7 +1,7 @@
 {
   "hooks": {
     "pre-task": {
-      "command": "echo '[项目规则提醒] 当前产品核心为非线性对话体验：分支是聊天的自然下一步，坚持低摩擦分叉、主线可见、节点摘要、数据驱动、成本控制。工程上注意：移动端与桌面端UI布局差异化处理并优先优化移动端空间利用率；安全区域使用 env(safe-area-inset-top) 防止状态栏/刘海遮挡；节点连接点尺寸需在移动端单独调小；创建子节点时必须显式传入父节点ID，禁止空父节点导致误创建为根节点。若任务涉及部署/同步到服务器，必须先执行 git add / git commit / git push 将代码提交并推送到仓库；部署必须通过本地上传产物（SCP/SFTP/RSYNC），禁止在服务器端拉取 Git 代码或执行 npm run build；服务器端仅执行替换产物、PM2 重启、健康检查。'",
+      "command": "echo '[项目规则提醒] 当前产品核心为非线性对话体验：分支是聊天的自然下一步，坚持低摩擦分叉、主线可见、节点摘要、数据驱动、成本控制。工程上注意：移动端与桌面端UI布局差异化处理并优先优化移动端空间利用率；安全区域使用 env(safe-area-inset-top) 防止状态栏/刘海遮挡；节点连接点尺寸需在移动端单独调小；创建子节点时必须显式传入父节点ID，禁止空父节点导致误创建为根节点。若任务涉及部署/同步到服务器，必须先执行 git add / git commit / git push 将代码提交并推送到仓库；部署必须通过本地上传产物（SCP/SFTP/RSYNC），禁止在服务器端拉取 Git 代码或执行 npm run build；服务器端仅执行替换产物、PM2 重启、健康检查；上传前需在服务器端备份 client/dist、server/dist、admin/server/dist、admin/client/dist。'",
       "blocking": false,
       "enabled": true
     },
@@ -11,7 +11,7 @@
       "enabled": true
     },
     "pre-completion": {
-      "command": "echo '[项目交付前检查] 请确认：修改前后端代码后执行 npm run build:client 与 npm run build:server 并通过；修改移动端代码后确认 Capacitor Android 构建无异常；部署服务端TypeScript代码时，必须在本地执行 npm run build:server 构建产物，将 server/dist 上传到服务器对应目录，服务器端仅执行替换产物、PM2 重启、健康检查，禁止在服务器端执行 npx tsc 或 npm run build。若任务涉及部署，必须确认已完成本地构建（npm run build:client / npm run build:server / npm run build:admin）；必须确认已通过本地上传产物到服务器，且未在服务器端拉取代码；必须确认上传前已备份服务器端 client/dist、server/dist、admin/server/dist 目录。'",
+      "command": "echo '[项目交付前检查] 请确认：修改前后端代码后执行 npm run build:client 与 npm run build:server 并通过；修改移动端代码后确认 Capacitor Android 构建无异常；部署服务端TypeScript代码时，必须在本地执行 npm run build:server 构建产物，将 server/dist 上传到服务器对应目录，服务器端仅执行替换产物、PM2 重启、健康检查，禁止在服务器端执行 npx tsc 或 npm run build。若任务涉及部署，必须确认已完成本地构建（npm run build:client / npm run build:server / npm run build:admin）；必须确认已通过本地上传产物到服务器，且未在服务器端拉取代码；必须确认上传前已备份服务器端 client/dist、server/dist、admin/server/dist、admin/client/dist 目录。'",
       "blocking": false,
       "enabled": true
     },

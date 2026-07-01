@@ -1,4 +1,5 @@
 import { Router, Request, Response } from 'express';
+import crypto from 'crypto';
 import { conversationService } from '../services/conversationService';
 import { nodeService } from '../services/nodeService';
 import { aiService } from '../services/aiService';
@@ -17,6 +18,28 @@ const router = Router();
 
 const aiTaskRateLimit = createAIRateLimit({ windowMs: 60 * 1000, maxRequests: 10 });
 const aiChatRateLimit = createAIRateLimit({ windowMs: 60 * 1000, maxRequests: 20 });
+
+/**
+ * 恒定时间比较内部 API token，防止时序攻击
+ * 长度不同直接返回 false，长度相同则使用 crypto.timingSafeEqual 进行恒定时间比较
+ * @param inputToken - 请求头中传入的 token
+ * @param expectedToken - 环境变量中配置的期望 token
+ * @returns 是否匹配
+ */
+function isTokenValid(
+  inputToken: string | string[] | undefined,
+  expectedToken: string | undefined
+): boolean {
+  if (typeof inputToken !== 'string' || typeof expectedToken !== 'string') {
+    return false;
+  }
+  const inputBuffer = Buffer.from(inputToken);
+  const expectedBuffer = Buffer.from(expectedToken);
+  if (inputBuffer.length !== expectedBuffer.length) {
+    return false;
+  }
+  return crypto.timingSafeEqual(inputBuffer, expectedBuffer);
+}
 
 /**
  * 设置SSE响应头
@@ -363,7 +386,7 @@ router.post('/internal/refresh-cache', async (req: Request, res: Response) => {
     const { conversationId } = req.body;
     const internalToken = req.headers['x-internal-token'];
 
-    if (internalToken !== process.env.INTERNAL_API_TOKEN) {
+    if (!isTokenValid(internalToken, process.env.INTERNAL_API_TOKEN)) {
       return res.status(403).json({ success: false, error: 'Forbidden' });
     }
 

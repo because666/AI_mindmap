@@ -1,10 +1,11 @@
 import { Router, Request, Response } from 'express';
 import { adminDB } from '../config/database';
-import { UserListItem, PaginationResult, TimelineEvent, TimelineEventType, TimelineEventDetail } from '../types';
+import { UserListItem, PaginationResult, TimelineEvent, TimelineEventType, TimelineEventDetail, ActivityTier } from '../types';
 import { requireAuth } from '../middleware/auth';
 import { auditLog } from '../middleware/auditLog';
 import { escapeRegex, sanitizePagination } from '../utils/validators';
 import { notifyVisitorCacheClear } from '../services/cacheNotify';
+import { calculateActivityTier, buildActivityTierFilter, ALLOWED_ACTIVITY_TIERS } from '../utils/activityTier';
 
 const router = Router();
 
@@ -27,6 +28,13 @@ function verifyConfirmCode(confirmCode: unknown, id: string): boolean {
 /**
  * 获取用户列表
  * 支持分页、筛选、排序（白名单校验）
+ * 支持按 status、search、activityTier 过滤
+ * @query page - 页码
+ * @query limit - 每页数量
+ * @query status - 状态筛选（active/banned）
+ * @query search - 昵称或ID搜索
+ * @query sort - 排序字段（白名单）
+ * @query activityTier - 活跃度分层筛选（new_user/high_active/churn_risk/dormant）
  */
 router.get('/', requireAuth, async (req: Request, res: Response) => {
   try {
@@ -35,6 +43,17 @@ router.get('/', requireAuth, async (req: Request, res: Response) => {
     const search = req.query.search as string;
     const rawSort = (req.query.sort as string) || 'createdAt';
     const sort = ALLOWED_SORT_FIELDS.includes(rawSort) ? rawSort : 'createdAt';
+    const activityTier = (req.query.activityTier as string) || '';
+
+    // 校验 activityTier 参数
+    let tierValue: ActivityTier | null = null;
+    if (activityTier) {
+      if (!ALLOWED_ACTIVITY_TIERS.includes(activityTier as ActivityTier)) {
+        res.status(400).json({ success: false, error: '无效的活跃度分层值' });
+        return;
+      }
+      tierValue = activityTier as ActivityTier;
+    }
 
     const filter: Record<string, unknown> = {};
     if (status === 'banned') {
@@ -49,6 +68,21 @@ router.get('/', requireAuth, async (req: Request, res: Response) => {
         { id: { $regex: safeSearch, $options: 'i' } },
       ];
     }
+    // 按 activityTier 转换为时间范围 filter，合并到主 filter
+    // 注意：filter 是 $and 关系，需要将 $or 之外的子条件包装在 $and 中以避免冲突
+    if (tierValue) {
+      const tierFilter = buildActivityTierFilter(tierValue);
+      if (tierFilter) {
+        // 如果 filter 中已有 $or（来自 search），需要使用 $and 包装以避免冲突
+        if (filter.$or) {
+          const existingOr = filter.$or;
+          delete filter.$or;
+          filter.$and = [{ $or: existingOr }, tierFilter];
+        } else {
+          Object.assign(filter, tierFilter);
+        }
+      }
+    }
 
     const visitors = await adminDB.find('visitors', filter as never, {
       sort: { [sort]: -1 },
@@ -61,13 +95,20 @@ router.get('/', requireAuth, async (req: Request, res: Response) => {
     const items: UserListItem[] = visitors.map((v: Record<string, unknown>) => {
       const visitorId = v.id as string;
       const workspaceCount = (v.workspaces as string[])?.length || 0;
+      const createdAtRaw = v.createdAt as string | Date | null | undefined;
+      const lastSeenRaw = v.lastSeen as string | Date | null | undefined;
+      // 显式处理 lastSeen 类型：Date 转为 ISO 字符串，字符串保留，其他情况为 undefined
+      // 避免 `v.lastSeen as string` 的不安全断言导致 Date 对象被错误序列化
+      const lastSeenValue = v.lastSeen instanceof Date
+        ? v.lastSeen.toISOString()
+        : (v.lastSeen as string | undefined);
 
       return {
         _id: (v._id as { toString(): string }).toString(),
         id: visitorId,
         nickname: (v.nickname as string) || '未知用户',
         createdAt: v.createdAt as string,
-        lastActiveAt: v.lastSeen as string,
+        lastActiveAt: lastSeenValue || '',
         status: (v.isBanned as boolean) ? 'banned' : 'active',
         stats: {
           workspaceCount,
@@ -79,6 +120,10 @@ router.get('/', requireAuth, async (req: Request, res: Response) => {
         banExpiresAt: v.banExpiresAt as string | undefined,
         lastIp: v.lastIp as string | undefined,
         ipHistory: v.ipHistory as string[] | undefined,
+        // 填充用户标签字段，缺失时返回空数组，避免前端访问 undefined 崩溃
+        tags: (v.tags as string[]) || [],
+        // 根据用户时间字段计算活跃度分层
+        activityTier: calculateActivityTier(createdAtRaw, lastSeenRaw),
       };
     });
 
@@ -310,7 +355,8 @@ router.post('/:id/ban', requireAuth, auditLog('BAN_USER', 'user'), async (req: R
       return;
     }
 
-    await notifyVisitorCacheClear(id);
+    // 异步通知主服务清除缓存，不阻塞封禁接口响应
+    void notifyVisitorCacheClear(id);
 
     res.json({ success: true, message: '用户已封禁' });
   } catch (error) {
@@ -342,7 +388,8 @@ router.post('/:id/unban', requireAuth, auditLog('UNBAN_USER', 'user'), async (re
       return;
     }
 
-    await notifyVisitorCacheClear(id);
+    // 异步通知主服务清除缓存，不阻塞解封接口响应
+    void notifyVisitorCacheClear(id);
 
     res.json({ success: true, message: '用户已解封' });
   } catch (error) {
@@ -404,15 +451,21 @@ router.get('/ip/:ip/visitors', requireAuth, async (req: Request, res: Response) 
       ],
     } as never);
 
-    const items = visitors.map((v: Record<string, unknown>) => ({
-      id: v.id as string,
-      nickname: (v.nickname as string) || '未知用户',
-      lastIp: v.lastIp as string | undefined,
-      isBanned: (v.isBanned as boolean) || false,
-      banReason: v.banReason as string | undefined,
-      createdAt: v.createdAt as string,
-      lastSeen: v.lastSeen as string,
-    }));
+    const items = visitors.map((v: Record<string, unknown>) => {
+      // 显式处理 lastSeen 类型：Date 转为 ISO 字符串，字符串保留，其他情况为空字符串
+      const lastSeenValue = v.lastSeen instanceof Date
+        ? v.lastSeen.toISOString()
+        : (v.lastSeen as string | undefined);
+      return {
+        id: v.id as string,
+        nickname: (v.nickname as string) || '未知用户',
+        lastIp: v.lastIp as string | undefined,
+        isBanned: (v.isBanned as boolean) || false,
+        banReason: v.banReason as string | undefined,
+        createdAt: v.createdAt as string,
+        lastSeen: lastSeenValue || '',
+      };
+    });
 
     res.json({ success: true, data: { ip, visitors: items, total: items.length } });
   } catch (error) {
@@ -484,7 +537,8 @@ router.post('/ip-ban', requireAuth, auditLog('BAN_IP', 'ip'), async (req: Reques
         await adminDB.updateOne('visitors', { id: visitorId } as never, {
           $set: accountUpdateData,
         });
-        await notifyVisitorCacheClear(visitorId);
+        // 异步通知主服务清除缓存，不阻塞 IP 封禁接口响应
+        void notifyVisitorCacheClear(visitorId);
       }
     }
 

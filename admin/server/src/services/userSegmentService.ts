@@ -1,6 +1,7 @@
 import { ObjectId } from 'mongodb';
 import { adminDB } from '../config/database';
 import { UserTag, UserSegment, SegmentRule, PaginationResult, UserListItem } from '../types';
+import { calculateActivityTier } from '../utils/activityTier';
 
 /**
  * 用户分群与标签服务
@@ -128,6 +129,8 @@ class UserSegmentService {
     const items: UserListItem[] = visitors.map((v: Record<string, unknown>) => {
       const visitorId = v.id as string;
       const workspaceCount = (v.workspaces as string[])?.length || 0;
+      const createdAtRaw = v.createdAt as string | Date | null | undefined;
+      const lastSeenRaw = v.lastSeen as string | Date | null | undefined;
 
       return {
         _id: (v._id as { toString(): string }).toString(),
@@ -147,6 +150,8 @@ class UserSegmentService {
         lastIp: v.lastIp as string | undefined,
         ipHistory: v.ipHistory as string[] | undefined,
         tags: v.tags as string[] | undefined,
+        // 根据用户时间字段计算活跃度分层
+        activityTier: calculateActivityTier(createdAtRaw, lastSeenRaw),
       };
     });
 
@@ -276,6 +281,8 @@ class UserSegmentService {
     const items: UserListItem[] = visitors.map((v: Record<string, unknown>) => {
       const visitorId = v.id as string;
       const workspaceCount = (v.workspaces as string[])?.length || 0;
+      const createdAtRaw = v.createdAt as string | Date | null | undefined;
+      const lastSeenRaw = v.lastSeen as string | Date | null | undefined;
 
       return {
         _id: (v._id as { toString(): string }).toString(),
@@ -295,6 +302,8 @@ class UserSegmentService {
         lastIp: v.lastIp as string | undefined,
         ipHistory: v.ipHistory as string[] | undefined,
         tags: v.tags as string[] | undefined,
+        // 根据用户时间字段计算活跃度分层
+        activityTier: calculateActivityTier(createdAtRaw, lastSeenRaw),
       };
     });
 

@@ -24,9 +24,19 @@
   - [x] SubTask 5.2: 检查并更新 `docs/deploy.md`，与新的本地构建上传流程保持一致
 
 - [x] Task 6: 验证部署流程与 hooks/skill 一致性
-  - [x] SubTask 6.1: 检查 `project_memory.md`、skill、hooks、脚本、文档之间无矛盾
+  - [x] SubTask 6.1: 检查 `project_memory.md`、skill、hooks、脚本、文档之间无矛盾（发现 server-deploy-checklist 与 admin/client/dist 两处不一致）
   - [x] SubTask 6.2: 对修改后的 JSON/脚本/文档进行语法校验
   - [x] SubTask 6.3: 模拟执行部署脚本的关键路径（构建 → 上传 → 重启命令格式检查）
+
+- [x] Task 7: 修复验证发现的不一致
+  - [x] SubTask 7.1: 更新 `.trae/skills/server-deploy-checklist/SKILL.md`，改为本地构建后上传产物，删除服务器端 npx tsc / 上传源码等旧流程
+  - [x] SubTask 7.2: 统一备份目录描述，在 `project_memory.md` 与 `deploy-assistant/SKILL.md` 中补充 `admin/client/dist`
+  - [x] SubTask 7.3: 在项目 `hooks.json` 的 `pre-task` / `pre-completion` / `pre-commit` 备份目录提醒中补充 `admin/client/dist`
+  - [x] SubTask 7.4: 移除 `server-deploy-checklist/SKILL.md` 中硬编码的服务器 IP，改为使用环境变量或配置引用
+
+- [x] Task 8: 重新验证一致性
+  - [x] SubTask 8.1: 再次检查所有相关文件无矛盾
+  - [x] SubTask 8.2: 确认 server-deploy-checklist 已符合新规
 
 # Task Dependencies
 
@@ -35,3 +45,5 @@
 - Task 4 depends on Task 2
 - Task 5 depends on Task 4
 - Task 6 depends on Task 2、Task 3、Task 4、Task 5
+- Task 7 depends on Task 6
+- Task 8 depends on Task 7

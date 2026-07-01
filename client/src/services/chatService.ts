@@ -642,5 +642,138 @@ export const chatService = {
         error: error instanceof Error ? error.message : '网络错误'
       };
     }
+  },
+
+  /**
+   * 生成地图优先结构化大纲
+   *
+   * 将用户的宽泛问题发送到 /api/ai/map-outline 端点，由 AI 生成
+   * 根节点标题与多个分支的结构化大纲，用于"地图优先模式"自动创建节点。
+   * 内部复用 buildUserConfig 构建用户 API 配置，确保与对话请求配置一致。
+   *
+   * @param question - 用户输入的宽泛问题文本，需为非空字符串
+   * @returns 生成结果：
+   *   - success：是否成功
+   *   - data：成功时返回大纲数据（rootTitle + branches），失败时为 undefined
+   *   - error：失败时的错误信息
+   *   - rateLimited：是否触发了限流
+   *
+   * @throws 不抛出异常，所有错误均通过返回值的 error 字段传递
+   */
+  async generateMapOutline(
+    question: string
+  ): Promise<{
+    success: boolean;
+    data?: {
+      rootTitle: string;
+      branches: Array<{ title: string; description: string }>;
+    };
+    error?: string;
+    rateLimited?: boolean;
+  }> {
+    try {
+      // 入参校验，避免空问题触发请求
+      if (!question || !question.trim()) {
+        return { success: false, error: '问题不能为空' };
+      }
+
+      const userConfig = buildUserConfig();
+      const headers = await buildAuthHeaders(false);
+
+      const currentLanguage = i18n.language?.startsWith('en') ? 'en' : 'zh';
+      const requestBody: Record<string, unknown> = {
+        question: question.trim(),
+        language: currentLanguage,
+      };
+      if (userConfig) {
+        requestBody.config = {
+          apiKey: userConfig.apiKey,
+          provider: userConfig.provider,
+          baseUrl: userConfig.baseUrl,
+          model: userConfig.model,
+        };
+      }
+
+      const response = await fetch(`${API_BASE_URL}/api/ai/map-outline`, {
+        method: 'POST',
+        headers,
+        body: JSON.stringify(requestBody),
+      });
+
+      // 限流处理：429 状态码标记 rateLimited
+      if (response.status === 429) {
+        const errorText = await response.text();
+        return {
+          success: false,
+          rateLimited: true,
+          error: parseResponseError(response.status, errorText),
+        };
+      }
+
+      if (!response.ok) {
+        const errorText = await response.text();
+        return {
+          success: false,
+          error: parseResponseError(response.status, errorText),
+        };
+      }
+
+      const result = await parseJsonResponse(response);
+
+      if (!result.success) {
+        return {
+          success: false,
+          error: (result.error as string) || '生成地图大纲失败，请稍后重试',
+        };
+      }
+
+      // 校验返回的数据结构
+      const data = result.data as {
+        rootTitle: unknown;
+        branches: unknown;
+      } | undefined;
+
+      if (!data || typeof data.rootTitle !== 'string' || !Array.isArray(data.branches)) {
+        return {
+          success: false,
+          error: 'AI 返回的大纲数据格式异常',
+        };
+      }
+
+      // 规范化分支数据，确保 title/description 均为字符串
+      const branches = data.branches
+        .map((branch): { title: string; description: string } | null => {
+          if (!branch || typeof branch !== 'object') {
+            return null;
+          }
+          const b = branch as { title?: unknown; description?: unknown };
+          if (typeof b.title !== 'string' || !b.title.trim()) {
+            return null;
+          }
+          return {
+            title: b.title.trim(),
+            description: typeof b.description === 'string' ? b.description.trim() : '',
+          };
+        })
+        .filter((branch): branch is { title: string; description: string } => branch !== null);
+
+      if (branches.length === 0) {
+        return {
+          success: false,
+          error: 'AI 返回的大纲分支为空',
+        };
+      }
+
+      return {
+        success: true,
+        data: {
+          rootTitle: data.rootTitle,
+          branches,
+        },
+      };
+    } catch (error: unknown) {
+      const errorMessage = error instanceof Error ? error.message : '生成地图大纲时发生网络错误';
+      return { success: false, error: errorMessage };
+    }
   }
 };

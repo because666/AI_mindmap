@@ -1,0 +1,1008 @@
+﻿node.exe : [33mThe CJS build of Vite's Node API is deprecated. See https://vite.dev/guide/troubleshooting.html#vite-cj
+s-node-api-deprecated for more details.[39m
+At line:1 char:1
++ & "C:\Program Files\nodejs/node.exe" "C:\Program Files\nodejs/node_mo ...
++ ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+    + CategoryInfo          : NotSpecified: ([33mThe CJS bu...e details.[39m:String) [], RemoteException
+    + FullyQualifiedErrorId : NativeCommandError
+ 
+
+[1m[7m[36m RUN [39m[27m[22m [36mv2.1.9 [39m[90mD:/study1/DeepMindMap/v2/admin/server[39m
+
+ [32m✓[39m src/utils/activityTier.test.ts [2m([22m[2m10 tests[22m[2m)[22m[90m 9[2mms[22m[39m
+ [32m✓[39m src/test/activityTier.test.ts [2m([22m[2m28 tests[22m[2m)[22m[90m 14[2mms[22m[39m
+ [31m❯[39m src/test/ipWhitelist.test.ts [2m([22m[2m14 tests[22m[2m | [22m[31m6 failed[39m[2m)[22m[90m 23[2mms[22m[39m
+[31m   [31m×[31m ipWhitelistMiddleware[2m > [22m白名单为空时放行所有请求[90m 10[2mms[22m[31m[39m
+[31m     → expected "spy" to be called 1 times, but got 0 times[39m
+[31m   [31m×[31m ipWhitelistMiddleware[2m > [22m白名单为空时连续请求复用缓存，仅查库一次[90m 1[2mms[22m[31m[39m
+[31m     → expected "spy" to be called 1 times, but got 0 times[39m
+[31m   [31m×[31m ipWhitelistMiddleware[2m > [22m白名单非空时拦截非白名单 IP，返回 403[90m 5[2mms[22m[31m[39m
+[31m     → expected true to be false // Object.is equality[39m
+[31m   [31m×[31m ipWhitelistMiddleware[2m > [22mCIDR 匹配：IP 不在白名单网段内时拦截[90m 1[2mms[22m[31m[39m
+[31m     → expected true to be false // Object.is equality[39m
+[31m   [31m×[31m ipWhitelistMiddleware[2m > [22mIP 缓存刷新：60秒后重新查库[90m 1[2mms[22m[31m[39m
+[31m     → expected "spy" to be called 1 times, but got 0 times[39m
+[31m   [31m×[31m ipWhitelistMiddleware[2m > [22m缓存有效期内不重复查库[90m 1[2mms[22m[31m[39m
+[31m     → expected "spy" to be called 1 times, but got 0 times[39m
+[90mstderr[2m | src/test/auth.middleware.test.ts[2m > [22m[2mrequireAuth 中间件[2m > [22m[2m数据库异常时返回 500
+[22m[39m认证中间件错误: Error: 数据库连接失败
+    at [90mD:\study1\DeepMindMap\v2\admin\server\[39msrc\test\auth.middleware.test.ts:251:35
+    at [90mfile:///D:/study1/DeepMindMap/v2/admin/server/[39mnode_modules/[4m@vitest/runner[24m/dist/index.js:146:1
+4
+    at [90mfile:///D:/study1/DeepMindMap/v2/admin/server/[39mnode_modules/[4m@vitest/runner[24m/dist/index.js:533:1
+1
+    at runWithTimeout [90m(file:///D:/study1/DeepMindMap/v2/admin/server/[39mnode_modules/[4m@vitest/runner[24m/dis
+t/index.js:39:7[90m)[39m
+    at runTest [90m(file:///D:/study1/DeepMindMap/v2/admin/server/[39mnode_modules/[4m@vitest/runner[24m/dist/index
+.js:1056:17[90m)[39m
+[90m    at processTicksAndRejections (node:internal/process/task_queues:103:5)[39m
+    at runSuite [90m(file:///D:/study1/DeepMindMap/v2/admin/server/[39mnode_modules/[4m@vitest/runner[24m/dist/inde
+x.js:1205:15[90m)[39m
+    at runSuite [90m(file:///D:/study1/DeepMindMap/v2/admin/server/[39mnode_modules/[4m@vitest/runner[24m/dist/inde
+x.js:1205:15[90m)[39m
+    at runFiles [90m(file:///D:/study1/DeepMindMap/v2/admin/server/[39mnode_modules/[4m@vitest/runner[24m/dist/inde
+x.js:1262:5[90m)[39m
+    at startTests [90m(file:///D:/study1/DeepMindMap/v2/admin/server/[39mnode_modules/[4m@vitest/runner[24m/dist/in
+dex.js:1271:3[90m)[39m
+
+ [32m✓[39m src/test/auth.middleware.test.ts [2m([22m[2m11 tests[22m[2m)[22m[90m 25[2mms[22m[39m
+[90mstderr[2m | src/test/circuitBreaker.test.ts[2m > [22m[2mCircuitBreaker[2m > [22m[2m连续失败 5 次触发熔断，切换到 open
+[22m[39m[熔断器] 连续失败 5 次达到阈值 5，切换到 open
+
+[90mstderr[2m | src/test/circuitBreaker.test.ts[2m > [22m[2mCircuitBreaker[2m > [22m[2mopen 状态快速失败不执行实际请求
+[22m[39m[熔断器] 连续失败 5 次达到阈值 5，切换到 open
+
+[90mstderr[2m | src/test/circuitBreaker.test.ts[2m > [22m[2mCircuitBreaker[2m > [22m[2m熔断 30 秒后进入 half-open 状态
+[22m[39m[熔断器] 连续失败 5 次达到阈值 5，切换到 open
+[熔断器] 状态从 open 切换到 half-open，允许试探请求
+[熔断器] 半开状态试探成功，恢复到 closed
+
+[90mstderr[2m | src/test/circuitBreaker.test.ts[2m > [22m[2mCircuitBreaker[2m > [22m[2mhalf-open 状态试探成功恢复到 clos
+ed
+[22m[39m[熔断器] 连续失败 5 次达到阈值 5，切换到 open
+[熔断器] 状态从 open 切换到 half-open，允许试探请求
+[熔断器] 半开状态试探成功，恢复到 closed
+
+[90mstderr[2m | src/test/circuitBreaker.test.ts[2m > [22m[2mCircuitBreaker[2m > [22m[2mhalf-open 状态试探失败重新熔断到 op
+en
+[22m[39m[熔断器] 连续失败 5 次达到阈值 5，切换到 open
+[熔断器] 状态从 open 切换到 half-open，允许试探请求
+[熔断器] 半开状态试探失败，重新切换到 open
+
+[90mstderr[2m | src/test/circuitBreaker.test.ts[2m > [22m[2mCircuitBreaker[2m > [22m[2m成功请求重置失败计数
+[22m[39m[熔断器] 连续失败 5 次达到阈值 5，切换到 open
+
+[90mstderr[2m | src/test/circuitBreaker.test.ts[2m > [22m[2mCircuitBreaker[2m > [22m[2mreset 方法重置熔断器到初始 closed 
+状态
+[22m[39m[熔断器] 连续失败 5 次达到阈值 5，切换到 open
+
+ [32m✓[39m src/test/circuitBreaker.test.ts [2m([22m[2m10 tests[22m[2m)[22m[90m 32[2mms[22m[39m
+ [32m✓[39m src/test/aiUsageService.test.ts [2m([22m[2m17 tests[22m[2m)[22m[90m 41[2mms[22m[39m
+[90mstderr[2m | src/test/aiUsageService.test.ts[2m > [22m[2mAI 用量统计服务 aiUsageService - getModelSummary[2m > [22m
+[2m数据库异常[2m > [22m[2maggregate.toArray 抛错时应捕获并返回空数组
+[22m[39m获取模型用量汇总失败: Error: 数据库查询失败
+    at [90mD:\study1\DeepMindMap\v2\admin\server\[39msrc\test\aiUsageService.test.ts:404:46
+    at [90mfile:///D:/study1/DeepMindMap/v2/admin/server/[39mnode_modules/[4m@vitest/runner[24m/dist/index.js:146:1
+4
+    at [90mfile:///D:/study1/DeepMindMap/v2/admin/server/[39mnode_modules/[4m@vitest/runner[24m/dist/index.js:533:1
+1
+    at runWithTimeout [90m(file:///D:/study1/DeepMindMap/v2/admin/server/[39mnode_modules/[4m@vitest/runner[24m/dis
+t/index.js:39:7[90m)[39m
+    at runTest [90m(file:///D:/study1/DeepMindMap/v2/admin/server/[39mnode_modules/[4m@vitest/runner[24m/dist/index
+.js:1056:17[90m)[39m
+[90m    at processTicksAndRejections (node:internal/process/task_queues:103:5)[39m
+    at runSuite [90m(file:///D:/study1/DeepMindMap/v2/admin/server/[39mnode_modules/[4m@vitest/runner[24m/dist/inde
+x.js:1205:15[90m)[39m
+    at runSuite [90m(file:///D:/study1/DeepMindMap/v2/admin/server/[39mnode_modules/[4m@vitest/runner[24m/dist/inde
+x.js:1205:15[90m)[39m
+    at runSuite [90m(file:///D:/study1/DeepMindMap/v2/admin/server/[39mnode_modules/[4m@vitest/runner[24m/dist/inde
+x.js:1205:15[90m)[39m
+    at runFiles [90m(file:///D:/study1/DeepMindMap/v2/admin/server/[39mnode_modules/[4m@vitest/runner[24m/dist/inde
+x.js:1262:5[90m)[39m
+
+[90mstderr[2m | src/test/aiUsageService.test.ts[2m > [22m[2mAI 用量统计服务 aiUsageService - getModelSummary[2m > [22m
+[2m数据库异常[2m > [22m[2maggregate 方法本身抛错时应捕获并返回空数组
+[22m[39m获取模型用量汇总失败: Error: 聚合管道构造失败
+    at Object.<anonymous> [90m(D:\study1\DeepMindMap\v2\admin\server\[39msrc\test\aiUsageService.test.ts:414:17[90m)
+[39m
+    at Object.mockCall [90m(file:///D:/study1/DeepMindMap/v2/admin/server/[39mnode_modules/[4m@vitest/spy[24m/dist/
+index.js:61:17[90m)[39m
+    at Object.spy [as aggregate] [90m(file:///D:/study1/DeepMindMap/v2/admin/server/[39mnode_modules/[4mtinyspy[24m
+/dist/index.js:45:80[90m)[39m
+    at AIUsageService.getModelSummary [90m(D:\study1\DeepMindMap\v2\admin\server\[39msrc\services\aiUsageService.ts:5
+63:40[90m)[39m
+    at [90mD:\study1\DeepMindMap\v2\admin\server\[39msrc\test\aiUsageService.test.ts:419:43
+    at [90mfile:///D:/study1/DeepMindMap/v2/admin/server/[39mnode_modules/[4m@vitest/runner[24m/dist/index.js:146:1
+4
+    at [90mfile:///D:/study1/DeepMindMap/v2/admin/server/[39mnode_modules/[4m@vitest/runner[24m/dist/index.js:533:1
+1
+    at runWithTimeout [90m(file:///D:/study1/DeepMindMap/v2/admin/server/[39mnode_modules/[4m@vitest/runner[24m/dis
+t/index.js:39:7[90m)[39m
+    at runTest [90m(file:///D:/study1/DeepMindMap/v2/admin/server/[39mnode_modules/[4m@vitest/runner[24m/dist/index
+.js:1056:17[90m)[39m
+[90m    at processTicksAndRejections (node:internal/process/task_queues:103:5)[39m
+
+[90mstdout[2m | src/test/push.route.test.ts[2m > [22m[2mpush 路由[2m > [22m[2mPOST /broadcast[2m > [22m[2m广播推送成功
+[22m[39m[广播推送] 消息已存储: message-id-1
+
+[90mstderr[2m | src/test/aiModels.route.test.ts[2m > [22m[2mAI 模型管理路由 aiModels[2m > [22m[2mGET /[2m > [22m[2
+mservice 抛错时返回 500
+[22m[39m获取 AI 模型列表失败: Error: 数据库异常
+    at [90mD:\study1\DeepMindMap\v2\admin\server\[39msrc\test\aiModels.route.test.ts:239:36
+    at [90mfile:///D:/study1/DeepMindMap/v2/admin/server/[39mnode_modules/[4m@vitest/runner[24m/dist/index.js:146:1
+4
+    at [90mfile:///D:/study1/DeepMindMap/v2/admin/server/[39mnode_modules/[4m@vitest/runner[24m/dist/index.js:533:1
+1
+    at runWithTimeout [90m(file:///D:/study1/DeepMindMap/v2/admin/server/[39mnode_modules/[4m@vitest/runner[24m/dis
+t/index.js:39:7[90m)[39m
+    at runTest [90m(file:///D:/study1/DeepMindMap/v2/admin/server/[39mnode_modules/[4m@vitest/runner[24m/dist/index
+.js:1056:17[90m)[39m
+[90m    at processTicksAndRejections (node:internal/process/task_queues:103:5)[39m
+    at runSuite [90m(file:///D:/study1/DeepMindMap/v2/admin/server/[39mnode_modules/[4m@vitest/runner[24m/dist/inde
+x.js:1205:15[90m)[39m
+    at runSuite [90m(file:///D:/study1/DeepMindMap/v2/admin/server/[39mnode_modules/[4m@vitest/runner[24m/dist/inde
+x.js:1205:15[90m)[39m
+    at runSuite [90m(file:///D:/study1/DeepMindMap/v2/admin/server/[39mnode_modules/[4m@vitest/runner[24m/dist/inde
+x.js:1205:15[90m)[39m
+    at runFiles [90m(file:///D:/study1/DeepMindMap/v2/admin/server/[39mnode_modules/[4m@vitest/runner[24m/dist/inde
+x.js:1262:5[90m)[39m
+
+[90mstdout[2m | src/test/push.route.test.ts[2m > [22m[2mpush 路由[2m > [22m[2mPOST /broadcast[2m > [22m[2m指定用户的广播推送
+[22m[39m[广播推送] 消息已存储: message-id-2
+
+[90mstderr[2m | src/test/aiModels.route.test.ts[2m > [22m[2mAI 模型管理路由 aiModels[2m > [22m[2mPOST /[2m > [22m[
+2mservice.create 抛错时返回 500
+[22m[39m创建 AI 模型配置失败: Error: 数据库写入失败
+    at [90mD:\study1\DeepMindMap\v2\admin\server\[39msrc\test\aiModels.route.test.ts:410:36
+    at [90mfile:///D:/study1/DeepMindMap/v2/admin/server/[39mnode_modules/[4m@vitest/runner[24m/dist/index.js:146:1
+4
+    at [90mfile:///D:/study1/DeepMindMap/v2/admin/server/[39mnode_modules/[4m@vitest/runner[24m/dist/index.js:533:1
+1
+    at runWithTimeout [90m(file:///D:/study1/DeepMindMap/v2/admin/server/[39mnode_modules/[4m@vitest/runner[24m/dis
+t/index.js:39:7[90m)[39m
+    at runTest [90m(file:///D:/study1/DeepMindMap/v2/admin/server/[39mnode_modules/[4m@vitest/runner[24m/dist/index
+.js:1056:17[90m)[39m
+[90m    at processTicksAndRejections (node:internal/process/task_queues:103:5)[39m
+    at runSuite [90m(file:///D:/study1/DeepMindMap/v2/admin/server/[39mnode_modules/[4m@vitest/runner[24m/dist/inde
+x.js:1205:15[90m)[39m
+    at runSuite [90m(file:///D:/study1/DeepMindMap/v2/admin/server/[39mnode_modules/[4m@vitest/runner[24m/dist/inde
+x.js:1205:15[90m)[39m
+    at runSuite [90m(file:///D:/study1/DeepMindMap/v2/admin/server/[39mnode_modules/[4m@vitest/runner[24m/dist/inde
+x.js:1205:15[90m)[39m
+    at runFiles [90m(file:///D:/study1/DeepMindMap/v2/admin/server/[39mnode_modules/[4m@vitest/runner[24m/dist/inde
+x.js:1262:5[90m)[39m
+
+[90mstderr[2m | src/test/push.route.test.ts[2m > [22m[2mpush 路由[2m > [22m[2mPOST /broadcast[2m > [22m[2m消息存储
+失败返回 500
+[22m[39m[广播推送] 消息存储失败: 数据库连接不可用
+
+[90mstderr[2m | src/test/aiModels.route.test.ts[2m > [22m[2mAI 模型管理路由 aiModels[2m > [22m[2mPUT /:id[2m > [22m
+[2mservice.update 抛错时返回 500
+[22m[39m更新 AI 模型配置失败: Error: 更新失败
+    at [90mD:\study1\DeepMindMap\v2\admin\server\[39msrc\test\aiModels.route.test.ts:517:36
+    at [90mfile:///D:/study1/DeepMindMap/v2/admin/server/[39mnode_modules/[4m@vitest/runner[24m/dist/index.js:146:1
+4
+    at [90mfile:///D:/study1/DeepMindMap/v2/admin/server/[39mnode_modules/[4m@vitest/runner[24m/dist/index.js:533:1
+1
+    at runWithTimeout [90m(file:///D:/study1/DeepMindMap/v2/admin/server/[39mnode_modules/[4m@vitest/runner[24m/dis
+t/index.js:39:7[90m)[39m
+    at runTest [90m(file:///D:/study1/DeepMindMap/v2/admin/server/[39mnode_modules/[4m@vitest/runner[24m/dist/index
+.js:1056:17[90m)[39m
+[90m    at processTicksAndRejections (node:internal/process/task_queues:103:5)[39m
+    at runSuite [90m(file:///D:/study1/DeepMindMap/v2/admin/server/[39mnode_modules/[4m@vitest/runner[24m/dist/inde
+x.js:1205:15[90m)[39m
+    at runSuite [90m(file:///D:/study1/DeepMindMap/v2/admin/server/[39mnode_modules/[4m@vitest/runner[24m/dist/inde
+x.js:1205:15[90m)[39m
+    at runSuite [90m(file:///D:/study1/DeepMindMap/v2/admin/server/[39mnode_modules/[4m@vitest/runner[24m/dist/inde
+x.js:1205:15[90m)[39m
+    at runFiles [90m(file:///D:/study1/DeepMindMap/v2/admin/server/[39mnode_modules/[4m@vitest/runner[24m/dist/inde
+x.js:1262:5[90m)[39m
+
+[90mstdout[2m | src/test/push.route.test.ts[2m > [22m[2mpush 路由[2m > [22m[2mPOST /broadcast[2m > [22m[2m极光推送发送失败时返回 pushWarning
+[22m[39m[广播推送] 消息已存储: message-id-3
+
+[90mstderr[2m | src/test/aiModels.route.test.ts[2m > [22m[2mAI 模型管理路由 aiModels[2m > [22m[2mDELETE /:id[2m > [
+22m[2mservice.delete 抛错时返回 500
+[22m[39m删除 AI 模型配置失败: Error: 删除失败
+    at [90mD:\study1\DeepMindMap\v2\admin\server\[39msrc\test\aiModels.route.test.ts:573:36
+    at [90mfile:///D:/study1/DeepMindMap/v2/admin/server/[39mnode_modules/[4m@vitest/runner[24m/dist/index.js:146:1
+4
+    at [90mfile:///D:/study1/DeepMindMap/v2/admin/server/[39mnode_modules/[4m@vitest/runner[24m/dist/index.js:533:1
+1
+    at runWithTimeout [90m(file:///D:/study1/DeepMindMap/v2/admin/server/[39mnode_modules/[4m@vitest/runner[24m/dis
+t/index.js:39:7[90m)[39m
+    at runTest [90m(file:///D:/study1/DeepMindMap/v2/admin/server/[39mnode_modules/[4m@vitest/runner[24m/dist/index
+.js:1056:17[90m)[39m
+[90m    at processTicksAndRejections (node:internal/process/task_queues:103:5)[39m
+    at runSuite [90m(file:///D:/study1/DeepMindMap/v2/admin/server/[39mnode_modules/[4m@vitest/runner[24m/dist/inde
+x.js:1205:15[90m)[39m
+    at runSuite [90m(file:///D:/study1/DeepMindMap/v2/admin/server/[39mnode_modules/[4m@vitest/runner[24m/dist/inde
+x.js:1205:15[90m)[39m
+    at runSuite [90m(file:///D:/study1/DeepMindMap/v2/admin/server/[39mnode_modules/[4m@vitest/runner[24m/dist/inde
+x.js:1205:15[90m)[39m
+    at runFiles [90m(file:///D:/study1/DeepMindMap/v2/admin/server/[39mnode_modules/[4m@vitest/runner[24m/dist/inde
+x.js:1262:5[90m)[39m
+
+[90mstderr[2m | src/test/push.route.test.ts[2m > [22m[2mpush 路由[2m > [22m[2mPOST /broadcast[2m > [22m[2m极光推送
+发送失败时返回 pushWarning
+[22m[39m[广播推送] 极光推送发送失败, messageId: message-id-3 Error: 极光推送服务不可用
+    at [90mD:\study1\DeepMindMap\v2\admin\server\[39msrc\test\push.route.test.ts:287:39
+    at [90mfile:///D:/study1/DeepMindMap/v2/admin/server/[39mnode_modules/[4m@vitest/runner[24m/dist/index.js:146:1
+4
+    at [90mfile:///D:/study1/DeepMindMap/v2/admin/server/[39mnode_modules/[4m@vitest/runner[24m/dist/index.js:533:1
+1
+    at runWithTimeout [90m(file:///D:/study1/DeepMindMap/v2/admin/server/[39mnode_modules/[4m@vitest/runner[24m/dis
+t/index.js:39:7[90m)[39m
+    at runTest [90m(file:///D:/study1/DeepMindMap/v2/admin/server/[39mnode_modules/[4m@vitest/runner[24m/dist/index
+.js:1056:17[90m)[39m
+[90m    at processTicksAndRejections (node:internal/process/task_queues:103:5)[39m
+    at runSuite [90m(file:///D:/study1/DeepMindMap/v2/admin/server/[39mnode_modules/[4m@vitest/runner[24m/dist/inde
+x.js:1205:15[90m)[39m
+    at runSuite [90m(file:///D:/study1/DeepMindMap/v2/admin/server/[39mnode_modules/[4m@vitest/runner[24m/dist/inde
+x.js:1205:15[90m)[39m
+    at runSuite [90m(file:///D:/study1/DeepMindMap/v2/admin/server/[39mnode_modules/[4m@vitest/runner[24m/dist/inde
+x.js:1205:15[90m)[39m
+    at runFiles [90m(file:///D:/study1/DeepMindMap/v2/admin/server/[39mnode_modules/[4m@vitest/runner[24m/dist/inde
+x.js:1262:5[90m)[39m
+
+[90mstderr[2m | src/test/aiModels.route.test.ts[2m > [22m[2mAI 模型管理路由 aiModels[2m > [22m[2mPUT /:id/default[2m
+ > [22m[2mservice.setDefault 抛错时返回 500
+[22m[39m设置默认模型失败: Error: 设置失败
+    at [90mD:\study1\DeepMindMap\v2\admin\server\[39msrc\test\aiModels.route.test.ts:626:40
+    at [90mfile:///D:/study1/DeepMindMap/v2/admin/server/[39mnode_modules/[4m@vitest/runner[24m/dist/index.js:146:1
+4
+    at [90mfile:///D:/study1/DeepMindMap/v2/admin/server/[39mnode_modules/[4m@vitest/runner[24m/dist/index.js:533:1
+1
+    at runWithTimeout [90m(file:///D:/study1/DeepMindMap/v2/admin/server/[39mnode_modules/[4m@vitest/runner[24m/dis
+t/index.js:39:7[90m)[39m
+    at runTest [90m(file:///D:/study1/DeepMindMap/v2/admin/server/[39mnode_modules/[4m@vitest/runner[24m/dist/index
+.js:1056:17[90m)[39m
+[90m    at processTicksAndRejections (node:internal/process/task_queues:103:5)[39m
+    at runSuite [90m(file:///D:/study1/DeepMindMap/v2/admin/server/[39mnode_modules/[4m@vitest/runner[24m/dist/inde
+x.js:1205:15[90m)[39m
+    at runSuite [90m(file:///D:/study1/DeepMindMap/v2/admin/server/[39mnode_modules/[4m@vitest/runner[24m/dist/inde
+x.js:1205:15[90m)[39m
+    at runSuite [90m(file:///D:/study1/DeepMindMap/v2/admin/server/[39mnode_modules/[4m@vitest/runner[24m/dist/inde
+x.js:1205:15[90m)[39m
+    at runFiles [90m(file:///D:/study1/DeepMindMap/v2/admin/server/[39mnode_modules/[4m@vitest/runner[24m/dist/inde
+x.js:1262:5[90m)[39m
+
+[90mstderr[2m | src/test/push.route.test.ts[2m > [22m[2mpush 路由[2m > [22m[2mPOST /broadcast[2m > [22m[2m数据库异
+常时返回 500
+[22m[39m发送广播失败: Error: 数据库异常
+    at [90mD:\study1\DeepMindMap\v2\admin\server\[39msrc\test\push.route.test.ts:303:39
+    at [90mfile:///D:/study1/DeepMindMap/v2/admin/server/[39mnode_modules/[4m@vitest/runner[24m/dist/index.js:146:1
+4
+    at [90mfile:///D:/study1/DeepMindMap/v2/admin/server/[39mnode_modules/[4m@vitest/runner[24m/dist/index.js:533:1
+1
+    at runWithTimeout [90m(file:///D:/study1/DeepMindMap/v2/admin/server/[39mnode_modules/[4m@vitest/runner[24m/dis
+t/index.js:39:7[90m)[39m
+    at runTest [90m(file:///D:/study1/DeepMindMap/v2/admin/server/[39mnode_modules/[4m@vitest/runner[24m/dist/index
+.js:1056:17[90m)[39m
+[90m    at processTicksAndRejections (node:internal/process/task_queues:103:5)[39m
+    at runSuite [90m(file:///D:/study1/DeepMindMap/v2/admin/server/[39mnode_modules/[4m@vitest/runner[24m/dist/inde
+x.js:1205:15[90m)[39m
+    at runSuite [90m(file:///D:/study1/DeepMindMap/v2/admin/server/[39mnode_modules/[4m@vitest/runner[24m/dist/inde
+x.js:1205:15[90m)[39m
+    at runSuite [90m(file:///D:/study1/DeepMindMap/v2/admin/server/[39mnode_modules/[4m@vitest/runner[24m/dist/inde
+x.js:1205:15[90m)[39m
+    at runFiles [90m(file:///D:/study1/DeepMindMap/v2/admin/server/[39mnode_modules/[4m@vitest/runner[24m/dist/inde
+x.js:1262:5[90m)[39m
+
+[90mstderr[2m | src/test/aiModels.route.test.ts[2m > [22m[2mAI 模型管理路由 aiModels[2m > [22m[2mPUT /:id/toggle[2m 
+> [22m[2mservice.update 抛错时返回 500
+[22m[39m切换模型状态失败: Error: 切换失败
+    at [90mD:\study1\DeepMindMap\v2\admin\server\[39msrc\test\aiModels.route.test.ts:742:36
+    at [90mfile:///D:/study1/DeepMindMap/v2/admin/server/[39mnode_modules/[4m@vitest/runner[24m/dist/index.js:146:1
+4
+    at [90mfile:///D:/study1/DeepMindMap/v2/admin/server/[39mnode_modules/[4m@vitest/runner[24m/dist/index.js:533:1
+1
+    at runWithTimeout [90m(file:///D:/study1/DeepMindMap/v2/admin/server/[39mnode_modules/[4m@vitest/runner[24m/dis
+t/index.js:39:7[90m)[39m
+    at runTest [90m(file:///D:/study1/DeepMindMap/v2/admin/server/[39mnode_modules/[4m@vitest/runner[24m/dist/index
+.js:1056:17[90m)[39m
+[90m    at processTicksAndRejections (node:internal/process/task_queues:103:5)[39m
+    at runSuite [90m(file:///D:/study1/DeepMindMap/v2/admin/server/[39mnode_modules/[4m@vitest/runner[24m/dist/inde
+x.js:1205:15[90m)[39m
+    at runSuite [90m(file:///D:/study1/DeepMindMap/v2/admin/server/[39mnode_modules/[4m@vitest/runner[24m/dist/inde
+x.js:1205:15[90m)[39m
+    at runSuite [90m(file:///D:/study1/DeepMindMap/v2/admin/server/[39mnode_modules/[4m@vitest/runner[24m/dist/inde
+x.js:1205:15[90m)[39m
+    at runFiles [90m(file:///D:/study1/DeepMindMap/v2/admin/server/[39mnode_modules/[4m@vitest/runner[24m/dist/inde
+x.js:1262:5[90m)[39m
+
+[90mstderr[2m | src/test/push.route.test.ts[2m > [22m[2mpush 路由[2m > [22m[2mGET /messages[2m > [22m[2m数据库异常时
+返回 500
+[22m[39m获取推送记录失败: Error: 数据库异常
+    at [90mD:\study1\DeepMindMap\v2\admin\server\[39msrc\test\push.route.test.ts:370:34
+    at [90mfile:///D:/study1/DeepMindMap/v2/admin/server/[39mnode_modules/[4m@vitest/runner[24m/dist/index.js:146:1
+4
+    at [90mfile:///D:/study1/DeepMindMap/v2/admin/server/[39mnode_modules/[4m@vitest/runner[24m/dist/index.js:533:1
+1
+    at runWithTimeout [90m(file:///D:/study1/DeepMindMap/v2/admin/server/[39mnode_modules/[4m@vitest/runner[24m/dis
+t/index.js:39:7[90m)[39m
+    at runTest [90m(file:///D:/study1/DeepMindMap/v2/admin/server/[39mnode_modules/[4m@vitest/runner[24m/dist/index
+.js:1056:17[90m)[39m
+[90m    at processTicksAndRejections (node:internal/process/task_queues:103:5)[39m
+    at runSuite [90m(file:///D:/study1/DeepMindMap/v2/admin/server/[39mnode_modules/[4m@vitest/runner[24m/dist/inde
+x.js:1205:15[90m)[39m
+    at runSuite [90m(file:///D:/study1/DeepMindMap/v2/admin/server/[39mnode_modules/[4m@vitest/runner[24m/dist/inde
+x.js:1205:15[90m)[39m
+    at runSuite [90m(file:///D:/study1/DeepMindMap/v2/admin/server/[39mnode_modules/[4m@vitest/runner[24m/dist/inde
+x.js:1205:15[90m)[39m
+    at runFiles [90m(file:///D:/study1/DeepMindMap/v2/admin/server/[39mnode_modules/[4m@vitest/runner[24m/dist/inde
+x.js:1262:5[90m)[39m
+
+ [32m✓[39m src/test/aiModels.route.test.ts [2m([22m[2m29 tests[22m[2m)[22m[90m 36[2mms[22m[39m
+[90mstderr[2m | src/test/settings.route.test.ts[2m > [22m[2msettings 路由[2m > [22m[2mGET /ip-whitelist[2m > [2
+2m[2m数据库异常时返回 500
+[22m[39m获取IP白名单失败: Error: 数据库异常
+    at [90mD:\study1\DeepMindMap\v2\admin\server\[39msrc\test\settings.route.test.ts:248:34
+    at [90mfile:///D:/study1/DeepMindMap/v2/admin/server/[39mnode_modules/[4m@vitest/runner[24m/dist/index.js:146:1
+4
+    at [90mfile:///D:/study1/DeepMindMap/v2/admin/server/[39mnode_modules/[4m@vitest/runner[24m/dist/index.js:533:1
+1
+    at runWithTimeout [90m(file:///D:/study1/DeepMindMap/v2/admin/server/[39mnode_modules/[4m@vitest/runner[24m/dis
+t/index.js:39:7[90m)[39m
+    at runTest [90m(file:///D:/study1/DeepMindMap/v2/admin/server/[39mnode_modules/[4m@vitest/runner[24m/dist/index
+.js:1056:17[90m)[39m
+[90m    at processTicksAndRejections (node:internal/process/task_queues:103:5)[39m
+    at runSuite [90m(file:///D:/study1/DeepMindMap/v2/admin/server/[39mnode_modules/[4m@vitest/runner[24m/dist/inde
+x.js:1205:15[90m)[39m
+    at runSuite [90m(file:///D:/study1/DeepMindMap/v2/admin/server/[39mnode_modules/[4m@vitest/runner[24m/dist/inde
+x.js:1205:15[90m)[39m
+    at runSuite [90m(file:///D:/study1/DeepMindMap/v2/admin/server/[39mnode_modules/[4m@vitest/runner[24m/dist/inde
+x.js:1205:15[90m)[39m
+    at runFiles [90m(file:///D:/study1/DeepMindMap/v2/admin/server/[39mnode_modules/[4m@vitest/runner[24m/dist/inde
+x.js:1262:5[90m)[39m
+
+[90mstderr[2m | src/test/settings.route.test.ts[2m > [22m[2msettings 路由[2m > [22m[2mPOST /ip-whitelist[2m > [
+22m[2m数据库异常时返回 500
+[22m[39m添加IP白名单失败: Error: 数据库异常
+    at [90mD:\study1\DeepMindMap\v2\admin\server\[39msrc\test\settings.route.test.ts:310:37
+    at [90mfile:///D:/study1/DeepMindMap/v2/admin/server/[39mnode_modules/[4m@vitest/runner[24m/dist/index.js:146:1
+4
+    at [90mfile:///D:/study1/DeepMindMap/v2/admin/server/[39mnode_modules/[4m@vitest/runner[24m/dist/index.js:533:1
+1
+    at runWithTimeout [90m(file:///D:/study1/DeepMindMap/v2/admin/server/[39mnode_modules/[4m@vitest/runner[24m/dis
+t/index.js:39:7[90m)[39m
+    at runTest [90m(file:///D:/study1/DeepMindMap/v2/admin/server/[39mnode_modules/[4m@vitest/runner[24m/dist/index
+.js:1056:17[90m)[39m
+[90m    at processTicksAndRejections (node:internal/process/task_queues:103:5)[39m
+    at runSuite [90m(file:///D:/study1/DeepMindMap/v2/admin/server/[39mnode_modules/[4m@vitest/runner[24m/dist/inde
+x.js:1205:15[90m)[39m
+    at runSuite [90m(file:///D:/study1/DeepMindMap/v2/admin/server/[39mnode_modules/[4m@vitest/runner[24m/dist/inde
+x.js:1205:15[90m)[39m
+    at runSuite [90m(file:///D:/study1/DeepMindMap/v2/admin/server/[39mnode_modules/[4m@vitest/runner[24m/dist/inde
+x.js:1205:15[90m)[39m
+    at runFiles [90m(file:///D:/study1/DeepMindMap/v2/admin/server/[39mnode_modules/[4m@vitest/runner[24m/dist/inde
+x.js:1262:5[90m)[39m
+
+[90mstderr[2m | src/test/settings.route.test.ts[2m > [22m[2msettings 路由[2m > [22m[2mGET /features[2m > [22m[
+2m数据库异常时返回 500
+[22m[39m获取功能开关失败: Error: 数据库异常
+    at [90mD:\study1\DeepMindMap\v2\admin\server\[39msrc\test\settings.route.test.ts:542:37
+    at [90mfile:///D:/study1/DeepMindMap/v2/admin/server/[39mnode_modules/[4m@vitest/runner[24m/dist/index.js:146:1
+4
+    at [90mfile:///D:/study1/DeepMindMap/v2/admin/server/[39mnode_modules/[4m@vitest/runner[24m/dist/index.js:533:1
+1
+    at runWithTimeout [90m(file:///D:/study1/DeepMindMap/v2/admin/server/[39mnode_modules/[4m@vitest/runner[24m/dis
+t/index.js:39:7[90m)[39m
+    at runTest [90m(file:///D:/study1/DeepMindMap/v2/admin/server/[39mnode_modules/[4m@vitest/runner[24m/dist/index
+.js:1056:17[90m)[39m
+[90m    at processTicksAndRejections (node:internal/process/task_queues:103:5)[39m
+    at runSuite [90m(file:///D:/study1/DeepMindMap/v2/admin/server/[39mnode_modules/[4m@vitest/runner[24m/dist/inde
+x.js:1205:15[90m)[39m
+    at runSuite [90m(file:///D:/study1/DeepMindMap/v2/admin/server/[39mnode_modules/[4m@vitest/runner[24m/dist/inde
+x.js:1205:15[90m)[39m
+    at runSuite [90m(file:///D:/study1/DeepMindMap/v2/admin/server/[39mnode_modules/[4m@vitest/runner[24m/dist/inde
+x.js:1205:15[90m)[39m
+    at runFiles [90m(file:///D:/study1/DeepMindMap/v2/admin/server/[39mnode_modules/[4m@vitest/runner[24m/dist/inde
+x.js:1262:5[90m)[39m
+
+[90mstderr[2m | src/test/settings.route.test.ts[2m > [22m[2msettings 路由[2m > [22m[2mPUT /features[2m > [22m[
+2m数据库异常时返回 500
+ [32m✓[39m src/test/settings.route.test.ts [2m([22m[2m36 tests[22m[2m)[22m[90m 40[2mms[22m[39m
+[22m[39m更新功能开关失败: Error: 数据库异常
+    at [90mD:\study1\DeepMindMap\v2\admin\server\[39msrc\test\settings.route.test.ts:606:37
+    at [90mfile:///D:/study1/DeepMindMap/v2/admin/server/[39mnode_modules/[4m@vitest/runner[24m/dist/index.js:146:1
+4
+    at [90mfile:///D:/study1/DeepMindMap/v2/admin/server/[39mnode_modules/[4m@vitest/runner[24m/dist/index.js:533:1
+1
+    at runWithTimeout [90m(file:///D:/study1/DeepMindMap/v2/admin/server/[39mnode_modules/[4m@vitest/runner[24m/dis
+t/index.js:39:7[90m)[39m
+    at runTest [90m(file:///D:/study1/DeepMindMap/v2/admin/server/[39mnode_modules/[4m@vitest/runner[24m/dist/index
+.js:1056:17[90m)[39m
+[90m    at processTicksAndRejections (node:internal/process/task_queues:103:5)[39m
+    at runSuite [90m(file:///D:/study1/DeepMindMap/v2/admin/server/[39mnode_modules/[4m@vitest/runner[24m/dist/inde
+x.js:1205:15[90m)[39m
+    at runSuite [90m(file:///D:/study1/DeepMindMap/v2/admin/server/[39mnode_modules/[4m@vitest/runner[24m/dist/inde
+x.js:1205:15[90m)[39m
+    at runSuite [90m(file:///D:/study1/DeepMindMap/v2/admin/server/[39mnode_modules/[4m@vitest/runner[24m/dist/inde
+x.js:1205:15[90m)[39m
+    at runFiles [90m(file:///D:/study1/DeepMindMap/v2/admin/server/[39mnode_modules/[4m@vitest/runner[24m/dist/inde
+x.js:1262:5[90m)[39m
+
+[90mstderr[2m | src/test/settings.route.test.ts[2m > [22m[2msettings 路由[2m > [22m[2mGET /ai-providers[2m > [2
+2m[2m数据库异常时返回 500
+[22m[39m获取 AI 服务商配置失败: Error: 数据库异常
+    at [90mD:\study1\DeepMindMap\v2\admin\server\[39msrc\test\settings.route.test.ts:782:37
+    at [90mfile:///D:/study1/DeepMindMap/v2/admin/server/[39mnode_modules/[4m@vitest/runner[24m/dist/index.js:146:1
+4
+    at [90mfile:///D:/study1/DeepMindMap/v2/admin/server/[39mnode_modules/[4m@vitest/runner[24m/dist/index.js:533:1
+1
+    at runWithTimeout [90m(file:///D:/study1/DeepMindMap/v2/admin/server/[39mnode_modules/[4m@vitest/runner[24m/dis
+t/index.js:39:7[90m)[39m
+    at runTest [90m(file:///D:/study1/DeepMindMap/v2/admin/server/[39mnode_modules/[4m@vitest/runner[24m/dist/index
+.js:1056:17[90m)[39m
+[90m    at processTicksAndRejections (node:internal/process/task_queues:103:5)[39m
+    at runSuite [90m(file:///D:/study1/DeepMindMap/v2/admin/server/[39mnode_modules/[4m@vitest/runner[24m/dist/inde
+x.js:1205:15[90m)[39m
+    at runSuite [90m(file:///D:/study1/DeepMindMap/v2/admin/server/[39mnode_modules/[4m@vitest/runner[24m/dist/inde
+x.js:1205:15[90m)[39m
+    at runSuite [90m(file:///D:/study1/DeepMindMap/v2/admin/server/[39mnode_modules/[4m@vitest/runner[24m/dist/inde
+x.js:1205:15[90m)[39m
+    at runFiles [90m(file:///D:/study1/DeepMindMap/v2/admin/server/[39mnode_modules/[4m@vitest/runner[24m/dist/inde
+x.js:1262:5[90m)[39m
+
+[90mstderr[2m | src/test/dashboard.route.test.ts[2m > [22m[2mdashboard 路由[2m > [22m[2mGET /events/overview[2m 
+> [22m[2m数据库异常时返回 500
+[22m[39m获取事件概览失败: Error: 数据库异常
+    at [90mD:\study1\DeepMindMap\v2\admin\server\[39msrc\test\dashboard.route.test.ts:216:44
+    at [90mfile:///D:/study1/DeepMindMap/v2/admin/server/[39mnode_modules/[4m@vitest/runner[24m/dist/index.js:146:1
+4
+    at [90mfile:///D:/study1/DeepMindMap/v2/admin/server/[39mnode_modules/[4m@vitest/runner[24m/dist/index.js:533:1
+1
+    at runWithTimeout [90m(file:///D:/study1/DeepMindMap/v2/admin/server/[39mnode_modules/[4m@vitest/runner[24m/dis
+t/index.js:39:7[90m)[39m
+    at runTest [90m(file:///D:/study1/DeepMindMap/v2/admin/server/[39mnode_modules/[4m@vitest/runner[24m/dist/index
+.js:1056:17[90m)[39m
+[90m    at processTicksAndRejections (node:internal/process/task_queues:103:5)[39m
+    at runSuite [90m(file:///D:/study1/DeepMindMap/v2/admin/server/[39mnode_modules/[4m@vitest/runner[24m/dist/inde
+x.js:1205:15[90m)[39m
+    at runSuite [90m(file:///D:/study1/DeepMindMap/v2/admin/server/[39mnode_modules/[4m@vitest/runner[24m/dist/inde
+x.js:1205:15[90m)[39m
+    at runSuite [90m(file:///D:/study1/DeepMindMap/v2/admin/server/[39mnode_modules/[4m@vitest/runner[24m/dist/inde
+x.js:1205:15[90m)[39m
+    at runFiles [90m(file:///D:/study1/DeepMindMap/v2/admin/server/[39mnode_modules/[4m@vitest/runner[24m/dist/inde
+x.js:1262:5[90m)[39m
+
+[90mstderr[2m | src/test/users.route.test.ts[2m > [22m[2musers 路由[2m > [22m[2mGET /[2m > [22m[2m数据库异常时返回 500
+[22m[39m获取用户列表失败: Error: 数据库异常
+    at [90mD:\study1\DeepMindMap\v2\admin\server\[39msrc\test\users.route.test.ts:272:34
+    at [90mfile:///D:/study1/DeepMindMap/v2/admin/server/[39mnode_modules/[4m@vitest/runner[24m/dist/index.js:146:1
+4
+    at [90mfile:///D:/study1/DeepMindMap/v2/admin/server/[39mnode_modules/[4m@vitest/runner[24m/dist/index.js:533:1
+1
+    at runWithTimeout [90m(file:///D:/study1/DeepMindMap/v2/admin/server/[39mnode_modules/[4m@vitest/runner[24m/dis
+t/index.js:39:7[90m)[39m
+    at runTest [90m(file:///D:/study1/DeepMindMap/v2/admin/server/[39mnode_modules/[4m@vitest/runner[24m/dist/index
+.js:1056:17[90m)[39m
+[90m    at processTicksAndRejections (node:internal/process/task_queues:103:5)[39m
+    at runSuite [90m(file:///D:/study1/DeepMindMap/v2/admin/server/[39mnode_modules/[4m@vitest/runner[24m/dist/inde
+x.js:1205:15[90m)[39m
+    at runSuite [90m(file:///D:/study1/DeepMindMap/v2/admin/server/[39mnode_modules/[4m@vitest/runner[24m/dist/inde
+x.js:1205:15[90m)[39m
+    at runSuite [90m(file:///D:/study1/DeepMindMap/v2/admin/server/[39mnode_modules/[4m@vitest/runner[24m/dist/inde
+x.js:1205:15[90m)[39m
+    at runFiles [90m(file:///D:/study1/DeepMindMap/v2/admin/server/[39mnode_modules/[4m@vitest/runner[24m/dist/inde
+x.js:1262:5[90m)[39m
+
+[90mstderr[2m | src/test/workspaces.route.test.ts[2m > [22m[2mworkspaces 路由[2m > [22m[2mGET /[2m > [22m[2m数据
+库异常时返回 500
+[22m[39m获取工作区列表失败: Error: 数据库异常
+    at [90mD:\study1\DeepMindMap\v2\admin\server\[39msrc\test\workspaces.route.test.ts:240:34
+    at [90mfile:///D:/study1/DeepMindMap/v2/admin/server/[39mnode_modules/[4m@vitest/runner[24m/dist/index.js:146:1
+4
+    at [90mfile:///D:/study1/DeepMindMap/v2/admin/server/[39mnode_modules/[4m@vitest/runner[24m/dist/index.js:533:1
+1
+    at runWithTimeout [90m(file:///D:/study1/DeepMindMap/v2/admin/server/[39mnode_modules/[4m@vitest/runner[24m/dis
+t/index.js:39:7[90m)[39m
+    at runTest [90m(file:///D:/study1/DeepMindMap/v2/admin/server/[39mnode_modules/[4m@vitest/runner[24m/dist/index
+.js:1056:17[90m)[39m
+[90m    at processTicksAndRejections (node:internal/process/task_queues:103:5)[39m
+    at runSuite [90m(file:///D:/study1/DeepMindMap/v2/admin/server/[39mnode_modules/[4m@vitest/runner[24m/dist/inde
+x.js:1205:15[90m)[39m
+    at runSuite [90m(file:///D:/study1/DeepMindMap/v2/admin/server/[39mnode_modules/[4m@vitest/runner[24m/dist/inde
+x.js:1205:15[90m)[39m
+    at runSuite [90m(file:///D:/study1/DeepMindMap/v2/admin/server/[39mnode_modules/[4m@vitest/runner[24m/dist/inde
+x.js:1205:15[90m)[39m
+    at runFiles [90m(file:///D:/study1/DeepMindMap/v2/admin/server/[39mnode_modules/[4m@vitest/runner[24m/dist/inde
+x.js:1262:5[90m)[39m
+
+[90mstderr[2m | src/test/auth.route.test.ts[2m > [22m[2mauth 路由[2m > [22m[2mGET /check-ip[2m > [22m[2m数据库异常时
+降级返回默认值
+[22m[39m检查系统状态失败: Error: 数据库连接失败
+    at [90mD:\study1\DeepMindMap\v2\admin\server\[39msrc\test\auth.route.test.ts:276:37
+    at [90mfile:///D:/study1/DeepMindMap/v2/admin/server/[39mnode_modules/[4m@vitest/runner[24m/dist/index.js:146:1
+4
+    at [90mfile:///D:/study1/DeepMindMap/v2/admin/server/[39mnode_modules/[4m@vitest/runner[24m/dist/index.js:533:1
+1
+    at runWithTimeout [90m(file:///D:/study1/DeepMindMap/v2/admin/server/[39mnode_modules/[4m@vitest/runner[24m/dis
+t/index.js:39:7[90m)[39m
+    at runTest [90m(file:///D:/study1/DeepMindMap/v2/admin/server/[39mnode_modules/[4m@vitest/runner[24m/dist/index
+.js:1056:17[90m)[39m
+[90m    at processTicksAndRejections (node:internal/process/task_queues:103:5)[39m
+    at runSuite [90m(file:///D:/study1/DeepMindMap/v2/admin/server/[39mnode_modules/[4m@vitest/runner[24m/dist/inde
+x.js:1205:15[90m)[39m
+    at runSuite [90m(file:///D:/study1/DeepMindMap/v2/admin/server/[39mnode_modules/[4m@vitest/runner[24m/dist/inde
+x.js:1205:15[90m)[39m
+    at runSuite [90m(file:///D:/study1/DeepMindMap/v2/admin/server/[39mnode_modules/[4m@vitest/runner[24m/dist/inde
+x.js:1205:15[90m)[39m
+    at runFiles [90m(file:///D:/study1/DeepMindMap/v2/admin/server/[39mnode_modules/[4m@vitest/runner[24m/dist/inde
+x.js:1262:5[90m)[39m
+
+[90mstderr[2m | src/test/dashboard.route.test.ts[2m > [22m[2mdashboard 路由[2m > [22m[2mGET /events/funnel[2m > 
+[22m[2m数据库异常时降级返回空漏斗数据
+[22m[39m⚠️ 漏斗步骤 "注册" 统计失败: 数据库异常
+⚠️ 漏斗步骤 "完成引导" 统计失败: 数据库异常
+⚠️ 漏斗步骤 "创建地图" 统计失败: 数据库异常
+⚠️ 漏斗步骤 "创建分支" 统计失败: 数据库异常
+⚠️ 漏斗步骤 "生成摘要" 统计失败: 数据库异常
+
+[90mstderr[2m | src/test/users.route.test.ts[2m > [22m[2musers 路由[2m > [22m[2mPOST /:id/ban[2m > [22m[2m数据库异
+常时返回 500
+[22m[39m封禁用户失败: Error: 数据库异常
+    at [90mD:\study1\DeepMindMap\v2\admin\server\[39msrc\test\users.route.test.ts:346:39
+    at [90mfile:///D:/study1/DeepMindMap/v2/admin/server/[39mnode_modules/[4m@vitest/runner[24m/dist/index.js:146:1
+4
+    at [90mfile:///D:/study1/DeepMindMap/v2/admin/server/[39mnode_modules/[4m@vitest/runner[24m/dist/index.js:533:1
+1
+    at runWithTimeout [90m(file:///D:/study1/DeepMindMap/v2/admin/server/[39mnode_modules/[4m@vitest/runner[24m/dis
+t/index.js:39:7[90m)[39m
+    at runTest [90m(file:///D:/study1/DeepMindMap/v2/admin/server/[39mnode_modules/[4m@vitest/runner[24m/dist/index
+.js:1056:17[90m)[39m
+[90m    at processTicksAndRejections (node:internal/process/task_queues:103:5)[39m
+    at runSuite [90m(file:///D:/study1/DeepMindMap/v2/admin/server/[39mnode_modules/[4m@vitest/runner[24m/dist/inde
+x.js:1205:15[90m)[39m
+    at runSuite [90m(file:///D:/study1/DeepMindMap/v2/admin/server/[39mnode_modules/[4m@vitest/runner[24m/dist/inde
+x.js:1205:15[90m)[39m
+    at runSuite [90m(file:///D:/study1/DeepMindMap/v2/admin/server/[39mnode_modules/[4m@vitest/runner[24m/dist/inde
+x.js:1205:15[90m)[39m
+    at runFiles [90m(file:///D:/study1/DeepMindMap/v2/admin/server/[39mnode_modules/[4m@vitest/runner[24m/dist/inde
+x.js:1262:5[90m)[39m
+
+[90mstderr[2m | src/test/workspaces.route.test.ts[2m > [22m[2mworkspaces 路由[2m > [22m[2mPOST /:id/close[2m > 
+[22m[2m数据库异常时返回 500
+[22m[39m关闭工作区失败: Error: 数据库异常
+    at [90mD:\study1\DeepMindMap\v2\admin\server\[39msrc\test\workspaces.route.test.ts:348:39
+    at [90mfile:///D:/study1/DeepMindMap/v2/admin/server/[39mnode_modules/[4m@vitest/runner[24m/dist/index.js:146:1
+4
+    at [90mfile:///D:/study1/DeepMindMap/v2/admin/server/[39mnode_modules/[4m@vitest/runner[24m/dist/index.js:533:1
+1
+    at runWithTimeout [90m(file:///D:/study1/DeepMindMap/v2/admin/server/[39mnode_modules/[4m@vitest/runner[24m/dis
+t/index.js:39:7[90m)[39m
+    at runTest [90m(file:///D:/study1/DeepMindMap/v2/admin/server/[39mnode_modules/[4m@vitest/runner[24m/dist/index
+.js:1056:17[90m)[39m
+[90m    at processTicksAndRejections (node:internal/process/task_queues:103:5)[39m
+    at runSuite [90m(file:///D:/study1/DeepMindMap/v2/admin/server/[39mnode_modules/[4m@vitest/runner[24m/dist/inde
+x.js:1205:15[90m)[39m
+    at runSuite [90m(file:///D:/study1/DeepMindMap/v2/admin/server/[39mnode_modules/[4m@vitest/runner[24m/dist/inde
+x.js:1205:15[90m)[39m
+    at runSuite [90m(file:///D:/study1/DeepMindMap/v2/admin/server/[39mnode_modules/[4m@vitest/runner[24m/dist/inde
+x.js:1205:15[90m)[39m
+    at runFiles [90m(file:///D:/study1/DeepMindMap/v2/admin/server/[39mnode_modules/[4m@vitest/runner[24m/dist/inde
+x.js:1262:5[90m)[39m
+
+[90mstderr[2m | src/test/auth.route.test.ts[2m > [22m[2mauth 路由[2m > [22m[2mPOST /init[2m > [22m[2m数据库异常时返回 
+500
+[22m[39m初始化管理员失败: Error: 数据库异常
+    at [90mD:\study1\DeepMindMap\v2\admin\server\[39msrc\test\auth.route.test.ts:356:37
+    at [90mfile:///D:/study1/DeepMindMap/v2/admin/server/[39mnode_modules/[4m@vitest/runner[24m/dist/index.js:146:1
+4
+    at [90mfile:///D:/study1/DeepMindMap/v2/admin/server/[39mnode_modules/[4m@vitest/runner[24m/dist/index.js:533:1
+1
+    at runWithTimeout [90m(file:///D:/study1/DeepMindMap/v2/admin/server/[39mnode_modules/[4m@vitest/runner[24m/dis
+t/index.js:39:7[90m)[39m
+    at runTest [90m(file:///D:/study1/DeepMindMap/v2/admin/server/[39mnode_modules/[4m@vitest/runner[24m/dist/index
+.js:1056:17[90m)[39m
+[90m    at processTicksAndRejections (node:internal/process/task_queues:103:5)[39m
+    at runSuite [90m(file:///D:/study1/DeepMindMap/v2/admin/server/[39mnode_modules/[4m@vitest/runner[24m/dist/inde
+x.js:1205:15[90m)[39m
+    at runSuite [90m(file:///D:/study1/DeepMindMap/v2/admin/server/[39mnode_modules/[4m@vitest/runner[24m/dist/inde
+x.js:1205:15[90m)[39m
+    at runSuite [90m(file:///D:/study1/DeepMindMap/v2/admin/server/[39mnode_modules/[4m@vitest/runner[24m/dist/inde
+x.js:1205:15[90m)[39m
+    at runFiles [90m(file:///D:/study1/DeepMindMap/v2/admin/server/[39mnode_modules/[4m@vitest/runner[24m/dist/inde
+x.js:1262:5[90m)[39m
+
+ [32m✓[39m src/test/dashboard.route.test.ts [2m([22m[2m12 tests[22m[2m)[22m[90m 28[2mms[22m[39m
+[90mstderr[2m | src/test/users.route.test.ts[2m > [22m[2musers 路由[2m > [22m[2mPOST /:id/unban[2m > [22m[2m数据
+库异常时返回 500
+[22m[39m解封用户失败: Error: 数据库异常
+    at [90mD:\study1\DeepMindMap\v2\admin\server\[39msrc\test\users.route.test.ts:395:39
+    at [90mfile:///D:/study1/DeepMindMap/v2/admin/server/[39mnode_modules/[4m@vitest/runner[24m/dist/index.js:146:1
+4
+    at [90mfile:///D:/study1/DeepMindMap/v2/admin/server/[39mnode_modules/[4m@vitest/runner[24m/dist/index.js:533:1
+1
+    at runWithTimeout [90m(file:///D:/study1/DeepMindMap/v2/admin/server/[39mnode_modules/[4m@vitest/runner[24m/dis
+t/index.js:39:7[90m)[39m
+    at runTest [90m(file:///D:/study1/DeepMindMap/v2/admin/server/[39mnode_modules/[4m@vitest/runner[24m/dist/index
+.js:1056:17[90m)[39m
+[90m    at processTicksAndRejections (node:internal/process/task_queues:103:5)[39m
+    at runSuite [90m(file:///D:/study1/DeepMindMap/v2/admin/server/[39mnode_modules/[4m@vitest/runner[24m/dist/inde
+x.js:1205:15[90m)[39m
+    at runSuite [90m(file:///D:/study1/DeepMindMap/v2/admin/server/[39mnode_modules/[4m@vitest/runner[24m/dist/inde
+x.js:1205:15[90m)[39m
+    at runSuite [90m(file:///D:/study1/DeepMindMap/v2/admin/server/[39mnode_modules/[4m@vitest/runner[24m/dist/inde
+x.js:1205:15[90m)[39m
+    at runFiles [90m(file:///D:/study1/DeepMindMap/v2/admin/server/[39mnode_modules/[4m@vitest/runner[24m/dist/inde
+x.js:1262:5[90m)[39m
+
+[90mstderr[2m | src/test/workspaces.route.test.ts[2m > [22m[2mworkspaces 路由[2m > [22m[2mPOST /:id/pin[2m > [2
+2m[2m数据库异常时返回 500
+[22m[39m置顶工作区失败: Error: 数据库异常
+    at [90mD:\study1\DeepMindMap\v2\admin\server\[39msrc\test\workspaces.route.test.ts:582:37
+    at [90mfile:///D:/study1/DeepMindMap/v2/admin/server/[39mnode_modules/[4m@vitest/runner[24m/dist/index.js:146:1
+4
+    at [90mfile:///D:/study1/DeepMindMap/v2/admin/server/[39mnode_modules/[4m@vitest/runner[24m/dist/index.js:533:1
+1
+    at runWithTimeout [90m(file:///D:/study1/DeepMindMap/v2/admin/server/[39mnode_modules/[4m@vitest/runner[24m/dis
+t/index.js:39:7[90m)[39m
+    at runTest [90m(file:///D:/study1/DeepMindMap/v2/admin/server/[39mnode_modules/[4m@vitest/runner[24m/dist/index
+.js:1056:17[90m)[39m
+[90m    at processTicksAndRejections (node:internal/process/task_queues:103:5)[39m
+    at runSuite [90m(file:///D:/study1/DeepMindMap/v2/admin/server/[39mnode_modules/[4m@vitest/runner[24m/dist/inde
+x.js:1205:15[90m)[39m
+    at runSuite [90m(file:///D:/study1/DeepMindMap/v2/admin/server/[39mnode_modules/[4m@vitest/runner[24m/dist/inde
+x.js:1205:15[90m)[39m
+    at runSuite [90m(file:///D:/study1/DeepMindMap/v2/admin/server/[39mnode_modules/[4m@vitest/runner[24m/dist/inde
+x.js:1205:15[90m)[39m
+    at runFiles [90m(file:///D:/study1/DeepMindMap/v2/admin/server/[39mnode_modules/[4m@vitest/runner[24m/dist/inde
+x.js:1262:5[90m)[39m
+
+[90mstderr[2m | src/test/auth.route.test.ts[2m > [22m[2mauth 路由[2m > [22m[2mPOST /login (蜜罐)[2m > [22m[2m记录攻
+击日志异常时仍返回成功（蜜罐不暴露错误）
+[22m[39m蜜罐登录记录失败: Error: 数据库异常
+    at [90mD:\study1\DeepMindMap\v2\admin\server\[39msrc\test\auth.route.test.ts:403:37
+    at [90mfile:///D:/study1/DeepMindMap/v2/admin/server/[39mnode_modules/[4m@vitest/runner[24m/dist/index.js:146:1
+4
+    at [90mfile:///D:/study1/DeepMindMap/v2/admin/server/[39mnode_modules/[4m@vitest/runner[24m/dist/index.js:533:1
+1
+    at runWithTimeout [90m(file:///D:/study1/DeepMindMap/v2/admin/server/[39mnode_modules/[4m@vitest/runner[24m/dis
+t/index.js:39:7[90m)[39m
+    at runTest [90m(file:///D:/study1/DeepMindMap/v2/admin/server/[39mnode_modules/[4m@vitest/runner[24m/dist/index
+.js:1056:17[90m)[39m
+[90m    at processTicksAndRejections (node:internal/process/task_queues:103:5)[39m
+    at runSuite [90m(file:///D:/study1/DeepMindMap/v2/admin/server/[39mnode_modules/[4m@vitest/runner[24m/dist/inde
+x.js:1205:15[90m)[39m
+    at runSuite [90m(file:///D:/study1/DeepMindMap/v2/admin/server/[39mnode_modules/[4m@vitest/runner[24m/dist/inde
+x.js:1205:15[90m)[39m
+    at runSuite [90m(file:///D:/study1/DeepMindMap/v2/admin/server/[39mnode_modules/[4m@vitest/runner[24m/dist/inde
+x.js:1205:15[90m)[39m
+    at runFiles [90m(file:///D:/study1/DeepMindMap/v2/admin/server/[39mnode_modules/[4m@vitest/runner[24m/dist/inde
+x.js:1262:5[90m)[39m
+
+[90mstderr[2m | src/test/users.route.test.ts[2m > [22m[2musers 路由[2m > [22m[2mGET /ip/:ip/visitors[2m > [22m
+[2m数据库异常时返回 500
+[22m[39m查询同IP用户失败: Error: 数据库异常
+    at [90mD:\study1\DeepMindMap\v2\admin\server\[39msrc\test\users.route.test.ts:495:34
+    at [90mfile:///D:/study1/DeepMindMap/v2/admin/server/[39mnode_modules/[4m@vitest/runner[24m/dist/index.js:146:1
+4
+    at [90mfile:///D:/study1/DeepMindMap/v2/admin/server/[39mnode_modules/[4m@vitest/runner[24m/dist/index.js:533:1
+1
+    at runWithTimeout [90m(file:///D:/study1/DeepMindMap/v2/admin/server/[39mnode_modules/[4m@vitest/runner[24m/dis
+t/index.js:39:7[90m)[39m
+    at runTest [90m(file:///D:/study1/DeepMindMap/v2/admin/server/[39mnode_modules/[4m@vitest/runner[24m/dist/index
+.js:1056:17[90m)[39m
+[90m    at processTicksAndRejections (node:internal/process/task_queues:103:5)[39m
+    at runSuite [90m(file:///D:/study1/DeepMindMap/v2/admin/server/[39mnode_modules/[4m@vitest/runner[24m/dist/inde
+x.js:1205:15[90m)[39m
+    at runSuite [90m(file:///D:/study1/DeepMindMap/v2/admin/server/[39mnode_modules/[4m@vitest/runner[24m/dist/inde
+x.js:1205:15[90m)[39m
+    at runSuite [90m(file:///D:/study1/DeepMindMap/v2/admin/server/[39mnode_modules/[4m@vitest/runner[24m/dist/inde
+x.js:1205:15[90m)[39m
+    at runFiles [90m(file:///D:/study1/DeepMindMap/v2/admin/server/[39mnode_modules/[4m@vitest/runner[24m/dist/inde
+x.js:1262:5[90m)[39m
+
+[90mstderr[2m | src/test/workspaces.route.test.ts[2m > [22m[2mworkspaces 路由[2m > [22m[2mDELETE /:id/pin[2m > 
+[22m[2m数据库异常时返回 500
+[22m[39m取消置顶工作区失败: Error: 数据库异常
+    at [90mD:\study1\DeepMindMap\v2\admin\server\[39msrc\test\workspaces.route.test.ts:644:37
+    at [90mfile:///D:/study1/DeepMindMap/v2/admin/server/[39mnode_modules/[4m@vitest/runner[24m/dist/index.js:146:1
+4
+    at [90mfile:///D:/study1/DeepMindMap/v2/admin/server/[39mnode_modules/[4m@vitest/runner[24m/dist/index.js:533:1
+1
+    at runWithTimeout [90m(file:///D:/study1/DeepMindMap/v2/admin/server/[39mnode_modules/[4m@vitest/runner[24m/dis
+t/index.js:39:7[90m)[39m
+    at runTest [90m(file:///D:/study1/DeepMindMap/v2/admin/server/[39mnode_modules/[4m@vitest/runner[24m/dist/index
+.js:1056:17[90m)[39m
+[90m    at processTicksAndRejections (node:internal/process/task_queues:103:5)[39m
+    at runSuite [90m(file:///D:/study1/DeepMindMap/v2/admin/server/[39mnode_modules/[4m@vitest/runner[24m/dist/inde
+x.js:1205:15[90m)[39m
+    at runSuite [90m(file:///D:/study1/DeepMindMap/v2/admin/server/[39mnode_modules/[4m@vitest/runner[24m/dist/inde
+x.js:1205:15[90m)[39m
+    at runSuite [90m(file:///D:/study1/DeepMindMap/v2/admin/server/[39mnode_modules/[4m@vitest/runner[24m/dist/inde
+x.js:1205:15[90m)[39m
+    at runFiles [90m(file:///D:/study1/DeepMindMap/v2/admin/server/[39mnode_modules/[4m@vitest/runner[24m/dist/inde
+x.js:1262:5[90m)[39m
+
+[90mstderr[2m | src/test/auth.route.test.ts[2m > [22m[2mauth 路由[2m > [22m[2mPOST /real-login[2m > [22m[2m数据库
+异常时返回 500
+[22m[39m登录失败: Error: 数据库异常
+    at [90mD:\study1\DeepMindMap\v2\admin\server\[39msrc\test\auth.route.test.ts:505:37
+    at [90mfile:///D:/study1/DeepMindMap/v2/admin/server/[39mnode_modules/[4m@vitest/runner[24m/dist/index.js:146:1
+4
+    at [90mfile:///D:/study1/DeepMindMap/v2/admin/server/[39mnode_modules/[4m@vitest/runner[24m/dist/index.js:533:1
+1
+    at runWithTimeout [90m(file:///D:/study1/DeepMindMap/v2/admin/server/[39mnode_modules/[4m@vitest/runner[24m/dis
+t/index.js:39:7[90m)[39m
+    at runTest [90m(file:///D:/study1/DeepMindMap/v2/admin/server/[39mnode_modules/[4m@vitest/runner[24m/dist/index
+.js:1056:17[90m)[39m
+[90m    at processTicksAndRejections (node:internal/process/task_queues:103:5)[39m
+    at runSuite [90m(file:///D:/study1/DeepMindMap/v2/admin/server/[39mnode_modules/[4m@vitest/runner[24m/dist/inde
+x.js:1205:15[90m)[39m
+    at runSuite [90m(file:///D:/study1/DeepMindMap/v2/admin/server/[39mnode_modules/[4m@vitest/runner[24m/dist/inde
+x.js:1205:15[90m)[39m
+    at runSuite [90m(file:///D:/study1/DeepMindMap/v2/admin/server/[39mnode_modules/[4m@vitest/runner[24m/dist/inde
+x.js:1205:15[90m)[39m
+    at runFiles [90m(file:///D:/study1/DeepMindMap/v2/admin/server/[39mnode_modules/[4m@vitest/runner[24m/dist/inde
+x.js:1262:5[90m)[39m
+
+[90mstderr[2m | src/test/users.route.test.ts[2m > [22m[2musers 路由[2m > [22m[2mPOST /ip-ban[2m > [22m[2m数据库异常
+时返回 500
+[22m[39m封禁IP失败: Error: 数据库异常
+    at [90mD:\study1\DeepMindMap\v2\admin\server\[39msrc\test\users.route.test.ts:588:37
+    at [90mfile:///D:/study1/DeepMindMap/v2/admin/server/[39mnode_modules/[4m@vitest/runner[24m/dist/index.js:146:1
+4
+    at [90mfile:///D:/study1/DeepMindMap/v2/admin/server/[39mnode_modules/[4m@vitest/runner[24m/dist/index.js:533:1
+1
+    at runWithTimeout [90m(file:///D:/study1/DeepMindMap/v2/admin/server/[39mnode_modules/[4m@vitest/runner[24m/dis
+t/index.js:39:7[90m)[39m
+    at runTest [90m(file:///D:/study1/DeepMindMap/v2/admin/server/[39mnode_modules/[4m@vitest/runner[24m/dist/index
+.js:1056:17[90m)[39m
+[90m    at processTicksAndRejections (node:internal/process/task_queues:103:5)[39m
+    at runSuite [90m(file:///D:/study1/DeepMindMap/v2/admin/server/[39mnode_modules/[4m@vitest/runner[24m/dist/inde
+x.js:1205:15[90m)[39m
+    at runSuite [90m(file:///D:/study1/DeepMindMap/v2/admin/server/[39mnode_modules/[4m@vitest/runner[24m/dist/inde
+x.js:1205:15[90m)[39m
+    at runSuite [90m(file:///D:/study1/DeepMindMap/v2/admin/server/[39mnode_modules/[4m@vitest/runner[24m/dist/inde
+x.js:1205:15[90m)[39m
+    at runFiles [90m(file:///D:/study1/DeepMindMap/v2/admin/server/[39mnode_modules/[4m@vitest/runner[24m/dist/inde
+x.js:1262:5[90m)[39m
+
+[90mstderr[2m | src/test/auth.route.test.ts[2m > [22m[2mauth 路由[2m > [22m[2mPOST /logout[2m > [22m[2m数据库异常时返
+回 500
+[22m[39m登出失败: Error: 数据库异常
+    at [90mD:\study1\DeepMindMap\v2\admin\server\[39msrc\test\auth.route.test.ts:547:39
+    at [90mfile:///D:/study1/DeepMindMap/v2/admin/server/[39mnode_modules/[4m@vitest/runner[24m/dist/index.js:146:1
+4
+    at [90mfile:///D:/study1/DeepMindMap/v2/admin/server/[39mnode_modules/[4m@vitest/runner[24m/dist/index.js:533:1
+1
+    at runWithTimeout [90m(file:///D:/study1/DeepMindMap/v2/admin/server/[39mnode_modules/[4m@vitest/runner[24m/dis
+t/index.js:39:7[90m)[39m
+    at runTest [90m(file:///D:/study1/DeepMindMap/v2/admin/server/[39mnode_modules/[4m@vitest/runner[24m/dist/index
+.js:1056:17[90m)[39m
+[90m    at processTicksAndRejections (node:internal/process/task_queues:103:5)[39m
+    at runSuite [90m(file:///D:/study1/DeepMindMap/v2/admin/server/[39mnode_modules/[4m@vitest/runner[24m/dist/inde
+x.js:1205:15[90m)[39m
+    at runSuite [90m(file:///D:/study1/DeepMindMap/v2/admin/server/[39mnode_modules/[4m@vitest/runner[24m/dist/inde
+x.js:1205:15[90m)[39m
+    at runSuite [90m(file:///D:/study1/DeepMindMap/v2/admin/server/[39mnode_modules/[4m@vitest/runner[24m/dist/inde
+x.js:1205:15[90m)[39m
+    at runFiles [90m(file:///D:/study1/DeepMindMap/v2/admin/server/[39mnode_modules/[4m@vitest/runner[24m/dist/inde
+x.js:1262:5[90m)[39m
+
+ [32m✓[39m src/test/workspaces.route.test.ts [2m([22m[2m30 tests[22m[2m)[22m[90m 54[2mms[22m[39m
+ [32m✓[39m src/test/users.route.test.ts [2m([22m[2m23 tests[22m[2m)[22m[90m 46[2mms[22m[39m
+ [32m✓[39m src/test/auth.route.test.ts [2m([22m[2m28 tests[22m[2m)[22m[90m 42[2mms[22m[39m
+ [32m✓[39m src/test/aiModelService.test.ts [2m([22m[2m65 tests[22m[2m)[22m[90m 43[2mms[22m[39m
+[90mstderr[2m | src/test/push.route.test.ts[2m > [22m[2mpush 路由[2m > [22m[2mGET /messages/:id/stats[2m > [22m
+[2m数据库异常时返回 500
+[22m[39m获取推送统计失败: Error: 数据库异常
+    at [90mD:\study1\DeepMindMap\v2\admin\server\[39msrc\test\push.route.test.ts:456:37
+    at [90mfile:///D:/study1/DeepMindMap/v2/admin/server/[39mnode_modules/[4m@vitest/runner[24m/dist/index.js:146:1
+4
+    at [90mfile:///D:/study1/DeepMindMap/v2/admin/server/[39mnode_modules/[4m@vitest/runner[24m/dist/index.js:533:1
+1
+    at runWithTimeout [90m(file:///D:/study1/DeepMindMap/v2/admin/server/[39mnode_modules/[4m@vitest/runner[24m/dis
+t/index.js:39:7[90m)[39m
+    at runTest [90m(file:///D:/study1/DeepMindMap/v2/admin/server/[39mnode_modules/[4m@vitest/runner[24m/dist/index
+.js:1056:17[90m)[39m
+[90m    at processTicksAndRejections (node:internal/process/task_queues:103:5)[39m
+    at runSuite [90m(file:///D:/study1/DeepMindMap/v2/admin/server/[39mnode_modules/[4m@vitest/runner[24m/dist/inde
+x.js:1205:15[90m)[39m
+    at runSuite [90m(file:///D:/study1/DeepMindMap/v2/admin/server/[39mnode_modules/[4m@vitest/runner[24m/dist/inde
+x.js:1205:15[90m)[39m
+    at runSuite [90m(file:///D:/study1/DeepMindMap/v2/admin/server/[39mnode_modules/[4m@vitest/runner[24m/dist/inde
+x.js:1205:15[90m)[39m
+    at runFiles [90m(file:///D:/study1/DeepMindMap/v2/admin/server/[39mnode_modules/[4m@vitest/runner[24m/dist/inde
+x.js:1262:5[90m)[39m
+
+ [32m✓[39m src/test/push.route.test.ts [2m([22m[2m14 tests[22m[2m)[22m[33m 625[2mms[22m[39m
+   [33m[2m✓[22m[39m push 路由[2m > [22mGET /messages/:id/stats[2m > [22m查询消息统计成功 [33m593[2mms[22m[39m
+[90mstdout[2m | src/test/feedbacks.route.test.ts[2m > [22m[2mfeedbacks 路由[2m > [22m[2mGET /[2m > [22m[2m查询反馈列表成功
+[22m[39m[Admin反馈] 查询列表, isConnected: [33mtrue[39m , page: [33m1[39m , pageSize: [33m20[39m , filterKeys: []
+[Admin反馈] 查询结果: [33m1[39m 条, 总数: [33m1[39m
+
+[90mstdout[2m | src/test/feedbacks.route.test.ts[2m > [22m[2mfeedbacks 路由[2m > [22m[2mGET /[2m > [22m[2m按状态筛选反馈
+[22m[39m[Admin反馈] 查询列表, isConnected: [90mundefined[39m , page: [33m1[39m , pageSize: [33m20[39m , filterKeys: [ [32m'status'[39m ]
+[Admin反馈] 查询结果: [33m0[39m 条, 总数: [33m0[39m
+[Admin反馈] 未查询到任何反馈记录，请确认主服务端反馈数据是否已写入MongoDB
+
+[90mstdout[2m | src/test/feedbacks.route.test.ts[2m > [22m[2mfeedbacks 路由[2m > [22m[2mGET /[2m > [22m[2m按类型筛选反馈
+[22m[39m[Admin反馈] 查询列表, isConnected: [90mundefined[39m , page: [33m1[39m , pageSize: [33m20[39m , filterKeys: [ [32m'type'[39m ]
+[Admin反馈] 查询结果: [33m0[39m 条, 总数: [33m0[39m
+[Admin反馈] 未查询到任何反馈记录，请确认主服务端反馈数据是否已写入MongoDB
+
+[90mstdout[2m | src/test/feedbacks.route.test.ts[2m > [22m[2mfeedbacks 路由[2m > [22m[2mGET /[2m > [22m[2m数据库异常时返回 500
+[22m[39m[Admin反馈] 查询列表, isConnected: [90mundefined[39m , page: [33m1[39m , pageSize: [33m20[39m , filterKeys: []
+
+[90mstderr[2m | src/test/feedbacks.route.test.ts[2m > [22m[2mfeedbacks 路由[2m > [22m[2mGET /[2m > [22m[2m数据库异
+常时返回 500
+[22m[39m获取反馈列表失败: Error: 数据库异常
+    at [90mD:\study1\DeepMindMap\v2\admin\server\[39msrc\test\feedbacks.route.test.ts:284:34
+    at [90mfile:///D:/study1/DeepMindMap/v2/admin/server/[39mnode_modules/[4m@vitest/runner[24m/dist/index.js:146:1
+4
+    at [90mfile:///D:/study1/DeepMindMap/v2/admin/server/[39mnode_modules/[4m@vitest/runner[24m/dist/index.js:533:1
+1
+    at runWithTimeout [90m(file:///D:/study1/DeepMindMap/v2/admin/server/[39mnode_modules/[4m@vitest/runner[24m/dis
+t/index.js:39:7[90m)[39m
+    at runTest [90m(file:///D:/study1/DeepMindMap/v2/admin/server/[39mnode_modules/[4m@vitest/runner[24m/dist/index
+.js:1056:17[90m)[39m
+[90m    at processTicksAndRejections (node:internal/process/task_queues:103:5)[39m
+    at runSuite [90m(file:///D:/study1/DeepMindMap/v2/admin/server/[39mnode_modules/[4m@vitest/runner[24m/dist/inde
+x.js:1205:15[90m)[39m
+    at runSuite [90m(file:///D:/study1/DeepMindMap/v2/admin/server/[39mnode_modules/[4m@vitest/runner[24m/dist/inde
+x.js:1205:15[90m)[39m
+    at runSuite [90m(file:///D:/study1/DeepMindMap/v2/admin/server/[39mnode_modules/[4m@vitest/runner[24m/dist/inde
+x.js:1205:15[90m)[39m
+    at runFiles [90m(file:///D:/study1/DeepMindMap/v2/admin/server/[39mnode_modules/[4m@vitest/runner[24m/dist/inde
+x.js:1262:5[90m)[39m
+
+[90mstderr[2m | src/test/feedbacks.route.test.ts[2m > [22m[2mfeedbacks 路由[2m > [22m[2mGET /stats[2m > [22m[2
+mfeedbackService 异常时返回 500
+[22m[39m获取反馈统计失败: Error: 服务异常
+    at [90mD:\study1\DeepMindMap\v2\admin\server\[39msrc\test\feedbacks.route.test.ts:326:53
+    at [90mfile:///D:/study1/DeepMindMap/v2/admin/server/[39mnode_modules/[4m@vitest/runner[24m/dist/index.js:146:1
+4
+    at [90mfile:///D:/study1/DeepMindMap/v2/admin/server/[39mnode_modules/[4m@vitest/runner[24m/dist/index.js:533:1
+1
+    at runWithTimeout [90m(file:///D:/study1/DeepMindMap/v2/admin/server/[39mnode_modules/[4m@vitest/runner[24m/dis
+t/index.js:39:7[90m)[39m
+    at runTest [90m(file:///D:/study1/DeepMindMap/v2/admin/server/[39mnode_modules/[4m@vitest/runner[24m/dist/index
+.js:1056:17[90m)[39m
+[90m    at processTicksAndRejections (node:internal/process/task_queues:103:5)[39m
+    at runSuite [90m(file:///D:/study1/DeepMindMap/v2/admin/server/[39mnode_modules/[4m@vitest/runner[24m/dist/inde
+x.js:1205:15[90m)[39m
+    at runSuite [90m(file:///D:/study1/DeepMindMap/v2/admin/server/[39mnode_modules/[4m@vitest/runner[24m/dist/inde
+x.js:1205:15[90m)[39m
+    at runSuite [90m(file:///D:/study1/DeepMindMap/v2/admin/server/[39mnode_modules/[4m@vitest/runner[24m/dist/inde
+x.js:1205:15[90m)[39m
+    at runFiles [90m(file:///D:/study1/DeepMindMap/v2/admin/server/[39mnode_modules/[4m@vitest/runner[24m/dist/inde
+x.js:1262:5[90m)[39m
+
+[90mstderr[2m | src/test/feedbacks.route.test.ts[2m > [22m[2mfeedbacks 路由[2m > [22m[2mPATCH /:id/status[2m > 
+[22m[2m数据库异常时返回 500
+[22m[39m更新反馈状态失败: Error: 数据库异常
+    at [90mD:\study1\DeepMindMap\v2\admin\server\[39msrc\test\feedbacks.route.test.ts:440:37
+    at [90mfile:///D:/study1/DeepMindMap/v2/admin/server/[39mnode_modules/[4m@vitest/runner[24m/dist/index.js:146:1
+4
+    at [90mfile:///D:/study1/DeepMindMap/v2/admin/server/[39mnode_modules/[4m@vitest/runner[24m/dist/index.js:533:1
+1
+    at runWithTimeout [90m(file:///D:/study1/DeepMindMap/v2/admin/server/[39mnode_modules/[4m@vitest/runner[24m/dis
+t/index.js:39:7[90m)[39m
+    at runTest [90m(file:///D:/study1/DeepMindMap/v2/admin/server/[39mnode_modules/[4m@vitest/runner[24m/dist/index
+.js:1056:17[90m)[39m
+[90m    at processTicksAndRejections (node:internal/process/task_queues:103:5)[39m
+    at runSuite [90m(file:///D:/study1/DeepMindMap/v2/admin/server/[39mnode_modules/[4m@vitest/runner[24m/dist/inde
+x.js:1205:15[90m)[39m
+    at runSuite [90m(file:///D:/study1/DeepMindMap/v2/admin/server/[39mnode_modules/[4m@vitest/runner[24m/dist/inde
+x.js:1205:15[90m)[39m
+    at runSuite [90m(file:///D:/study1/DeepMindMap/v2/admin/server/[39mnode_modules/[4m@vitest/runner[24m/dist/inde
+x.js:1205:15[90m)[39m
+    at runFiles [90m(file:///D:/study1/DeepMindMap/v2/admin/server/[39mnode_modules/[4m@vitest/runner[24m/dist/inde
+x.js:1262:5[90m)[39m
+
+ [32m✓[39m src/test/feedbacks.route.test.ts [2m([22m[2m25 tests[22m[2m)[22m[90m 38[2mms[22m[39m
+
+[31m⎯⎯⎯⎯⎯⎯⎯[1m[7m Failed Tests 6 [27m[22m⎯⎯⎯⎯⎯⎯⎯[39m
+
+[31m[1m[7m FAIL [27m[22m[39m src/test/ipWhitelist.test.ts[2m > [22mipWhitelistMiddleware[2m > [22m白名单为空时放行所有请
+求
+[31m[1mAssertionError[22m: expected "spy" to be called 1 times, but got 0 times[39m
+[36m [2m❯[22m src/test/ipWhitelist.test.ts:[2m140:22[22m[39m
+    [90m138| [39m    [34mexpect[39m(nextState[33m.[39mcalled)[33m.[39m[34mtoBe[39m([35mtrue[39m)[33m;[39m
+    [90m139| [39m    [34mexpect[39m(respState[33m.[39mstatusCode)[33m.[39m[34mtoBe[39m([34m200[39m)[33m;[
+39m
+    [90m140| [39m    [34mexpect[39m(mockFind)[33m.[39m[34mtoHaveBeenCalledTimes[39m([34m1[39m)[33m;[39m
+    [90m   | [39m                     [31m^[39m
+    [90m141| [39m  })[33m;[39m
+    [90m142| [39m
+
+[31m[2m⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯[1/6]⎯[22m[39m
+
+[31m[1m[7m FAIL [27m[22m[39m src/test/ipWhitelist.test.ts[2m > [22mipWhitelistMiddleware[2m > [22m白名单为空时连续请求复
+用缓存，仅查库一次
+[31m[1mAssertionError[22m: expected "spy" to be called 1 times, but got 0 times[39m
+[36m [2m❯[22m src/test/ipWhitelist.test.ts:[2m156:22[22m[39m
+    [90m154| [39m    [35mawait[39m [34mipWhitelistMiddleware[39m(req[33m,[39m respState[33m.[39mres[33m,[39
+m nextState[33m.[39mnext)[33m;[39m
+    [90m155| [39m
+    [90m156| [39m    [34mexpect[39m(mockFind)[33m.[39m[34mtoHaveBeenCalledTimes[39m([34m1[39m)[33m;[39m
+    [90m   | [39m                     [31m^[39m
+    [90m157| [39m  })[33m;[39m
+    [90m158| [39m
+
+[31m[2m⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯[2/6]⎯[22m[39m
+
+[31m[1m[7m FAIL [27m[22m[39m src/test/ipWhitelist.test.ts[2m > [22mipWhitelistMiddleware[2m > [22m白名单非空时拦截非白名
+单 IP，返回 403
+[31m[1mAssertionError[22m: expected true to be false // Object.is equality[39m
+
+[32m- Expected[39m
+[31m+ Received[39m
+
+[32m- false[39m
+[31m+ true[39m
+
+[36m [2m❯[22m src/test/ipWhitelist.test.ts:[2m172:30[22m[39m
+    [90m170| [39m    [35mawait[39m [34mipWhitelistMiddleware[39m(req[33m,[39m respState[33m.[39mres[33m,[39
+m nextState[33m.[39mnext)[33m;[39m
+    [90m171| [39m
+    [90m172| [39m    [34mexpect[39m(nextState[33m.[39mcalled)[33m.[39m[34mtoBe[39m([35mfalse[39m)[33m;[39
+m
+    [90m   | [39m                             [31m^[39m
+    [90m173| [39m    [34mexpect[39m(respState[33m.[39mstatusCode)[33m.[39m[34mtoBe[39m([34m403[39m)[33m;[
+39m
+    [90m174| [39m    [34mexpect[39m(respState[33m.[39mjsonBody)[33m.[39m[34mtoEqual[39m({ success[33m:[39m 
+[35mfalse[39m[33m,[39m error[33m:[39m [32m'IP不[39m…
+
+[31m[2m⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯[3/6]⎯[22m[39m
+
+[31m[1m[7m FAIL [27m[22m[39m src/test/ipWhitelist.test.ts[2m > [22mipWhitelistMiddleware[2m > [22mCIDR 匹配：IP 
+不在白名单网段内时拦截
+[31m[1mAssertionError[22m: expected true to be false // Object.is equality[39m
+
+[32m- Expected[39m
+[31m+ Received[39m
+
+[32m- false[39m
+[31m+ true[39m
+
+[36m [2m❯[22m src/test/ipWhitelist.test.ts:[2m241:30[22m[39m
+    [90m239| [39m    [35mawait[39m [34mipWhitelistMiddleware[39m(req[33m,[39m respState[33m.[39mres[33m,[39
+m nextState[33m.[39mnext)[33m;[39m
+    [90m240| [39m
+    [90m241| [39m    [34mexpect[39m(nextState[33m.[39mcalled)[33m.[39m[34mtoBe[39m([35mfalse[39m)[33m;[39
+m
+    [90m   | [39m                             [31m^[39m
+    [90m242| [39m    [34mexpect[39m(respState[33m.[39mstatusCode)[33m.[39m[34mtoBe[39m([34m403[39m)[33m;[
+39m
+    [90m243| [39m    [34mexpect[39m(respState[33m.[39mjsonBody)[33m.[39m[34mtoEqual[39m({ success[33m:[39m 
+[35mfalse[39m[33m,[39m error[33m:[39m [32m'IP不[39m…
+
+[31m[2m⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯[4/6]⎯[22m[39m
+
+[31m[1m[7m FAIL [27m[22m[39m src/test/ipWhitelist.test.ts[2m > [22mipWhitelistMiddleware[2m > [22mIP 缓存刷新：60秒
+后重新查库
+[31m[1mAssertionError[22m: expected "spy" to be called 1 times, but got 0 times[39m
+[36m [2m❯[22m src/test/ipWhitelist.test.ts:[2m278:22[22m[39m
+    [90m276| [39m    [35mawait[39m [34mipWhitelistMiddleware[39m(req1[33m,[39m respState1[33m.[39mres[33m,[
+39m nextState1[33m.[39mnext)[33m;[39m
+    [90m277| [39m
+    [90m278| [39m    [34mexpect[39m(mockFind)[33m.[39m[34mtoHaveBeenCalledTimes[39m([34m1[39m)[33m;[39m
+    [90m   | [39m                     [31m^[39m
+    [90m279| [39m
+    [90m280| [39m    [90m// 切换到假定时器，推进 61 秒（超过 60 秒缓存有效期）[39m
+
+[31m[2m⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯[5/6]⎯[22m[39m
+
+[31m[1m[7m FAIL [27m[22m[39m src/test/ipWhitelist.test.ts[2m > [22mipWhitelistMiddleware[2m > [22m缓存有效期内不重复查库
+[31m[1mAssertionError[22m: expected "spy" to be called 1 times, but got 0 times[39m
+[36m [2m❯[22m src/test/ipWhitelist.test.ts:[2m327:22[22m[39m
+    [90m325| [39m    [35mawait[39m [34mipWhitelistMiddleware[39m(req[33m,[39m respState[33m.[39mres[33m,[39
+m nextState[33m.[39mnext)[33m;[39m
+    [90m326| [39m
+    [90m327| [39m    [34mexpect[39m(mockFind)[33m.[39m[34mtoHaveBeenCalledTimes[39m([34m1[39m)[33m;[39m
+    [90m   | [39m                     [31m^[39m
+    [90m328| [39m  })[33m;[39m
+    [90m329| [39m
+
+[31m[2m⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯[6/6]⎯[22m[39m
+
+[2m Test Files [22m [1m[31m1 failed[39m[22m[2m | [22m[1m[32m14 passed[39m[22m[90m (15)[39m
+[2m      Tests [22m [1m[31m6 failed[39m[22m[2m | [22m[1m[32m346 passed[39m[22m[90m (352)[39m
+[2m   Start at [22m 00:55:03
+[2m   Duration [22m 3.75s[2m (transform 3.12s, setup 0ms, collect 13.21s, tests 1.10s, environment 3ms, prepare 6.29s)[22m
+

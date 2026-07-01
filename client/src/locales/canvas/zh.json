@@ -73,5 +73,6 @@
   "templateLibraryDesc": "选择一个模板快速开始，或创建空白地图",
   "createBlankMap": "创建空白地图",
   "nodesCount": "{{count}} 节点",
-  "selectTemplate": "选择模板"
+  "selectTemplate": "选择模板",
+  "templateCreateFailed": "从模板创建思维导图失败，请重试"
 }

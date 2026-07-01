@@ -138,6 +138,59 @@ class NodeService {
     return `${REDIS_CACHE_KEY_PREFIX}${workspaceId}`;
   }
 
+  /** 日志去重 Map：相同消息 60 秒内只输出一次，避免批量处理时日志洪水 */
+  private static warnDedupMap = new Map<string, number>();
+  private static readonly WARN_DEDUP_INTERVAL = 60000;
+
+  /**
+   * 去重 warn 日志输出
+   * 相同消息在 60 秒内只输出一次，避免批量处理节点时产生大量重复日志
+   * @param message - 日志消息
+   */
+  private dedupWarn(message: string): void {
+    const now = Date.now();
+    const lastWarnTime = NodeService.warnDedupMap.get(message) || 0;
+    if (now - lastWarnTime > NodeService.WARN_DEDUP_INTERVAL) {
+      console.warn(message);
+      NodeService.warnDedupMap.set(message, now);
+    }
+  }
+
+  /**
+   * 安全地将任意值转换为 Date 对象
+   * 非法入参（undefined/null/空字符串/Invalid Date）时回退到当前时间
+   * @param value - 待转换的值，可能是 undefined/null/字符串/Date
+   * @param fieldName - 字段名，用于日志记录
+   * @returns 有效的 Date 对象
+   */
+  private safeDate(value: unknown, fieldName: string = 'date'): Date {
+    if (value === undefined || value === null || value === '') {
+      this.dedupWarn(`[NodeService] ${fieldName} 为空，使用当前时间作为回退值`);
+      return new Date();
+    }
+    const date = value instanceof Date ? value : new Date(value as string);
+    if (isNaN(date.getTime())) {
+      this.dedupWarn(`[NodeService] ${fieldName} 为非法日期: ${value}，使用当前时间作为回退值`);
+      return new Date();
+    }
+    return date;
+  }
+
+  /**
+   * 安全地将 Date 对象转换为 ISO 字符串
+   * Invalid Date 时回退到当前时间的 ISO 字符串
+   * @param date - 待转换的 Date 对象
+   * @param fieldName - 字段名，用于日志记录
+   * @returns 有效的 ISO 字符串
+   */
+  private safeIso(date: Date, fieldName: string = 'date'): string {
+    if (!date || isNaN(date.getTime())) {
+      this.dedupWarn(`[NodeService] ${fieldName} 为非法日期，使用当前时间作为回退值`);
+      return new Date().toISOString();
+    }
+    return date.toISOString();
+  }
+
   /**
    * 将Node对象转换为Neo4j兼容的属性对象
    * Neo4j只接受string/number/boolean及其数组作为属性值
@@ -160,8 +213,8 @@ class NodeService {
       tags: node.tags,
       parentIds: node.parentIds,
       childrenIds: node.childrenIds,
-      createdAt: node.createdAt.toISOString(),
-      updatedAt: node.updatedAt.toISOString(),
+      createdAt: this.safeIso(node.createdAt, 'createdAt'),
+      updatedAt: this.safeIso(node.updatedAt, 'updatedAt'),
     };
     if (node.compositeChildren !== undefined) {
       props.compositeChildren = node.compositeChildren;
@@ -215,8 +268,8 @@ class NodeService {
       parentIds: (props.parentIds as string[]) || [],
       childrenIds: (props.childrenIds as string[]) || [],
       createdBy: props.createdBy as string | undefined,
-      createdAt: new Date(props.createdAt as string),
-      updatedAt: new Date(props.updatedAt as string),
+      createdAt: this.safeDate(props.createdAt, 'createdAt'),
+      updatedAt: this.safeDate(props.updatedAt, 'updatedAt'),
     };
   }
 
@@ -233,7 +286,7 @@ class NodeService {
       sourceId: relation.sourceId,
       targetId: relation.targetId,
       type: relation.type,
-      createdAt: relation.createdAt.toISOString(),
+      createdAt: this.safeIso(relation.createdAt, 'relation.createdAt'),
     };
     if (relation.description !== undefined) {
       props.description = relation.description;
@@ -259,7 +312,7 @@ class NodeService {
       type: props.type as RelationType,
       description: props.description as string | undefined,
       createdBy: props.createdBy as string | undefined,
-      createdAt: new Date(props.createdAt as string),
+      createdAt: this.safeDate(props.createdAt, 'relation.createdAt'),
     };
   }
 
@@ -325,8 +378,8 @@ class NodeService {
       for (const [nodeId, nodeData] of Object.entries(parsed.nodes)) {
         nodes.set(nodeId, {
           ...nodeData,
-          createdAt: new Date(nodeData.createdAt),
-          updatedAt: new Date(nodeData.updatedAt),
+          createdAt: this.safeDate(nodeData.createdAt, 'createdAt'),
+          updatedAt: this.safeDate(nodeData.updatedAt, 'updatedAt'),
         });
       }
 
@@ -687,7 +740,7 @@ class NodeService {
       ...updates,
       id: existing.id,
       workspaceId: existing.workspaceId,
-      createdAt: existing.createdAt,
+      createdAt: this.safeDate(existing.createdAt, 'createdAt'),
       updatedAt: new Date(),
     };
 

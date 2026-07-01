@@ -207,6 +207,11 @@ async function retryRequest(
  * @param visitorId - 访客ID
  */
 export async function notifyVisitorCacheClear(visitorId: string): Promise<void> {
+  // 延迟校验：未配置 INTERNAL_API_TOKEN 时跳过请求，避免主服务端 403 错误与日志噪音
+  if (!INTERNAL_TOKEN) {
+    console.warn('[缓存通知] INTERNAL_API_TOKEN 未配置，跳过访客缓存通知');
+    return;
+  }
   try {
     await circuitBreaker.execute(() => retryRequest(async () => {
       await axios.post(`${MAIN_SERVER_URL}/api/internal/clear-cache`, {
@@ -232,6 +237,11 @@ export async function notifyVisitorCacheClear(visitorId: string): Promise<void> 
  * @param workspaceId - 工作区ID
  */
 export async function notifyWorkspaceCacheClear(workspaceId: string): Promise<void> {
+  // 延迟校验：未配置 INTERNAL_API_TOKEN 时跳过请求，避免主服务端 403 错误与日志噪音
+  if (!INTERNAL_TOKEN) {
+    console.warn('[缓存通知] INTERNAL_API_TOKEN 未配置，跳过工作区缓存通知');
+    return;
+  }
   try {
     await circuitBreaker.execute(() => retryRequest(async () => {
       await axios.post(`${MAIN_SERVER_URL}/api/internal/clear-cache`, {
@@ -283,6 +293,11 @@ export async function notifySensitiveWordCacheClear(): Promise<void> {
  * 失败时自动重试
  */
 export async function notifyAllCacheClear(): Promise<void> {
+  // 延迟校验：未配置 INTERNAL_API_TOKEN 时跳过请求，避免主服务端 403 错误与日志噪音
+  if (!INTERNAL_TOKEN) {
+    console.warn('[缓存通知] INTERNAL_API_TOKEN 未配置，跳过全量缓存通知');
+    return;
+  }
   try {
     await circuitBreaker.execute(() => retryRequest(async () => {
       await axios.post(`${MAIN_SERVER_URL}/api/internal/clear-cache`, {}, {
@@ -311,6 +326,11 @@ export async function notifyFeedbackPush(
   feedbackTitle: string,
   newStatus: string
 ): Promise<void> {
+  // 延迟校验：未配置 INTERNAL_API_TOKEN 时跳过请求，避免主服务端 403 错误与日志噪音
+  if (!INTERNAL_TOKEN) {
+    console.warn('[反馈推送] INTERNAL_API_TOKEN 未配置，跳过反馈推送通知');
+    return;
+  }
   try {
     await circuitBreaker.execute(() => retryRequest(async () => {
       await axios.post(`${MAIN_SERVER_URL}/api/internal/push/feedback-notification`, {

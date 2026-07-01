@@ -37,8 +37,8 @@ interface SegmentFormData {
  */
 const FIELD_LABELS: Record<SegmentRuleField, string> = {
   lastActiveAt: '最后活跃时间',
-  messageCount: '消息数量',
-  hasOwnApiKey: '是否拥有API密钥',
+  createdAt: '注册时间',
+  workspaceCount: '工作区数量',
 };
 
 /**
@@ -72,7 +72,7 @@ const UserSegmentsPage: React.FC = () => {
   const [segmentForm, setSegmentForm] = useState<SegmentFormData>({
     name: '',
     description: '',
-    ruleField: 'messageCount',
+    ruleField: 'workspaceCount',
     ruleOperator: 'gte',
     ruleValue: '',
     autoUpdate: false,
@@ -95,7 +95,7 @@ const UserSegmentsPage: React.FC = () => {
   const [editSegmentForm, setEditSegmentForm] = useState<SegmentFormData>({
     name: '',
     description: '',
-    ruleField: 'messageCount',
+    ruleField: 'workspaceCount',
     ruleOperator: 'gte',
     ruleValue: '',
     autoUpdate: false,
@@ -232,7 +232,7 @@ const UserSegmentsPage: React.FC = () => {
       setSegmentForm({
         name: '',
         description: '',
-        ruleField: 'messageCount',
+        ruleField: 'workspaceCount',
         ruleOperator: 'gte',
         ruleValue: '',
         autoUpdate: false,
@@ -372,18 +372,14 @@ const UserSegmentsPage: React.FC = () => {
 
   /**
    * 解析规则值为正确的类型
-   * - hasOwnApiKey 字段转为布尔值
-   * - messageCount 字段转为数字
-   * - lastActiveAt 字段保留字符串（日期）
+   * - workspaceCount 字段转为数字
+   * - lastActiveAt / createdAt 字段保留字符串（日期）
    * @param field - 规则字段
    * @param rawValue - 原始字符串值
    * @returns 转换后的值
    */
   const parseRuleValue = (field: SegmentRuleField, rawValue: string): number | string | boolean => {
-    if (field === 'hasOwnApiKey') {
-      return rawValue === 'true';
-    }
-    if (field === 'messageCount') {
+    if (field === 'workspaceCount') {
       return Number(rawValue);
     }
     return rawValue;
@@ -398,7 +394,7 @@ const UserSegmentsPage: React.FC = () => {
     const fieldLabel = FIELD_LABELS[rule.field] || rule.field;
     const opLabel = OPERATOR_LABELS[rule.operator] || rule.operator;
     let valueStr = String(rule.value);
-    if (rule.field === 'lastActiveAt') {
+    if (rule.field === 'lastActiveAt' || rule.field === 'createdAt') {
       try {
         valueStr = new Date(rule.value as string).toLocaleDateString();
       } catch {
@@ -679,8 +675,8 @@ const UserSegmentsPage: React.FC = () => {
                     className="w-full px-2 py-2 border border-gray-200 rounded-lg text-sm"
                   >
                     <option value="lastActiveAt">最后活跃时间</option>
-                    <option value="messageCount">消息数量</option>
-                    <option value="hasOwnApiKey">拥有API密钥</option>
+                    <option value="createdAt">注册时间</option>
+                    <option value="workspaceCount">工作区数量</option>
                   </select>
                 </div>
                 <div>
@@ -697,25 +693,13 @@ const UserSegmentsPage: React.FC = () => {
                 </div>
                 <div>
                   <label className="block text-sm font-medium text-gray-700 mb-1">规则值 *</label>
-                  {segmentForm.ruleField === 'hasOwnApiKey' ? (
-                    <select
-                      value={segmentForm.ruleValue}
-                      onChange={(e) => setSegmentForm({ ...segmentForm, ruleValue: e.target.value })}
-                      className="w-full px-2 py-2 border border-gray-200 rounded-lg text-sm"
-                    >
-                      <option value="">请选择</option>
-                      <option value="true">是</option>
-                      <option value="false">否</option>
-                    </select>
-                  ) : (
-                    <input
-                      type={segmentForm.ruleField === 'messageCount' ? 'number' : 'date'}
-                      value={segmentForm.ruleValue}
-                      onChange={(e) => setSegmentForm({ ...segmentForm, ruleValue: e.target.value })}
-                      className="w-full px-2 py-2 border border-gray-200 rounded-lg text-sm"
-                      placeholder={segmentForm.ruleField === 'messageCount' ? '数量' : '日期'}
-                    />
-                  )}
+                  <input
+                    type={segmentForm.ruleField === 'workspaceCount' ? 'number' : 'date'}
+                    value={segmentForm.ruleValue}
+                    onChange={(e) => setSegmentForm({ ...segmentForm, ruleValue: e.target.value })}
+                    className="w-full px-2 py-2 border border-gray-200 rounded-lg text-sm"
+                    placeholder={segmentForm.ruleField === 'workspaceCount' ? '数量' : '日期'}
+                  />
                 </div>
               </div>
               <label className="flex items-center gap-2 cursor-pointer">
@@ -831,8 +815,8 @@ const UserSegmentsPage: React.FC = () => {
                     className="w-full px-2 py-2 border border-gray-200 rounded-lg text-sm"
                   >
                     <option value="lastActiveAt">最后活跃时间</option>
-                    <option value="messageCount">消息数量</option>
-                    <option value="hasOwnApiKey">拥有API密钥</option>
+                    <option value="createdAt">注册时间</option>
+                    <option value="workspaceCount">工作区数量</option>
                   </select>
                 </div>
                 <div>
@@ -849,25 +833,13 @@ const UserSegmentsPage: React.FC = () => {
                 </div>
                 <div>
                   <label className="block text-sm font-medium text-gray-700 mb-1">规则值 *</label>
-                  {editSegmentForm.ruleField === 'hasOwnApiKey' ? (
-                    <select
-                      value={editSegmentForm.ruleValue}
-                      onChange={(e) => setEditSegmentForm({ ...editSegmentForm, ruleValue: e.target.value })}
-                      className="w-full px-2 py-2 border border-gray-200 rounded-lg text-sm"
-                    >
-                      <option value="">请选择</option>
-                      <option value="true">是</option>
-                      <option value="false">否</option>
-                    </select>
-                  ) : (
-                    <input
-                      type={editSegmentForm.ruleField === 'messageCount' ? 'number' : 'date'}
-                      value={editSegmentForm.ruleValue}
-                      onChange={(e) => setEditSegmentForm({ ...editSegmentForm, ruleValue: e.target.value })}
-                      className="w-full px-2 py-2 border border-gray-200 rounded-lg text-sm"
-                      placeholder={editSegmentForm.ruleField === 'messageCount' ? '数量' : '日期'}
-                    />
-                  )}
+                  <input
+                    type={editSegmentForm.ruleField === 'workspaceCount' ? 'number' : 'date'}
+                    value={editSegmentForm.ruleValue}
+                    onChange={(e) => setEditSegmentForm({ ...editSegmentForm, ruleValue: e.target.value })}
+                    className="w-full px-2 py-2 border border-gray-200 rounded-lg text-sm"
+                    placeholder={editSegmentForm.ruleField === 'workspaceCount' ? '数量' : '日期'}
+                  />
                 </div>
               </div>
             </div>

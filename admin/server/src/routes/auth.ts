@@ -183,6 +183,7 @@ router.post('/real-login', loginLimiter, async (req: Request, res: Response) => 
       sessionId,
       ipAddress: clientIp,
       nickname: '管理员',
+      role: 'super_admin',
       userAgent: req.headers['user-agent'] || '',
       createdAt: new Date(),
       lastActivityAt: new Date(),

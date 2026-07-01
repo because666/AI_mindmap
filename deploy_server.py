@@ -157,12 +157,14 @@ def run_local_command(
     """
     work_dir = cwd or get_project_root()
     print(f">>> 本地执行: {' '.join(command)} (工作目录: {work_dir})")
+    # Windows 上 npm/git 等命令需要 shell=True 才能正确解析 .cmd/.bat 文件
     result = subprocess.run(
         command,
         capture_output=True,
         text=True,
         encoding="utf-8",
         cwd=work_dir,
+        shell=os.name == "nt",
     )
     if result.returncode != 0:
         raise RuntimeError(
@@ -192,50 +194,64 @@ def npm_script_exists(script_name: str, cwd: Optional[str] = None) -> bool:
     return script_name in package.get("scripts", {})
 
 
-def ensure_git_commit_and_push(timestamp: str) -> None:
-    """检查 Git 工作区，必要时自动提交，并创建部署备份标签并推送。
+def try_sync_to_remote_repo(timestamp: str) -> None:
+    """部署成功后非阻塞尝试同步本地仓库到远程。
 
-    若工作区不干净，则自动执行 `git add -A && git commit`；
-    无论工作区是否干净，都会推送当前分支，并创建名为 `deploy-backup-<timestamp>` 的标签并推送。
+    本函数为可选后置步骤，所有 Git 操作均被 try-except 包裹，
+    任何异常都仅打印提示，不影响部署已成功完成的状态。
+
+    流程：
+    1. 检查工作区是否有未提交变更，若有则自动 `git add -A` 并提交；
+    2. 尝试 `git push` 推送当前分支，失败仅打印提示；
+    3. 创建 `deploy-backup-<timestamp>` 标签并尝试推送，失败仅打印提示。
 
     Args:
-        timestamp: 部署时间戳，用于标签名称。
-
-    Raises:
-        RuntimeError: 当 Git 提交、推送或标签推送失败时抛出。
+        timestamp: 部署时间戳，用于提交信息与标签命名。
     """
-    status_output = run_local_command(["git", "status", "--porcelain"], "检查 Git 工作区状态")
-    if status_output:
-        print("检测到工作区存在未提交变更，正在自动提交...")
-        run_local_command(["git", "add", "-A"], "添加本地变更")
-        run_local_command(
-            ["git", "commit", "-m", f"chore(deploy): 部署前自动提交 {timestamp}"],
-            "提交本地变更",
-        )
-    else:
-        print("Git 工作区已干净。")
+    print("【可选步骤】尝试同步本地仓库到远程...")
 
-    print("推送当前分支到远程仓库...")
+    # 检查工作区是否有未提交变更，必要时自动提交
     try:
+        status_output = run_local_command(
+            ["git", "status", "--porcelain"], "检查 Git 工作区状态"
+        )
+        if status_output:
+            print("检测到工作区存在未提交变更，正在自动提交...")
+            run_local_command(["git", "add", "-A"], "添加本地变更")
+            run_local_command(
+                ["git", "commit", "-m", f"chore(deploy): 部署后同步 {timestamp}"],
+                "提交本地变更",
+            )
+        else:
+            print("Git 工作区已干净，无需提交。")
+    except RuntimeError as exc:
+        print(f"⚠️ Git 提交阶段失败，部署已成功完成，请稍后手动处理代码同步：{exc}")
+        return
+
+    # 尝试推送当前分支，失败仅打印提示，不抛异常
+    try:
+        print("推送当前分支到远程仓库...")
         run_local_command(["git", "push"], "推送当前分支")
     except RuntimeError as exc:
-        raise RuntimeError(
-            f"Git 推送失败，部署已中止：{exc}\n"
-            "请检查网络连接、远程仓库地址及写入权限后重试。"
-        )
+        print("⚠️ Git 推送失败，部署已成功完成，请稍后手动推送代码")
+        print(f"  详细错误: {exc}")
+        return
 
+    # 创建部署备份标签并尝试推送，失败仅打印提示
     tag_name = f"deploy-backup-{timestamp}"
-    run_local_command(["git", "tag", tag_name], "创建部署备份标签")
-    print(f"已创建 Git 备份标签: {tag_name}")
+    try:
+        run_local_command(["git", "tag", tag_name], "创建部署备份标签")
+        print(f"已创建 Git 备份标签: {tag_name}")
+    except RuntimeError as exc:
+        print(f"⚠️ Git 标签创建失败，部署已成功完成：{exc}")
+        return
 
     try:
         run_local_command(["git", "push", "origin", tag_name], "推送部署备份标签")
+        print(f"已推送 Git 备份标签到远程仓库: {tag_name}")
     except RuntimeError as exc:
-        raise RuntimeError(
-            f"标签 {tag_name} 推送失败，部署已中止：{exc}\n"
-            "请检查网络连接、远程仓库地址及写入权限后重试。"
-        )
-    print(f"已推送 Git 备份标签到远程仓库: {tag_name}")
+        print(f"⚠️ Git 标签推送失败，部署已成功完成，请稍后手动推送标签 {tag_name}")
+        print(f"  详细错误: {exc}")
 
 
 def run_local_validation() -> None:
@@ -397,11 +413,62 @@ def run_ssh_command(
     return exit_code, out, err
 
 
+def cleanup_old_backups(ssh: paramiko.SSHClient, config: Dict[str, str], keep_count: int = 10) -> None:
+    """清理服务器上过期的 dist 备份目录。
+
+    按时间戳保留最新的 keep_count 个完整备份组，删除更早的 .bak-* 目录。
+    清理失败仅打印警告，不影响当前部署。
+
+    Args:
+        ssh: 已连接的 SSH 客户端。
+        config: 部署配置字典。
+        keep_count: 保留的备份组数量，默认 10。
+    """
+    keep_count_str = os.getenv("DEPLOY_BACKUP_KEEP_COUNT")
+    if keep_count_str and keep_count_str.isdigit():
+        keep_count = int(keep_count_str)
+
+    project_dir = config["DEPLOY_PROJECT_DIR"]
+    backup_pattern = f"{project_dir}/server/dist.bak-*"
+
+    try:
+        exit_code, out, err = run_ssh_command(
+            ssh, f"ls -1d {shlex.quote(backup_pattern)} 2>/dev/null || true", timeout=60, raise_on_error=False
+        )
+        if exit_code != 0 or not out.strip():
+            return
+
+        timestamps: List[str] = []
+        for line in out.strip().splitlines():
+            # 提取时间戳后缀，例如 /path/server/dist.bak-20250701-120000 -> 20250701-120000
+            suffix = line.rsplit(".bak-", 1)[-1]
+            if suffix and suffix not in timestamps:
+                timestamps.append(suffix)
+
+        # YYYYMMDD-HHMMSS 字符串按字典序降序即时间降序
+        timestamps.sort(reverse=True)
+        timestamps_to_delete = timestamps[keep_count:]
+
+        if not timestamps_to_delete:
+            return
+
+        dist_dirs = ["client/dist", "server/dist", "admin/server/dist", "admin/client/dist"]
+        for ts in timestamps_to_delete:
+            for dist_dir in dist_dirs:
+                backup_dir = f"{project_dir}/{dist_dir}.bak-{ts}"
+                run_ssh_command(ssh, f"rm -rf {shlex.quote(backup_dir)}", timeout=60, raise_on_error=False)
+        print(f"已清理 {len(timestamps_to_delete)} 组过期备份")
+    except Exception as exc:
+        print(f"⚠️ 清理旧备份失败: {exc}")
+
+
 def backup_server_dists(ssh: paramiko.SSHClient, config: Dict[str, str], timestamp: str) -> None:
     """在服务器上备份本次将要替换的 dist 目录。
 
     分别备份 client/dist、server/dist、admin/server/dist、admin/client/dist 为对应名称的 .bak-<timestamp> 目录。
     若源目录不存在，则跳过该目录并输出提示。
+    备份完成后会验证每个实际生成的备份目录存在且非空，验证失败则中止部署。
+    验证通过后会清理服务器上的过期备份，默认保留最近 10 个完整备份组。
 
     Args:
         ssh: 已连接的 SSH 客户端。
@@ -409,10 +476,11 @@ def backup_server_dists(ssh: paramiko.SSHClient, config: Dict[str, str], timesta
         timestamp: 备份时间戳，用于目录后缀。
 
     Raises:
-        RuntimeError: 当备份命令执行失败时抛出。
+        RuntimeError: 当备份命令执行失败或备份验证失败时抛出。
     """
     project_dir = config["DEPLOY_PROJECT_DIR"]
     dist_dirs = ["client/dist", "server/dist", "admin/server/dist", "admin/client/dist"]
+    backed_up_dirs: List[str] = []
 
     for dist_dir in dist_dirs:
         src_dir = f"{project_dir}/{dist_dir}"
@@ -420,9 +488,25 @@ def backup_server_dists(ssh: paramiko.SSHClient, config: Dict[str, str], timesta
         command = (
             f"if [ -d {shlex.quote(src_dir)} ]; then "
             f"cp -a {shlex.quote(src_dir)} {shlex.quote(dst_dir)}; "
+            f"echo '已备份: {src_dir} -> {dst_dir}'; "
             f"else echo '跳过不存在的目录: {src_dir}'; fi"
         )
         run_ssh_command(ssh, command, timeout=300)
+        # 源目录存在时记录备份目录，供后续验证
+        check_command = f"[ -d {shlex.quote(src_dir)} ] && echo 'exists' || echo 'missing'"
+        _, check_out, _ = run_ssh_command(ssh, check_command, timeout=60, raise_on_error=False)
+        if check_out.strip() == "exists":
+            backed_up_dirs.append(dst_dir)
+
+    # 备份后验证：每个实际执行了复制的备份目录必须存在且非空
+    for dst_dir in backed_up_dirs:
+        verify_command = f"[ -d {shlex.quote(dst_dir)} ] && [ \"$(ls -A {shlex.quote(dst_dir)})\" ] && echo 'ok' || echo 'fail'"
+        _, verify_out, _ = run_ssh_command(ssh, verify_command, timeout=60, raise_on_error=False)
+        if verify_out.strip() != "ok":
+            raise RuntimeError(f"备份验证失败: {dst_dir} 不存在或为空，部署已中止")
+
+    print("备份验证通过")
+    cleanup_old_backups(ssh, config)
 
 
 def upload_directory(
@@ -444,9 +528,19 @@ def upload_directory(
     if not os.path.isdir(local_dir):
         raise FileNotFoundError(f"本地目录不存在: {local_dir}")
 
+    # 先确保远程根目录存在（SFTP mkdir 只能创建一级目录，不能递归）
+    try:
+        sftp.mkdir(remote_dir)
+    except IOError:
+        pass  # 目录已存在，忽略
+
     for root, dirs, files in os.walk(local_dir):
         relative_path = os.path.relpath(root, local_dir)
-        remote_path = os.path.join(remote_dir, relative_path).replace("\\", "/")
+        # 当 relative_path 为 "." 时（根目录），直接使用 remote_dir
+        if relative_path == ".":
+            remote_path = remote_dir
+        else:
+            remote_path = f"{remote_dir}/{relative_path.replace(chr(92), '/')}".replace("\\", "/")
 
         try:
             sftp.mkdir(remote_path)
@@ -455,8 +549,13 @@ def upload_directory(
 
         for filename in files:
             local_file = os.path.join(root, filename)
-            remote_file = os.path.join(remote_path, filename).replace("\\", "/")
-            sftp.put(local_file, remote_file)
+            remote_file = f"{remote_path}/{filename}"
+            try:
+                sftp.put(local_file, remote_file)
+            except Exception as exc:
+                raise RuntimeError(
+                    f"上传文件失败: {local_file} -> {remote_file}，错误: {exc}"
+                ) from exc
 
 
 def replace_dist_dirs(
@@ -592,7 +691,8 @@ def print_deployment_plan(config: Dict[str, str]) -> None:
         print(f"  - {' '.join(command)} (工作目录: {relative_dir}) # {description}")
 
     print("\n服务器端操作：")
-    print("  - 备份 dist 目录")
+    print("  - 备份 dist 目录并验证备份完整性")
+    print("  - 清理过期备份（保留最近 10 个）")
     print("  - 上传并替换 dist 目录")
     print(f"  - pm2 restart {config['DEPLOY_PM2_SERVER']}")
     print(f"  - pm2 restart {config['DEPLOY_PM2_ADMIN']}")
@@ -628,32 +728,32 @@ def main() -> int:
     ssh: Optional[paramiko.SSHClient] = None
 
     try:
-        log_step(2, "本地 Git 提交并推送")
-        ensure_git_commit_and_push(timestamp)
-
-        log_step(3, "本地构建与校验")
+        log_step(2, "本地构建与校验")
         run_local_validation()
 
-        log_step(4, "连接远程服务器")
+        log_step(3, "连接远程服务器")
         ssh = connect_ssh(config)
 
-        log_step(5, "服务器端备份 dist 目录")
+        log_step(4, "服务器端备份 dist 目录")
         backup_server_dists(ssh, config, timestamp)
 
-        log_step(6, "构建上传产物目录列表")
+        log_step(5, "构建上传产物目录列表")
         dist_list = build_dist_list(config)
         print(f"待上传构建产物目录数量: {len(dist_list)}")
 
-        log_step(7, "上传并替换构建产物")
+        log_step(6, "上传并替换构建产物")
         replace_dist_dirs(ssh, config, dist_list, timestamp)
 
-        log_step(8, "重启服务")
+        log_step(7, "重启服务")
         restart_services(ssh, config)
 
-        log_step(9, "健康检查")
+        log_step(8, "健康检查")
         health_check(ssh, config)
 
         print("\n部署完成！")
+
+        log_step(9, "同步本地仓库到远程（可选，非阻塞）")
+        try_sync_to_remote_repo(timestamp)
         return 0
     except Exception as exc:
         print(f"\n错误: {exc}")

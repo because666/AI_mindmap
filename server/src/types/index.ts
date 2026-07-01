@@ -50,6 +50,20 @@ export interface Workspace {
    * 取消置顶时由后台清空
    */
   pinnedAt?: Date;
+  /**
+   * 是否被管理员封禁
+   * 由后台管理员通过 /api/admin/workspaces/:id/ban 接口设置
+   * 为 true 时主服务端会拦截对该工作区的访问
+   */
+  isBanned?: boolean;
+  /** 封禁原因 */
+  banReason?: string;
+  /** 封禁时间 */
+  bannedAt?: Date;
+  /** 封禁过期时间，未设置表示永久封禁 */
+  banExpiresAt?: Date;
+  /** 解封时间 */
+  unbannedAt?: Date;
 }
 
 /**

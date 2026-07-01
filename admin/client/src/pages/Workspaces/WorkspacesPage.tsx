@@ -1,7 +1,7 @@
 import React, { useState, useEffect, useCallback } from 'react';
 import { workspacesApi } from '../../services/api';
 import type { WorkspaceListItem, PaginationResult, RankingSortBy, WorkspaceRankingItem } from '../../types';
-import { Search, Eye, XCircle, Bell, Star, Trophy, Pin, PinOff } from 'lucide-react';
+import { Search, Eye, XCircle, Bell, Star, Trophy, Pin, PinOff, Ban, Unlock, X } from 'lucide-react';
 
 /**
  * 操作反馈提示接口
@@ -9,6 +9,35 @@ import { Search, Eye, XCircle, Bell, Star, Trophy, Pin, PinOff } from 'lucide-re
 interface ToastMessage {
   type: 'success' | 'error';
   text: string;
+}
+
+/**
+ * 工作区详情数据接口
+ * 用于详情弹窗展示完整的工作区信息
+ * 对应后端 GET /api/admin/workspaces/:id 的返回结构
+ */
+interface WorkspaceDetail {
+  /** 工作区 ID */
+  id: string;
+  /** 工作区名称 */
+  name: string;
+  /** 工作区描述 */
+  description?: string;
+  /** 工作区类型，public 为公开，其他为私有 */
+  type: string;
+  /** 创建时间（ISO 字符串） */
+  createdAt: string;
+  /** 更新时间（ISO 字符串） */
+  updatedAt: string;
+  /** 所有者 ID */
+  ownerId: string;
+  /** 工作区统计数据 */
+  stats: {
+    /** 成员数量 */
+    memberCount: number;
+    /** 节点数量 */
+    nodeCount: number;
+  };
 }
 
 /**
@@ -43,6 +72,16 @@ const WorkspacesPage: React.FC = () => {
   const [starTogglingIds, setStarTogglingIds] = useState<Set<string>>(new Set());
   // 置顶/取消置顶操作中的工作区 ID 集合，用于按钮禁用与加载态展示
   const [pinTogglingIds, setPinTogglingIds] = useState<Set<string>>(new Set());
+  // 封禁/解封操作中的工作区 ID 集合，用于按钮禁用与加载态展示
+  const [banTogglingIds, setBanTogglingIds] = useState<Set<string>>(new Set());
+  // 封禁弹窗状态
+  const [banModal, setBanModal] = useState<{ id: string; name: string } | null>(null);
+  // 封禁原因输入
+  const [banReason, setBanReason] = useState('');
+  // 封禁时长（小时），0 表示永久
+  const [banDuration, setBanDuration] = useState(0);
+  // 工作区详情弹窗状态：id 非空时展示弹窗，loading 表示加载中，data 为详情数据
+  const [detailModal, setDetailModal] = useState<{ id: string; loading: boolean; data: WorkspaceDetail | null }>({ id: '', loading: false, data: null });
 
   /**
    * 显示操作反馈提示
@@ -199,6 +238,111 @@ const WorkspacesPage: React.FC = () => {
   };
 
   /**
+   * 确认封禁工作区
+   * 调用 banWorkspace 接口，成功后就地更新列表中的 isBanned 字段
+   */
+  const handleBan = async () => {
+    if (!banModal) return;
+    if (actionLoading) return;
+    if (!banReason.trim()) {
+      showToast('error', '请填写封禁原因');
+      return;
+    }
+    setActionLoading(true);
+    try {
+      await workspacesApi.banWorkspace(banModal.id, banReason, banDuration);
+      // 就地更新列表中的封禁状态
+      setData((prev) => {
+        if (!prev) return prev;
+        return {
+          ...prev,
+          items: prev.items.map((item) =>
+            item.id === banModal.id
+              ? {
+                  ...item,
+                  isBanned: true,
+                  banReason: banReason,
+                  banExpiresAt: banDuration > 0
+                    ? new Date(Date.now() + banDuration * 60 * 60 * 1000).toISOString()
+                    : undefined,
+                }
+              : item
+          ),
+        };
+      });
+      setBanModal(null);
+      setBanReason('');
+      setBanDuration(0);
+      showToast('success', `工作区 ${banModal.name} 已封禁`);
+    } catch (error) {
+      console.error('封禁工作区失败:', error);
+      showToast('error', '封禁工作区失败，请重试');
+    } finally {
+      setActionLoading(false);
+    }
+  };
+
+  /**
+   * 解封工作区
+   * @param workspace - 当前工作区列表项
+   */
+  const handleUnban = async (workspace: WorkspaceListItem) => {
+    const workspaceId = workspace.id;
+    if (banTogglingIds.has(workspaceId)) return;
+    setBanTogglingIds((prev) => {
+      const next = new Set(prev);
+      next.add(workspaceId);
+      return next;
+    });
+    try {
+      await workspacesApi.unbanWorkspace(workspaceId);
+      setData((prev) => {
+        if (!prev) return prev;
+        return {
+          ...prev,
+          items: prev.items.map((item) =>
+            item.id === workspaceId
+              ? {
+                  ...item,
+                  isBanned: false,
+                  banReason: undefined,
+                  banExpiresAt: undefined,
+                }
+              : item
+          ),
+        };
+      });
+      showToast('success', '工作区已解封');
+    } catch (error) {
+      console.error('解封工作区失败:', error);
+      showToast('error', '解封工作区失败，请重试');
+    } finally {
+      setBanTogglingIds((prev) => {
+        const next = new Set(prev);
+        next.delete(workspaceId);
+        return next;
+      });
+    }
+  };
+
+  /**
+   * 打开工作区详情弹窗
+   * 调用后端详情接口获取完整工作区数据并展示在弹窗中
+   * @param workspace - 当前工作区列表项
+   */
+  const handleView = async (workspace: WorkspaceListItem) => {
+    setDetailModal({ id: workspace.id, loading: true, data: null });
+    try {
+      const res = await workspacesApi.getDetail(workspace.id);
+      setDetailModal({ id: workspace.id, loading: false, data: res.data.data as WorkspaceDetail });
+    } catch (error) {
+      console.error('加载工作区详情失败:', error);
+      showToast('error', '加载工作区详情失败');
+      setDetailModal({ id: '', loading: false, data: null });
+    }
+  };
+
+  /**
    * 获取排名对应的样式类名
    * 前三名使用金银铜色高亮
    * @param rank - 排名序号（从 1 开始）
@@ -281,6 +425,8 @@ const WorkspacesPage: React.FC = () => {
                     {data.items.map((ws) => {
                       const isPinned = ws.isPinned === true;
                       const pinLoading = pinTogglingIds.has(ws.id);
+                      const isBanned = ws.isBanned === true;
+                      const banLoading = banTogglingIds.has(ws.id);
                       return (
                         <tr key={ws._id} className={`border-b border-gray-50 hover:bg-gray-50 ${isPinned ? 'bg-blue-50/40' : ''}`}>
                           <td className="py-3 px-4 text-sm font-medium">
@@ -289,6 +435,12 @@ const WorkspacesPage: React.FC = () => {
                                 <span className="inline-flex items-center gap-0.5 px-1.5 py-0.5 rounded-full text-[10px] font-medium bg-blue-100 text-blue-700">
                                   <Pin className="w-3 h-3" />
                                   置顶
+                                </span>
+                              )}
+                              {isBanned && (
+                                <span className="inline-flex items-center gap-0.5 px-1.5 py-0.5 rounded-full text-[10px] font-medium bg-red-100 text-red-700">
+                                  <Ban className="w-3 h-3" />
+                                  封禁
                                 </span>
                               )}
                               <span>{ws.name}</span>
@@ -304,7 +456,7 @@ const WorkspacesPage: React.FC = () => {
                           <td className="py-3 px-4 text-sm text-gray-500">{ws.stats.nodeCount}</td>
                           <td className="py-3 px-4">
                             <div className="flex gap-2">
-                              <button className="p-1 text-gray-400 hover:text-blue-600" title="查看"><Eye className="w-4 h-4" /></button>
+                              <button onClick={() => handleView(ws)} className="p-1 text-gray-400 hover:text-blue-600" title="查看"><Eye className="w-4 h-4" /></button>
                               <button
                                 onClick={() => handleTogglePin(ws)}
                                 disabled={pinLoading}
@@ -318,6 +470,24 @@ const WorkspacesPage: React.FC = () => {
                                 {isPinned ? <PinOff className="w-4 h-4" /> : <Pin className="w-4 h-4" />}
                               </button>
                               <button onClick={() => handleClose(ws.id)} className="p-1 text-gray-400 hover:text-red-600" title="关闭"><XCircle className="w-4 h-4" /></button>
+                              {isBanned ? (
+                                <button
+                                  onClick={() => handleUnban(ws)}
+                                  disabled={banLoading}
+                                  className={`p-1 text-gray-400 hover:text-green-600 ${banLoading ? 'opacity-50 cursor-not-allowed' : ''}`}
+                                  title="解封"
+                                >
+                                  <Unlock className="w-4 h-4" />
+                                </button>
+                              ) : (
+                                <button
+                                  onClick={() => setBanModal({ id: ws.id, name: ws.name })}
+                                  className="p-1 text-gray-400 hover:text-red-600"
+                                  title="封禁"
+                                >
+                                  <Ban className="w-4 h-4" />
+                                </button>
+                              )}
                             </div>
                           </td>
                         </tr>
@@ -330,6 +500,8 @@ const WorkspacesPage: React.FC = () => {
                 {data.items.map((ws) => {
                   const isPinned = ws.isPinned === true;
                   const pinLoading = pinTogglingIds.has(ws.id);
+                  const isBanned = ws.isBanned === true;
+                  const banLoading = banTogglingIds.has(ws.id);
                   return (
                     <div key={ws._id} className={`p-4 ${isPinned ? 'bg-blue-50/40' : ''}`}>
                       <div className="flex justify-between items-start mb-1">
@@ -338,6 +510,12 @@ const WorkspacesPage: React.FC = () => {
                             <span className="inline-flex items-center gap-0.5 px-1.5 py-0.5 rounded-full text-[10px] font-medium bg-blue-100 text-blue-700 flex-shrink-0">
                               <Pin className="w-3 h-3" />
                               置顶
+                            </span>
+                          )}
+                          {isBanned && (
+                            <span className="inline-flex items-center gap-0.5 px-1.5 py-0.5 rounded-full text-[10px] font-medium bg-red-100 text-red-700 flex-shrink-0">
+                              <Ban className="w-3 h-3" />
+                              封禁
                             </span>
                           )}
                           <span className="font-medium text-gray-800 truncate">{ws.name}</span>
@@ -350,16 +528,43 @@ const WorkspacesPage: React.FC = () => {
                         <span>
                           创建者：{ws.creator.nickname} · 成员：{ws.stats.memberCount} · 节点：{ws.stats.nodeCount}
                         </span>
-                        <button
-                          onClick={() => handleTogglePin(ws)}
-                          disabled={pinLoading}
-                          className={`p-1 transition-colors flex-shrink-0 ${
-                            isPinned ? 'text-blue-600' : 'text-gray-300'
-                          } ${pinLoading ? 'opacity-50' : ''}`}
-                          title={isPinned ? '取消置顶' : '置顶为推荐工作区'}
-                        >
-                          {isPinned ? <PinOff className="w-4 h-4" /> : <Pin className="w-4 h-4" />}
-                        </button>
+                        <div className="flex items-center gap-1 flex-shrink-0">
+                          <button
+                            onClick={() => handleView(ws)}
+                            className="p-1 text-gray-300 hover:text-blue-600"
+                            title="查看"
+                          >
+                            <Eye className="w-4 h-4" />
+                          </button>
+                          <button
+                            onClick={() => handleTogglePin(ws)}
+                            disabled={pinLoading}
+                            className={`p-1 transition-colors ${
+                              isPinned ? 'text-blue-600' : 'text-gray-300'
+                            } ${pinLoading ? 'opacity-50' : ''}`}
+                            title={isPinned ? '取消置顶' : '置顶为推荐工作区'}
+                          >
+                            {isPinned ? <PinOff className="w-4 h-4" /> : <Pin className="w-4 h-4" />}
+                          </button>
+                          {isBanned ? (
+                            <button
+                              onClick={() => handleUnban(ws)}
+                              disabled={banLoading}
+                              className={`p-1 text-gray-400 hover:text-green-600 ${banLoading ? 'opacity-50' : ''}`}
+                              title="解封"
+                            >
+                              <Unlock className="w-4 h-4" />
+                            </button>
+                          ) : (
+                            <button
+                              onClick={() => setBanModal({ id: ws.id, name: ws.name })}
+                              className="p-1 text-gray-400 hover:text-red-600"
+                              title="封禁"
+                            >
+                              <Ban className="w-4 h-4" />
+                            </button>
+                          )}
+                        </div>
                       </div>
                     </div>
                   );
@@ -494,6 +699,97 @@ const WorkspacesPage: React.FC = () => {
               </div>
             </>
           )}
+        </div>
+      )}
+
+      {banModal && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/30">
+          <div className="bg-white rounded-xl p-6 max-w-md w-full mx-4">
+            <h3 className="text-lg font-bold mb-2">封禁工作区</h3>
+            <p className="text-sm text-gray-500 mb-4">工作区：{banModal.name}</p>
+            <textarea
+              placeholder="封禁原因"
+              value={banReason}
+              onChange={(e) => setBanReason(e.target.value)}
+              className="w-full px-3 py-2 border rounded-lg text-sm mb-3 h-20 resize-none"
+            />
+            <select
+              value={banDuration}
+              onChange={(e) => setBanDuration(Number(e.target.value))}
+              className="w-full px-3 py-2 border rounded-lg text-sm mb-4"
+            >
+              <option value={0}>永久封禁</option>
+              <option value={1}>1小时</option>
+              <option value={24}>24小时</option>
+              <option value={168}>7天</option>
+              <option value={720}>30天</option>
+            </select>
+            <div className="flex gap-3 justify-end">
+              <button
+                onClick={() => { setBanModal(null); setBanReason(''); setBanDuration(0); }}
+                className="px-4 py-2 text-sm text-gray-600 border rounded-lg"
+              >
+                取消
+              </button>
+              <button
+                onClick={handleBan}
+                disabled={actionLoading}
+                className="px-4 py-2 text-sm text-white bg-red-600 rounded-lg hover:bg-red-700 disabled:opacity-50"
+              >
+                确认封禁
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* 工作区详情弹窗 */}
+      {detailModal.id && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/30">
+          <div className="bg-white rounded-xl p-6 max-w-lg w-full mx-4">
+            {detailModal.loading ? (
+              <div className="py-8 text-center text-gray-400">加载中...</div>
+            ) : detailModal.data ? (
+              <>
+                <div className="flex items-center justify-between mb-4">
+                  <h3 className="text-lg font-bold text-gray-800">工作区详情</h3>
+                  <button onClick={() => setDetailModal({ id: '', loading: false, data: null })} className="text-gray-400 hover:text-gray-600">
+                    <X className="w-5 h-5" />
+                  </button>
+                </div>
+                <div className="space-y-3">
+                  <div>
+                    <span className="text-sm text-gray-500">名称</span>
+                    <p className="text-sm font-medium text-gray-800">{detailModal.data.name}</p>
+                  </div>
+                  {detailModal.data.description && (
+                    <div>
+                      <span className="text-sm text-gray-500">描述</span>
+                      <p className="text-sm text-gray-800">{detailModal.data.description}</p>
+                    </div>
+                  )}
+                  <div className="grid grid-cols-2 gap-4">
+                    <div>
+                      <span className="text-sm text-gray-500">类型</span>
+                      <p className="text-sm text-gray-800">{detailModal.data.type === 'public' ? '公开' : '私有'}</p>
+                    </div>
+                    <div>
+                      <span className="text-sm text-gray-500">成员数</span>
+                      <p className="text-sm text-gray-800">{detailModal.data.stats.memberCount}</p>
+                    </div>
+                    <div>
+                      <span className="text-sm text-gray-500">节点数</span>
+                      <p className="text-sm text-gray-800">{detailModal.data.stats.nodeCount}</p>
+                    </div>
+                    <div>
+                      <span className="text-sm text-gray-500">创建时间</span>
+                      <p className="text-sm text-gray-800">{new Date(detailModal.data.createdAt).toLocaleString()}</p>
+                    </div>
+                  </div>
+                </div>
+              </>
+            ) : null}
+          </div>
         </div>
       )}
     </div>

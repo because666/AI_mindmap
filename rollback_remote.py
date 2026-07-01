@@ -200,24 +200,25 @@ def run_ssh_command(
     return exit_code, out, err
 
 
-def get_backup_paths(project_dir: str, timestamp: str) -> Tuple[str, str, str]:
-    """根据项目目录和时间戳构造三个备份目录的远程绝对路径。
+def get_backup_paths(project_dir: str, timestamp: str) -> Tuple[str, str, str, str]:
+    """根据项目目录和时间戳构造四个备份目录的远程绝对路径。
 
     Args:
         project_dir: 服务器上的项目目录绝对路径。
         timestamp: 备份时间戳。
 
     Returns:
-        三元组 (server 备份路径, admin/server 备份路径, client/dist 备份路径)。
+        四元组 (server/dist 备份路径, admin/server/dist 备份路径, client/dist 备份路径, admin/client/dist 备份路径)。
     """
-    server_bak = f"{project_dir}/server.bak-{timestamp}"
-    admin_bak = f"{project_dir}/admin/server.bak-{timestamp}"
+    server_bak = f"{project_dir}/server/dist.bak-{timestamp}"
+    admin_server_bak = f"{project_dir}/admin/server/dist.bak-{timestamp}"
     client_bak = f"{project_dir}/client/dist.bak-{timestamp}"
-    return server_bak, admin_bak, client_bak
+    admin_client_bak = f"{project_dir}/admin/client/dist.bak-{timestamp}"
+    return server_bak, admin_server_bak, client_bak, admin_client_bak
 
 
 def _backup_exists(ssh: paramiko.SSHClient, project_dir: str, timestamp: str) -> bool:
-    """检查指定时间戳的三个备份目录是否均存在。
+    """检查指定时间戳的四个备份目录是否均存在。
 
     Args:
         ssh: 已连接的 SSH 客户端。
@@ -225,13 +226,14 @@ def _backup_exists(ssh: paramiko.SSHClient, project_dir: str, timestamp: str) ->
         timestamp: 备份时间戳。
 
     Returns:
-        三个备份目录均存在时返回 True，否则返回 False。
+        四个备份目录均存在时返回 True，否则返回 False。
     """
-    server_bak, admin_bak, client_bak = get_backup_paths(project_dir, timestamp)
+    server_bak, admin_server_bak, client_bak, admin_client_bak = get_backup_paths(project_dir, timestamp)
     command = (
         f"test -d {shlex.quote(server_bak)} && "
-        f"test -d {shlex.quote(admin_bak)} && "
-        f"test -d {shlex.quote(client_bak)} && echo ok || echo missing"
+        f"test -d {shlex.quote(admin_server_bak)} && "
+        f"test -d {shlex.quote(client_bak)} && "
+        f"test -d {shlex.quote(admin_client_bak)} && echo ok || echo missing"
     )
     _, out, _ = run_ssh_command(ssh, command, timeout=60, raise_on_error=False)
     return out.strip() == "ok"
@@ -240,8 +242,8 @@ def _backup_exists(ssh: paramiko.SSHClient, project_dir: str, timestamp: str) ->
 def find_latest_backup(ssh: paramiko.SSHClient, project_dir: str) -> str:
     """查找服务器上最新的完整备份时间戳。
 
-    以 server.bak-* 目录为候选，按时间戳字符串降序查找，要求对应的
-    admin/server.bak-* 与 client/dist.bak-* 同时存在。
+    以 server/dist.bak-* 目录为候选，按时间戳字符串降序查找，要求对应的
+    admin/server/dist.bak-*、client/dist.bak-* 与 admin/client/dist.bak-* 同时存在。
 
     Args:
         ssh: 已连接的 SSH 客户端。
@@ -253,12 +255,12 @@ def find_latest_backup(ssh: paramiko.SSHClient, project_dir: str) -> str:
     Raises:
         RuntimeError: 当未找到任何完整备份时抛出。
     """
-    command = f"ls -1d {shlex.quote(project_dir + '/server.bak-*')} 2>/dev/null"
+    command = f"ls -1d {shlex.quote(project_dir + '/server/dist.bak-*')} 2>/dev/null"
     exit_code, out, _ = run_ssh_command(ssh, command, timeout=60, raise_on_error=False)
     if exit_code != 0 or not out.strip():
-        raise RuntimeError("未在服务器上找到任何 server.bak-* 备份目录")
+        raise RuntimeError("未在服务器上找到任何 server/dist.bak-* 备份目录")
 
-    prefix = "server.bak-"
+    prefix = "dist.bak-"
     candidates: List[str] = []
     for line in out.strip().splitlines():
         basename = line.rstrip("/").split("/")[-1]
@@ -272,7 +274,7 @@ def find_latest_backup(ssh: paramiko.SSHClient, project_dir: str) -> str:
         if _backup_exists(ssh, project_dir, timestamp):
             return timestamp
 
-    raise RuntimeError("未找到 server、admin/server、client/dist 均存在的完整备份")
+    raise RuntimeError("未找到 server/dist、admin/server/dist、client/dist、admin/client/dist 均存在的完整备份")
 
 
 def validate_backup_exists(
@@ -291,12 +293,13 @@ def validate_backup_exists(
         RuntimeError: 当任一备份目录不存在时抛出。
     """
     if not _backup_exists(ssh, project_dir, timestamp):
-        server_bak, admin_bak, client_bak = get_backup_paths(project_dir, timestamp)
+        server_bak, admin_server_bak, client_bak, admin_client_bak = get_backup_paths(project_dir, timestamp)
         raise RuntimeError(
             f"指定时间戳的备份目录不完整或不存在：\n"
             f"  - {server_bak}\n"
-            f"  - {admin_bak}\n"
-            f"  - {client_bak}"
+            f"  - {admin_server_bak}\n"
+            f"  - {client_bak}\n"
+            f"  - {admin_client_bak}"
         )
 
 
@@ -331,11 +334,12 @@ def restore_backup(ssh: paramiko.SSHClient, project_dir: str, timestamp: str) ->
     Raises:
         RuntimeError: 当任意还原命令返回非零退出码时抛出。
     """
-    server_bak, admin_bak, client_bak = get_backup_paths(project_dir, timestamp)
+    server_bak, admin_server_bak, client_bak, admin_client_bak = get_backup_paths(project_dir, timestamp)
     restore_pairs: List[Tuple[str, str]] = [
-        (server_bak, f"{project_dir}/server"),
-        (admin_bak, f"{project_dir}/admin/server"),
+        (server_bak, f"{project_dir}/server/dist"),
+        (admin_server_bak, f"{project_dir}/admin/server/dist"),
         (client_bak, f"{project_dir}/client/dist"),
+        (admin_client_bak, f"{project_dir}/admin/client/dist"),
     ]
 
     for src_dir, dst_dir in restore_pairs:

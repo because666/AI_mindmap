@@ -319,20 +319,30 @@ class UserSegmentService {
   /**
    * 根据分群规则构建 MongoDB 查询条件
    * 将 SegmentRule 转换为 visitors 集合的查询过滤器
-   * - lastActiveAt: 映射到 visitors.lastSeen 字段，值为日期字符串
-   * - messageCount: 映射到 visitors.messageCount 字段，值为数字
-   * - hasOwnApiKey: 映射到 visitors.hasOwnApiKey 字段，值为布尔
+   * - lastActiveAt: 映射到 visitors.lastSeen 字段，值为日期
+   * - createdAt: 映射到 visitors.createdAt 字段，值为日期
+   * - workspaceCount: 使用 $expr + $size 查询 visitors.workspaces 数组长度
    * @param rule - 分群规则
    * @returns MongoDB 查询过滤器对象
    */
   private buildSegmentFilter(rule: SegmentRule): Record<string, unknown> {
-    const fieldMap: Record<string, string> = {
+    // 日期类型字段映射到 visitors 集合的实际字段名
+    const dateFieldMap: Record<string, string> = {
       lastActiveAt: 'lastSeen',
-      messageCount: 'messageCount',
-      hasOwnApiKey: 'hasOwnApiKey',
+      createdAt: 'createdAt',
     };
 
-    const dbField = fieldMap[rule.field] || rule.field;
+    // workspaceCount 使用 $expr 查询 workspaces 数组长度
+    if (rule.field === 'workspaceCount') {
+      const mongoOp = rule.operator === 'gte' ? '$gte' : rule.operator === 'lte' ? '$lte' : '$eq';
+      if (rule.operator === 'eq') {
+        return { $expr: { $eq: [{ $size: '$workspaces' }, rule.value] } };
+      }
+      return { $expr: { [mongoOp]: [{ $size: '$workspaces' }, rule.value] } };
+    }
+
+    // 日期字段查询
+    const dbField = dateFieldMap[rule.field] || rule.field;
 
     if (rule.operator === 'eq') {
       return { [dbField]: rule.value };

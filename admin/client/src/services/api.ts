@@ -256,6 +256,22 @@ export const workspacesApi = {
    */
   unpinWorkspace: (id: string) =>
     typedDelete<{ isPinned: boolean; pinnedAt: null }>(`/admin/workspaces/${id}/pin`),
+  /**
+   * 封禁工作区
+   * 将指定工作区标记为封禁状态，主服务端将拦截对该工作区的访问
+   * @param id - 工作区 ID
+   * @param reason - 封禁原因
+   * @param duration - 封禁时长（小时），0 表示永久封禁
+   */
+  banWorkspace: (id: string, reason: string, duration: number) =>
+    typedPost<void>(`/admin/workspaces/${id}/ban`, { reason, duration }),
+  /**
+   * 解封工作区
+   * 清除指定工作区的封禁标记，恢复访问
+   * @param id - 工作区 ID
+   */
+  unbanWorkspace: (id: string) =>
+    typedPost<void>(`/admin/workspaces/${id}/unban`),
 };
 
 export const auditApi = {

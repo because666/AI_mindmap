@@ -284,6 +284,11 @@ router.get('/', requireAuth, async (req: Request, res: Response) => {
       const pinnedAtIso = pinnedAtRaw instanceof Date
         ? pinnedAtRaw.toISOString()
         : (typeof pinnedAtRaw === 'string' ? pinnedAtRaw : undefined);
+      // banExpiresAt 同样可能是 Date 或字符串，统一序列化为 ISO 字符串
+      const banExpiresAtRaw = w.banExpiresAt;
+      const banExpiresAtIso = banExpiresAtRaw instanceof Date
+        ? banExpiresAtRaw.toISOString()
+        : (typeof banExpiresAtRaw === 'string' ? banExpiresAtRaw : undefined);
       return {
         _id: (w._id as { toString(): string }).toString(),
         id: w.id as string,
@@ -305,6 +310,9 @@ router.get('/', requireAuth, async (req: Request, res: Response) => {
         reportCount: 0,
         isPinned: w.isPinned === true,
         pinnedAt: pinnedAtIso,
+        isBanned: w.isBanned === true,
+        banReason: w.banReason as string | undefined,
+        banExpiresAt: banExpiresAtIso,
       };
     });
 
@@ -425,6 +433,102 @@ router.post('/:id/close', requireAuth, auditLog('CLOSE_WORKSPACE', 'workspace'),
   } catch (error) {
     console.error('关闭工作区失败:', error);
     res.status(500).json({ success: false, error: '关闭工作区失败' });
+  }
+});
+
+/**
+ * 封禁工作区
+ * 将指定工作区标记为封禁状态，记录封禁原因与可选有效期
+ * 封禁后主服务端会拦截对该工作区的访问
+ * 仅 super_admin / operator 角色可调用
+ * @param id - 工作区 ID
+ * @body reason - 封禁原因（必填）
+ * @body duration - 封禁时长（小时），为 0 或不传表示永久封禁
+ * @returns 成功时返回 success:true；失败返回对应状态码与错误信息
+ */
+router.post('/:id/ban', requireAuth, requireRole('super_admin', 'operator'), auditLog('BAN_WORKSPACE', 'workspace'), async (req: Request, res: Response) => {
+  try {
+    const { id } = req.params;
+    const { reason, duration } = req.body;
+
+    if (!reason) {
+      res.status(400).json({ success: false, error: '请提供封禁原因' });
+      return;
+    }
+
+    const workspace = await adminDB.findOne('workspaces', { id } as never);
+    if (!workspace) {
+      res.status(404).json({ success: false, error: '工作区不存在' });
+      return;
+    }
+
+    const updateData: Record<string, unknown> = {
+      isBanned: true,
+      banReason: reason,
+      bannedAt: new Date(),
+    };
+
+    if (duration && duration > 0) {
+      const expiresAt = new Date();
+      expiresAt.setHours(expiresAt.getHours() + Number(duration));
+      updateData.banExpiresAt = expiresAt;
+    }
+
+    const success = await adminDB.updateOne('workspaces', { id } as never, {
+      $set: updateData,
+    });
+
+    if (!success) {
+      res.status(500).json({ success: false, error: '封禁工作区失败' });
+      return;
+    }
+
+    await notifyWorkspaceCacheClear(id);
+
+    res.json({ success: true, message: '工作区已封禁' });
+  } catch (error) {
+    console.error('封禁工作区失败:', error);
+    res.status(500).json({ success: false, error: '封禁工作区失败' });
+  }
+});
+
+/**
+ * 解封工作区
+ * 清除指定工作区的封禁标记，恢复访问
+ * 仅 super_admin / operator 角色可调用
+ * @param id - 工作区 ID
+ * @returns 成功时返回 success:true；失败返回对应状态码与错误信息
+ */
+router.post('/:id/unban', requireAuth, requireRole('super_admin', 'operator'), auditLog('UNBAN_WORKSPACE', 'workspace'), async (req: Request, res: Response) => {
+  try {
+    const { id } = req.params;
+
+    const workspace = await adminDB.findOne('workspaces', { id } as never);
+    if (!workspace) {
+      res.status(404).json({ success: false, error: '工作区不存在' });
+      return;
+    }
+
+    const success = await adminDB.updateOne('workspaces', { id } as never, {
+      $set: {
+        isBanned: false,
+        banReason: null,
+        banExpiresAt: null,
+        unbannedAt: new Date(),
+      },
+    });
+
+    if (!success) {
+      res.status(500).json({ success: false, error: '解封工作区失败' });
+      return;
+    }
+
+    await notifyWorkspaceCacheClear(id);
+
+    res.json({ success: true, message: '工作区已解封' });
+  } catch (error) {
+    console.error('解封工作区失败:', error);
+    res.status(500).json({ success: false, error: '解封工作区失败' });
   }
 });
 

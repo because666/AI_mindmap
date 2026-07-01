@@ -448,6 +448,7 @@ describe('auth 路由', () => {
       expect(mockInsertOne).toHaveBeenCalledWith('admin_sessions', expect.objectContaining({
         sessionId: 'test-session-id',
         ipAddress: '127.0.0.1',
+        role: 'super_admin',
       }));
       expect(session.sessionId).toBe('test-session-id');
     });

@@ -1,6 +1,6 @@
 import React, { useState, useEffect, useCallback } from 'react';
-import { usersApi } from '../../services/api';
-import type { UserListItem, PaginationResult, TimelineEvent, ActivityTier } from '../../types';
+import { usersApi, userSegmentsApi } from '../../services/api';
+import type { UserListItem, PaginationResult, TimelineEvent, ActivityTier, UserTag } from '../../types';
 import { Search, Ban, Unlock, Eye, Globe, X, ShieldBan, PlusCircle, MessageSquare, Lightbulb, Download, ChevronDown, ChevronUp } from 'lucide-react';
 
 interface ToastMessage {
@@ -192,27 +192,62 @@ const UsersPage: React.FC = () => {
   const [timelineTotalPages, setTimelineTotalPages] = useState(1);
   const [timelineTotal, setTimelineTotal] = useState(0);
 
+  // 标签筛选相关状态
+  /** 所有标签列表，用于筛选下拉框与详情弹窗的标签管理 */
+  const [tags, setTags] = useState<UserTag[]>([]);
+  /** 当前选中的标签筛选 ID，空字符串表示不按标签筛选 */
+  const [selectedTagId, setSelectedTagId] = useState<string>('');
+  // 用户标签管理状态（详情弹窗中）
+  /** 当前详情弹窗用户的标签 ID 列表 */
+  const [userTags, setUserTags] = useState<string[]>([]);
+  /** 用户标签加载状态 */
+  const [userTagsLoading, setUserTagsLoading] = useState(false);
+  /** 详情弹窗中"添加标签"下拉框的当前选中值 */
+  const [addTagSelectId, setAddTagSelectId] = useState('');
+
   const showToast = (type: 'success' | 'error', text: string) => {
     setToast({ type, text });
     setTimeout(() => setToast(null), 3000);
   };
 
+  /**
+   * 加载所有标签列表，用于筛选下拉框与详情弹窗
+   */
+  const loadTags = useCallback(async () => {
+    try {
+      const res = await userSegmentsApi.listTags();
+      setTags(res.data.data as UserTag[]);
+    } catch (error) {
+      console.error('加载标签列表失败:', error);
+    }
+  }, []);
+
+  useEffect(() => {
+    loadTags();
+  }, [loadTags]);
+
   useEffect(() => {
     loadUsers();
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [page, statusFilter, activityTier]);
+  }, [page, statusFilter, activityTier, selectedTagId]);
 
   const loadUsers = async () => {
     setLoading(true);
     try {
-      const res = await usersApi.getList({
-        page,
-        limit: 20,
-        status: statusFilter || undefined,
-        search: search || undefined,
-        activityTier: activityTier || undefined,
-      });
-      setData(res.data.data as PaginationResult<UserListItem>);
+      // 如果选了标签筛选，走标签筛选接口
+      if (selectedTagId) {
+        const res = await userSegmentsApi.getUsersByTag(selectedTagId, page, 20);
+        setData(res.data.data as PaginationResult<UserListItem>);
+      } else {
+        const res = await usersApi.getList({
+          page,
+          limit: 20,
+          status: statusFilter || undefined,
+          search: search || undefined,
+          activityTier: activityTier || undefined,
+        });
+        setData(res.data.data as PaginationResult<UserListItem>);
+      }
     } catch (error) {
       console.error('加载用户列表失败:', error);
     } finally {
@@ -247,6 +282,7 @@ const UsersPage: React.FC = () => {
 
   /**
    * 打开用户详情弹窗
+   * 同时加载该用户的标签列表用于标签管理区域展示
    * @param user - 用户列表项数据
    */
   const openDetailModal = (user: UserListItem) => {
@@ -256,12 +292,75 @@ const UsersPage: React.FC = () => {
     setTimelinePage(1);
     setTimelineTotalPages(1);
     setTimelineTotal(0);
+    setAddTagSelectId('');
+    loadUserTags(user.id);
   };
 
   /** 关闭用户详情弹窗 */
   const closeDetailModal = () => {
     setDetailModal(null);
     setTimelineEvents([]);
+    setUserTags([]);
+    setAddTagSelectId('');
+  };
+
+  /**
+   * 加载指定用户的标签列表
+   * 从当前用户列表数据中读取对应用户的 tags 字段
+   * @param userId - 用户 ID
+   */
+  const loadUserTags = async (userId: string) => {
+    setUserTagsLoading(true);
+    try {
+      // 从用户数据中读取 tags 字段
+      const user = data?.items.find(u => u.id === userId);
+      if (user?.tags) {
+        setUserTags(user.tags);
+      } else {
+        setUserTags([]);
+      }
+    } finally {
+      setUserTagsLoading(false);
+    }
+  };
+
+  /**
+   * 为用户添加标签
+   * 调用后端接口将标签绑定到用户，成功后更新本地状态并刷新用户列表
+   * @param userId - 用户 ID
+   * @param tagId - 标签 ID
+   */
+  const handleAddTag = async (userId: string, tagId: string) => {
+    if (!tagId) return;
+    try {
+      await userSegmentsApi.addTagToUser(userId, tagId);
+      setUserTags(prev => [...prev, tagId]);
+      setAddTagSelectId('');
+      showToast('success', '标签已添加');
+      // 刷新用户列表以更新 tags 字段
+      loadUsers();
+    } catch (error) {
+      console.error('添加标签失败:', error);
+      showToast('error', '添加标签失败');
+    }
+  };
+
+  /**
+   * 为用户移除标签
+   * 调用后端接口解除标签绑定，成功后更新本地状态并刷新用户列表
+   * @param userId - 用户 ID
+   * @param tagId - 标签 ID
+   */
+  const handleRemoveTag = async (userId: string, tagId: string) => {
+    try {
+      await userSegmentsApi.removeTagFromUser(userId, tagId);
+      setUserTags(prev => prev.filter(t => t !== tagId));
+      showToast('success', '标签已移除');
+      loadUsers();
+    } catch (error) {
+      console.error('移除标签失败:', error);
+      showToast('error', '移除标签失败');
+    }
   };
 
   /**
@@ -402,6 +501,17 @@ const UsersPage: React.FC = () => {
           >
             {ACTIVITY_TIER_OPTIONS.map((option) => (
               <option key={option.value} value={option.value}>{option.label}</option>
+            ))}
+          </select>
+          <select
+            value={selectedTagId}
+            onChange={(e) => { setSelectedTagId(e.target.value); setPage(1); }}
+            className="px-3 py-2 border border-gray-200 rounded-lg text-sm"
+            aria-label="按标签筛选"
+          >
+            <option value="">全部用户</option>
+            {tags.map((tag) => (
+              <option key={tag._id} value={tag._id}>{tag.name}</option>
             ))}
           </select>
         </div>
@@ -663,6 +773,46 @@ const UsersPage: React.FC = () => {
                       <p className="text-sm text-red-700">{detailModal.banReason}</p>
                     </div>
                   )}
+                  {/* 标签管理区域 */}
+                  <div className="border-t pt-4 mt-4">
+                    <h4 className="text-sm font-medium text-gray-700 mb-2">用户标签</h4>
+                    {userTagsLoading ? (
+                      <p className="text-sm text-gray-400">加载中...</p>
+                    ) : (
+                      <div className="flex flex-wrap gap-2 mb-3">
+                        {userTags.length === 0 && <span className="text-sm text-gray-400">暂无标签</span>}
+                        {userTags.map((tagId) => {
+                          const tag = tags.find(t => t._id === tagId);
+                          if (!tag) return null;
+                          return (
+                            <span key={tagId} className="inline-flex items-center gap-1 px-2 py-1 rounded-full text-xs" style={{ backgroundColor: tag.color + '20', color: tag.color }}>
+                              {tag.name}
+                              <button onClick={() => { if (detailModal) handleRemoveTag(detailModal.id, tagId); }} className="hover:opacity-70">×</button>
+                            </span>
+                          );
+                        })}
+                      </div>
+                    )}
+                    <div className="flex gap-2">
+                      <select
+                        value={addTagSelectId}
+                        onChange={(e) => setAddTagSelectId(e.target.value)}
+                        className="flex-1 px-2 py-1 border rounded text-sm"
+                      >
+                        <option value="">选择标签...</option>
+                        {tags.filter(t => !userTags.includes(t._id)).map((tag) => (
+                          <option key={tag._id} value={tag._id}>{tag.name}</option>
+                        ))}
+                      </select>
+                      <button
+                        onClick={() => { if (detailModal) handleAddTag(detailModal.id, addTagSelectId); }}
+                        disabled={!addTagSelectId}
+                        className="px-3 py-1 bg-blue-600 text-white rounded text-sm hover:bg-blue-700 disabled:opacity-50"
+                      >
+                        添加
+                      </button>
+                    </div>
+                  </div>
                 </div>
               )}
 

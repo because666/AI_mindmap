@@ -790,25 +790,35 @@ class PushService {
 
   /**
    * 获取消息详情
-   * @param messageId 消息ID
-   * @param userId 用户ID
-   * @returns 消息详情
+   * 兼容两种 _id 格式：24 位 hex（ObjectId）与 UUID 字符串。
+   * 先尝试以 ObjectId 方式查询，解析失败时回退到字符串查询，避免 BSONError 抛出。
+   * @param messageId 消息ID（可能是 24 位 hex 或 UUID 字符串）
+   * @param userId 用户ID，用于查找该用户的已读状态
+   * @returns 消息详情对象；查询失败或消息不存在时返回 null
    */
-  async getMessageDetail(messageId: string, userId?: string): Promise<Record<string, any> | null> {
-    if (!/^[0-9a-fA-F]{24}$/.test(messageId)) {
-      return null;
-    }
-
+  async getMessageDetail(messageId: string, userId?: string): Promise<Record<string, unknown> | null> {
     const collection = mongoDBService.getCollection<PushMessage>('push_messages');
     if (!collection) return null;
 
+    let message: PushMessage | null = null;
     try {
-      const message = await collection.findOne({ _id: new ObjectId(messageId) });
-      if (!message) return null;
+      // 先尝试 ObjectId 格式查询（24 位 hex）
+      message = await collection.findOne({ _id: new ObjectId(messageId) });
+    } catch {
+      // ObjectId 解析失败，回退到字符串查询（兼容 UUID 格式的 _id）
+      try {
+        message = await collection.findOne({ _id: messageId as unknown as ObjectId });
+      } catch (err) {
+        console.warn(`[PushService] 消息查询失败，messageId: ${messageId}，错误:`, err);
+        return null;
+      }
+    }
+
+    if (!message) return null;
 
     const recipient = userId ? message.recipients.find((r) => r.userId === userId) : null;
 
-    const detail: Record<string, any> = {
+    const detail: Record<string, unknown> = {
       id: message._id?.toString(),
       type: message.type,
       title: message.title,
@@ -832,10 +842,6 @@ class PushService {
     };
 
     return detail;
-    } catch (error) {
-      console.error('[Push] 获取消息详情失败:', error);
-      return null;
-    }
   }
 
   /**

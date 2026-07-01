@@ -2,12 +2,13 @@
 
 ## 部署概述
 
-本项目采用「本地构建后上传产物」的标准化部署流程：
+本项目采用「本地构建后直接上传产物」的标准化部署流程，**部署流程不走 Git**，**所有部署必须先完成服务器端强制备份**：
 
-1. 本地完成 Git 提交并推送到远程仓库。
-2. 本地执行 lint / test / build，确保构建产物通过验证。
-3. 通过 `deploy_server.py` 将本地构建产物（`server/dist`、`client/dist`、`admin/server/dist`、`admin/client/dist`）上传到远程服务器。
-4. 服务器端仅执行备份、替换 dist 目录、PM2 重启、健康检查。
+1. 本地执行 lint / test / build，确保构建产物通过验证。
+2. 通过 `deploy_server.py` 将本地构建产物（`server/dist`、`client/dist`、`admin/server/dist`、`admin/client/dist`）上传到远程服务器。
+3. 服务器端**强制备份**四个 dist 目录到 `.bak-<timestamp>`，并验证备份目录存在且非空；备份失败时立即中止部署。
+4. 服务器端替换 dist 目录、PM2 重启、健康检查。
+5. 部署成功后可选尝试同步本地仓库到远程（非阻塞，失败不影响部署结果）。
 
 **禁止在服务器端执行 `git pull`、`git fetch`、`git reset`、`npm install`、`npm run build` 或任何源码构建操作。**
 
@@ -42,15 +43,15 @@ python deploy_server.py
 脚本执行顺序：
 
 1. 加载 `.env.deploy` 配置。
-2. 检查 Git 工作区，自动提交未提交变更。
-3. 推送当前分支到远程仓库。
-4. 创建并推送标签 `deploy-backup-<timestamp>`。
-5. 本地执行 lint / test / build（若根目录存在 lint/test 脚本则执行，否则跳过并提示）。
-6. 连接远程服务器。
-7. 在服务器端备份 `client/dist`、`server/dist`、`admin/server/dist`、`admin/client/dist`。
-8. 上传本地构建产物并原子替换服务器上的 dist 目录。
-9. `pm2 restart` 主服务端与 Admin 服务端。
-10. 对健康检查端点发起请求，确认返回 HTTP 200。
+2. 本地执行 lint / test / build（若根目录存在 lint/test 脚本则执行，否则跳过并提示）。
+3. 连接远程服务器。
+4. 在服务器端**强制备份** `client/dist`、`server/dist`、`admin/server/dist`、`admin/client/dist` 到对应的 `.bak-<timestamp>` 目录。
+5. **验证备份完整性**：确认四个备份目录均存在且非空；若验证失败，立即中止部署。
+6. **清理过期备份**：保留最近 10 个完整备份组（可通过 `DEPLOY_BACKUP_KEEP_COUNT` 环境变量调整），删除更早的历史备份。
+7. 上传本地构建产物并原子替换服务器上的 dist 目录。
+8. `pm2 restart` 主服务端与 Admin 服务端。
+9. 对健康检查端点发起请求，确认返回 HTTP 200。
+10. （可选）尝试同步本地仓库到远程：检查工作区并提交、推送分支、创建并推送 `deploy-backup-<timestamp>` 标签。此步骤非阻塞，失败仅打印提示，不影响部署结果。
 
 ### 干运行预览
 
@@ -64,11 +65,14 @@ python deploy_server.py --dry-run
 
 服务器端仅允许执行以下操作：
 
-- 备份现有 `client/dist`、`server/dist`、`admin/server/dist`、`admin/client/dist` 到对应的 `.bak-<timestamp>` 目录。
+- **强制备份**现有 `client/dist`、`server/dist`、`admin/server/dist`、`admin/client/dist` 到对应的 `.bak-<timestamp>` 目录，并验证备份目录存在且非空。
+- **清理过期备份**（保留最近 10 个完整备份组，可配置）。
 - 将上传的构建产物替换为当前 dist 目录。
 - `pm2 restart deepmindmap-server`
 - `pm2 restart deepmindmap-admin`
 - 通过 `curl` 请求健康检查端点。
+
+**重要**：备份失败时 `deploy_server.py` 会立即中止部署，不会继续上传或替换 dist 目录。
 
 服务器端严禁：
 
@@ -79,7 +83,9 @@ python deploy_server.py --dry-run
 
 ## 回滚命令
 
-### 本地回滚
+### 本地回滚（依赖可选同步步骤）
+
+> **注意**：本地回滚依赖部署后可选同步步骤创建的 `deploy-backup-<timestamp>` Git 标签。若部署时未执行可选同步（或同步失败），则无法使用本地回滚，此时请使用远程回滚。
 
 回退本地仓库到部署前状态：
 
@@ -94,6 +100,13 @@ python rollback_local.py --latest
 ```
 
 ### 远程回滚
+
+`rollback_remote.py` 使用 `deploy_server.py` 创建的四个备份目录进行回滚：
+
+- `server/dist.bak-<timestamp>`
+- `admin/server/dist.bak-<timestamp>`
+- `client/dist.bak-<timestamp>`
+- `admin/client/dist.bak-<timestamp>`
 
 恢复服务器端的 dist 目录到部署前备份：
 
@@ -111,8 +124,8 @@ python rollback_remote.py --latest
 
 - **本地构建失败**：无需回滚服务器，修复本地问题后重新运行 `python deploy_server.py`。
 - **上传阶段失败**：服务器尚未替换 dist，直接重试 `python deploy_server.py`。
-- **替换或重启后健康检查失败**：立即使用 `rollback_remote.py` 恢复服务器端备份，排查问题后再重新部署。
-- **本地代码需要回退**：使用 `rollback_local.py` 恢复到部署前标签。
+- **替换或重启后健康检查失败**：立即使用 `rollback_remote.py` 恢复服务器端备份，排查问题后再重新部署。服务器端备份由 `deploy_server.py` 在每次部署前强制创建。
+- **本地代码需要回退**：若部署时执行了可选同步步骤并成功创建标签，可使用 `rollback_local.py` 恢复到部署前标签；否则需手动通过 `git reset` 回退。
 
 ## 服务器端脚本 `deploy.sh`
 
@@ -131,4 +144,4 @@ python rollback_remote.py --latest
 - 不要在任何代码中硬编码密码、API Key、私钥、服务器 IP 等敏感信息。
 - 私钥文件应设置合适的文件权限，避免被未授权用户读取。
 - 生产环境健康检查地址建议通过内网或带认证的访问策略进行保护。
-- 部署前必须完成 Git 提交、推送与标签，禁止直接覆盖线上代码。
+- 部署前必须在服务器端**强制备份**旧产物目录（`client/dist`、`server/dist`、`admin/server/dist`、`admin/client/dist` 到对应的 `.bak-<timestamp>`），并验证备份目录存在且非空；备份失败时部署必须中止，禁止无备份直接覆盖线上代码。部署流程不走 Git，Git 同步仅作为部署后的可选非阻塞步骤。

@@ -268,6 +268,12 @@ export interface WorkspaceListItem {
    * 与 isPinned 配套，用于置顶工作区之间的时间倒序排序
    */
   pinnedAt?: string;
+  /** 是否被管理员封禁 */
+  isBanned?: boolean;
+  /** 封禁原因 */
+  banReason?: string;
+  /** 封禁过期时间（ISO 字符串），undefined 表示永久封禁 */
+  banExpiresAt?: string;
 }
 
 export interface SensitiveWordConfig {
@@ -418,9 +424,9 @@ export interface FeedbackStats {
 
 /**
  * 分群规则字段类型
- * 支持按最后活跃时间、消息数量、是否拥有API密钥进行分群
+ * 仅支持 visitors 集合实际存在的字段：最后活跃时间、注册时间、工作区数量
  */
-export type SegmentRuleField = 'lastActiveAt' | 'messageCount' | 'hasOwnApiKey';
+export type SegmentRuleField = 'lastActiveAt' | 'createdAt' | 'workspaceCount';
 
 /**
  * 分群规则运算符类型

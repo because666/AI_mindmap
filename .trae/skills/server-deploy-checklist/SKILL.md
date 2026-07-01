@@ -11,25 +11,13 @@ description: "服务端 TypeScript 项目部署检查清单。当部署服务端
 
 ## 核心理念
 
-**服务端 TypeScript 项目部署必须「本地构建产物，本地上传产物，服务器端仅替换/重启」。**
+**服务端 TypeScript 项目部署必须「本地构建产物，本地上传产物，服务器端仅替换/重启」，部署流程不走 Git。部署前必须强制备份服务器端产物，备份失败中止部署。**
 
-服务器端运行的是 `dist/` 目录下编译后的 JS 文件。所有编译、构建工作必须在本地完成，禁止在服务器端拉取源码或执行构建。服务器端仅负责备份旧产物、替换产物、重启 PM2 进程和健康检查。
+服务器端运行的是 `dist/` 目录下编译后的 JS 文件。所有编译、构建工作必须在本地完成，禁止在服务器端拉取源码或执行构建。服务器端仅负责强制备份旧产物、替换产物、重启 PM2 进程和健康检查。备份是强制步骤，任何情况下不可跳过。
 
 ## 部署流程
 
-### 第一步：本地 Git 提交并推送
-
-```bash
-git add .
-git commit -m "类型(模块): 描述"
-git push
-```
-
-**验证提交成功**：
-- `git status --short` 无输出
-- 远程仓库包含最新提交
-
-### 第二步：本地执行构建
+### 第一步：本地执行构建
 
 在本地项目根目录依次执行：
 
@@ -55,6 +43,33 @@ npm run build:admin
 
 > 注：若 `npm run build:admin` 内部分别执行 `admin/server` 与 `admin/client` 的 build，需确认两者均成功。
 
+> **重要**：构建验证成功后，下一步必须先完成服务器端强制备份，不可跳过。只有在备份成功且通过验证后，才能执行上传和替换。
+
+### 第二步：服务器端强制备份（上传前不可跳过）
+
+在上传新产物之前，必须先在服务器端完成旧产物的强制备份：
+
+```bash
+# 在服务器部署路径下执行
+mv client/dist client/dist.bak-<timestamp>
+mv server/dist server/dist.bak-<timestamp>
+mv admin/server/dist admin/server/dist.bak-<timestamp>
+mv admin/client/dist admin/client/dist.bak-<timestamp>
+```
+
+**验证备份成功**：
+- 以下四个备份目录均存在且非空：
+  - `client/dist.bak-<timestamp>`
+  - `server/dist.bak-<timestamp>`
+  - `admin/server/dist.bak-<timestamp>`
+  - `admin/client/dist.bak-<timestamp>`
+- 备份命令 exit code 为 0
+- 无错误输出
+
+**旧备份清理**：备份验证成功后，自动清理过期备份，默认保留最近 10 个完整备份组。
+
+**失败处理**：任一目录备份失败或验证不通过，立即中止部署，不得继续上传、替换或重启。
+
 ### 第三步：上传本地构建产物
 
 ```bash
@@ -71,19 +86,13 @@ python deploy_server.py
 服务器端仅执行：
 
 ```bash
-# 1. 备份旧产物目录（在服务器部署路径下执行）
-mv client/dist client/dist.bak-<timestamp>
-mv server/dist server/dist.bak-<timestamp>
-mv admin/server/dist admin/server/dist.bak-<timestamp>
-mv admin/client/dist admin/client/dist.bak-<timestamp>
+# 1. 替换为新产物目录（已由 deploy_server.py 上传到新路径，按实际脚本逻辑调整）
 
-# 2. 替换为新产物目录（已由 deploy_server.py 上传到新路径，按实际脚本逻辑调整）
-
-# 3. 重启 PM2 服务
+# 2. 重启 PM2 服务
 pm2 restart deepmindmap-server
 pm2 restart deepmindmap-admin
 
-# 4. 健康检查
+# 3. 健康检查
 curl http://127.0.0.1:3001/health
 curl http://127.0.0.1:3002/api/health
 ```
@@ -108,6 +117,18 @@ ssh <DEPLOY_USER>@<DEPLOY_HOST> "pm2 logs 服务名 --nostream --lines 20"
 - 无启动错误
 - 健康检查端点返回正常
 
+### 第六步：同步本地仓库到远程（可选）
+
+部署成功后，非阻塞尝试同步本地代码到远程仓库：
+
+```bash
+git add .
+git commit -m "类型(模块): 描述"
+git push
+```
+
+> 注：此步骤为可选后置动作，失败仅打印提示信息，不触发回滚，不影响部署结果。可由用户后续手动处理同步失败的情况。
+
 ## 部署差异对比
 
 | 步骤 | 客户端（Vite/React） | 服务端（TypeScript/Node） | Admin 后台 |
@@ -121,7 +142,7 @@ ssh <DEPLOY_USER>@<DEPLOY_HOST> "pm2 logs 服务名 --nostream --lines 20"
 ## 常见错误
 
 1. **在服务器端执行构建**：违反「本地构建，上传产物」原则，可能导致环境不一致、构建失败或服务器负载异常。
-2. **未先提交到仓库**：本地构建前未执行 `git commit`/`git push`，导致代码状态不可追溯，回滚困难。
+2. **未备份直接替换产物**：违反强制备份原则，一旦新产物异常将无法回滚。
 3. **忘记本地构建**：直接上传旧产物，服务器运行旧代码，修改不生效。
 4. **上传产物不完整**：漏传 `admin/client/dist` 等目录，导致 Admin 前端无法加载新版本。
 5. **忘记备份旧产物**：上传失败后无法快速回滚。

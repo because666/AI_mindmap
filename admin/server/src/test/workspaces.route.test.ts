@@ -738,4 +738,134 @@ describe('workspaces 路由', () => {
       }));
     });
   });
+
+  /**
+   * 测试组：POST /:id/ban 封禁工作区
+   */
+  describe('POST /:id/ban', () => {
+    it('封禁工作区成功（永久封禁）', async () => {
+      mockFindOne.mockResolvedValue({ id: 'ws-1', name: '工作区A' });
+      mockUpdateOne.mockResolvedValue(true);
+
+      const req = createMockRequest({ reason: '违规内容' }, { id: 'ws-1' });
+      const respState = createMockResponse();
+
+      await callRoute('post', '/.*/ban$', req, respState.res);
+
+      expect(respState.statusCode).toBe(200);
+      expect(respState.jsonBody).toMatchObject({ success: true, message: '工作区已封禁' });
+      expect(mockUpdateOne).toHaveBeenCalledWith('workspaces', { id: 'ws-1' }, expect.objectContaining({
+        $set: expect.objectContaining({
+          isBanned: true,
+          banReason: '违规内容',
+          bannedAt: expect.any(Date),
+        }),
+      }));
+      expect(mockNotifyWorkspaceCacheClear).toHaveBeenCalledWith('ws-1');
+    });
+
+    it('封禁工作区成功（带有效期）', async () => {
+      mockFindOne.mockResolvedValue({ id: 'ws-1', name: '工作区A' });
+      mockUpdateOne.mockResolvedValue(true);
+
+      const req = createMockRequest({ reason: '临时违规', duration: 24 }, { id: 'ws-1' });
+      const respState = createMockResponse();
+
+      await callRoute('post', '/.*/ban$', req, respState.res);
+
+      expect(respState.statusCode).toBe(200);
+      expect(mockUpdateOne).toHaveBeenCalledWith('workspaces', { id: 'ws-1' }, expect.objectContaining({
+        $set: expect.objectContaining({
+          isBanned: true,
+          banReason: '临时违规',
+          banExpiresAt: expect.any(Date),
+        }),
+      }));
+    });
+
+    it('未提供封禁原因返回 400', async () => {
+      const req = createMockRequest({}, { id: 'ws-1' });
+      const respState = createMockResponse();
+
+      await callRoute('post', '/.*/ban$', req, respState.res);
+
+      expect(respState.statusCode).toBe(400);
+      expect(respState.jsonBody).toMatchObject({ success: false, error: '请提供封禁原因' });
+    });
+
+    it('工作区不存在返回 404', async () => {
+      mockFindOne.mockResolvedValue(null);
+
+      const req = createMockRequest({ reason: '违规' }, { id: 'nonexistent' });
+      const respState = createMockResponse();
+
+      await callRoute('post', '/.*/ban$', req, respState.res);
+
+      expect(respState.statusCode).toBe(404);
+      expect(respState.jsonBody).toMatchObject({ success: false, error: '工作区不存在' });
+    });
+
+    it('数据库异常时返回 500', async () => {
+      mockFindOne.mockRejectedValue(new Error('数据库异常'));
+
+      const req = createMockRequest({ reason: '违规' }, { id: 'ws-1' });
+      const respState = createMockResponse();
+
+      await callRoute('post', '/.*/ban$', req, respState.res);
+
+      expect(respState.statusCode).toBe(500);
+      expect(respState.jsonBody).toMatchObject({ success: false, error: '封禁工作区失败' });
+    });
+  });
+
+  /**
+   * 测试组：POST /:id/unban 解封工作区
+   */
+  describe('POST /:id/unban', () => {
+    it('解封工作区成功', async () => {
+      mockFindOne.mockResolvedValue({ id: 'ws-1', name: '工作区A', isBanned: true });
+      mockUpdateOne.mockResolvedValue(true);
+
+      const req = createMockRequest({}, { id: 'ws-1' });
+      const respState = createMockResponse();
+
+      await callRoute('post', '/.*/unban$', req, respState.res);
+
+      expect(respState.statusCode).toBe(200);
+      expect(respState.jsonBody).toMatchObject({ success: true, message: '工作区已解封' });
+      expect(mockUpdateOne).toHaveBeenCalledWith('workspaces', { id: 'ws-1' }, expect.objectContaining({
+        $set: expect.objectContaining({
+          isBanned: false,
+          banReason: null,
+          banExpiresAt: null,
+          unbannedAt: expect.any(Date),
+        }),
+      }));
+      expect(mockNotifyWorkspaceCacheClear).toHaveBeenCalledWith('ws-1');
+    });
+
+    it('工作区不存在返回 404', async () => {
+      mockFindOne.mockResolvedValue(null);
+
+      const req = createMockRequest({}, { id: 'nonexistent' });
+      const respState = createMockResponse();
+
+      await callRoute('post', '/.*/unban$', req, respState.res);
+
+      expect(respState.statusCode).toBe(404);
+      expect(respState.jsonBody).toMatchObject({ success: false, error: '工作区不存在' });
+    });
+
+    it('数据库异常时返回 500', async () => {
+      mockFindOne.mockRejectedValue(new Error('数据库异常'));
+
+      const req = createMockRequest({}, { id: 'ws-1' });
+      const respState = createMockResponse();
+
+      await callRoute('post', '/.*/unban$', req, respState.res);
+
+      expect(respState.statusCode).toBe(500);
+      expect(respState.jsonBody).toMatchObject({ success: false, error: '解封工作区失败' });
+    });
+  });
 });

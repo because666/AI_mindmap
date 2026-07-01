@@ -373,6 +373,20 @@ export const workspaceMemberAuth = async (req: Request, res: Response, next: Nex
     });
   }
 
+  if (workspace.isBanned === true) {
+    // 检查封禁是否已过期
+    const banExpiresAt = workspace.banExpiresAt;
+    const isExpired = banExpiresAt && new Date(banExpiresAt as string | Date).getTime() < Date.now();
+    if (!isExpired) {
+      const banReason = workspace.banReason;
+      return res.status(403).json({
+        success: false,
+        error: banReason ? `该工作区已被封禁：${banReason}` : '该工作区已被封禁',
+        code: 'WORKSPACE_BANNED',
+      });
+    }
+  }
+
   const isMember = await workspaceService.isMember(workspaceId, visitorId);
   if (!isMember) {
     return res.status(403).json({

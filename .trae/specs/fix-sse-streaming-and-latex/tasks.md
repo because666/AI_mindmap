@@ -18,7 +18,7 @@
   - [ ] SubTask 3.3: 保留光标闪烁动画效果，但不应阻塞内容显示
   - [ ] SubTask 3.4: 验证流式输出在不同网络速度下均流畅（快速到达不堆积、慢速到达无闪烁）
 
-- [ ] Task 4: 构建测试与部署
+- [x] Task 4: 构建测试与部署
   - [ ] SubTask 4.1: 主服务端 `npx tsc --noEmit` 通过
   - [ ] SubTask 4.2: 主服务端 `npx vitest run` 通过（含新增的 compression filter 测试）
   - [ ] SubTask 4.3: 主客户端 `npm run build` 通过

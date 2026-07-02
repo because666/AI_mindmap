@@ -750,6 +750,9 @@ const ChatPanel: React.FC<ChatPanelProps> = ({ nodeId }) => {
    * 注意：光标闪烁动画由 StreamingMessage 组件中的 animate-pulse 实现，与此函数无关
    */
   const flushBufferToDisplay = useCallback(() => {
+    // 立即重置 ref，确保后续 SSE 数据能触发新的 requestAnimationFrame 调度
+    // 否则 handleStream 中的 if (!animationFrameRef.current) 判断会因残留旧 ID 而跳过调度
+    animationFrameRef.current = 0;
     const contentBuffer = streamBufferRef.current;
     const thinkingBuffer = thinkingBufferRef.current;
     let needsUpdate = false;

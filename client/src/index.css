@@ -392,6 +392,19 @@ body {
   color: #e7e5e4;
 }
 
+/* KaTeX 数学公式颜色继承父元素，确保深色主题下公式可见 */
+.markdown-content .katex {
+  color: inherit;
+}
+
+/* 块级公式居中显示并添加上下间距 */
+.markdown-content .katex-display {
+  margin: 0.75rem 0;
+  overflow-x: auto;
+  overflow-y: hidden;
+  padding: 0.25rem 0;
+}
+
 .markdown-content > *:first-child {
   margin-top: 0;
 }

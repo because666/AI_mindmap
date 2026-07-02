@@ -1,6 +1,8 @@
 import React, { memo, useMemo } from 'react';
 import ReactMarkdown from 'react-markdown';
 import remarkGfm from 'remark-gfm';
+import remarkMath from 'remark-math';
+import rehypeKatex from 'rehype-katex';
 
 /**
  * Markdown 渲染组件属性接口
@@ -49,6 +51,8 @@ const preprocessMarkdown = (content: string): string => {
 /**
  * Markdown 渲染组件
  * 用于渲染 AI 响应中的 Markdown 内容
+ * 支持 GFM 语法、LaTeX 数学公式（通过 remark-math + rehype-katex 渲染为 KaTeX）
+ * 公式颜色通过全局 .katex { color: inherit } 规则继承父元素，确保深色主题下可见
  */
 const MarkdownRenderer: React.FC<MarkdownRendererProps> = memo(({ content, className = '' }) => {
   const processedContent = useMemo(() => preprocessMarkdown(content), [content]);
@@ -56,7 +60,8 @@ const MarkdownRenderer: React.FC<MarkdownRendererProps> = memo(({ content, class
   return (
     <div className={`markdown-content ${className}`}>
       <ReactMarkdown
-        remarkPlugins={[remarkGfm]}
+        remarkPlugins={[remarkGfm, remarkMath]}
+        rehypePlugins={[rehypeKatex]}
         components={{
           h1: ({ children }) => (
             <h1 className="text-xl font-bold text-white mb-3 mt-4 first:mt-0 border-b border-dark-500 pb-2">

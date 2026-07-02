@@ -744,9 +744,10 @@ const ChatPanel: React.FC<ChatPanelProps> = ({ nodeId }) => {
   };
 
   /**
-   * 将缓冲区内容逐字符刷新到显示状态
-   * 使用 requestAnimationFrame 节流，每帧最多追加一定数量的字符
-   * 实现平滑的打字机效果
+   * 将缓冲区内容立即全部刷新到显示状态
+   * 使用 requestAnimationFrame 节流合并同一帧内的多次更新，避免渲染抖动
+   * 直接刷入全部缓冲区内容，保证流式显示的流畅度，避免人为拖慢
+   * 注意：光标闪烁动画由 StreamingMessage 组件中的 animate-pulse 实现，与此函数无关
    */
   const flushBufferToDisplay = useCallback(() => {
     const contentBuffer = streamBufferRef.current;
@@ -754,20 +755,16 @@ const ChatPanel: React.FC<ChatPanelProps> = ({ nodeId }) => {
     let needsUpdate = false;
 
     if (contentBuffer) {
-      const charsToFlush = Math.min(contentBuffer.length, 3);
-      const flushed = contentBuffer.slice(0, charsToFlush);
-      const remaining = contentBuffer.slice(charsToFlush);
-      streamBufferRef.current = remaining;
-      displayedContentRef.current += flushed;
+      // 流式内容立即全部显示，保证流畅
+      displayedContentRef.current += contentBuffer;
+      streamBufferRef.current = '';
       needsUpdate = true;
     }
 
     if (thinkingBuffer) {
-      const charsToFlush = Math.min(thinkingBuffer.length, 5);
-      const flushed = thinkingBuffer.slice(0, charsToFlush);
-      const remaining = thinkingBuffer.slice(charsToFlush);
-      thinkingBufferRef.current = remaining;
-      displayedThinkingRef.current += flushed;
+      // 思考过程同理立即显示
+      displayedThinkingRef.current += thinkingBuffer;
+      thinkingBufferRef.current = '';
       needsUpdate = true;
     }
 
@@ -776,6 +773,7 @@ const ChatPanel: React.FC<ChatPanelProps> = ({ nodeId }) => {
       setStreamingThinkingContent(displayedThinkingRef.current);
     }
 
+    // 缓冲区还有内容时继续下一帧（实际上立即清空了，所以一般不需要）
     if (streamBufferRef.current || thinkingBufferRef.current) {
       animationFrameRef.current = requestAnimationFrame(flushBufferToDisplay);
     }

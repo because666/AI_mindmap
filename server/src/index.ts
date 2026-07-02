@@ -72,7 +72,33 @@ app.use(cors({
   origin: corsOrigins,
   credentials: true,
 }));
-app.use(compression());
+/**
+ * 全局 compression 中间件配置
+ *
+ * 自定义 filter 函数：对 SSE 流式响应（text/event-stream）跳过 gzip 压缩，
+ * 其他响应沿用 compression 默认过滤逻辑。
+ *
+ * 背景：若对 SSE 响应启用 gzip 压缩，compression 中间件会缓冲响应体以达到
+ * 压缩阈值后才 flush，导致 AI 对话流式输出退化为一次性返回，破坏流式传输体验。
+ *
+ * 时机说明：Express 中间件链中，路由 handler 调用 res.setHeader('Content-Type', 'text/event-stream')
+ * 后才会触发 res.write/end，而 filter 在 write 时被调用，因此判断时 Content-Type 已生效。
+ *
+ * @param req - Express 请求对象
+ * @param res - Express 响应对象
+ * @returns 是否对该响应启用压缩：SSE 返回 false 跳过压缩，其他响应交给 compression 默认逻辑判断
+ */
+app.use(compression({
+  filter: (req: express.Request, res: express.Response): boolean => {
+    // SSE 流式响应不压缩，避免缓冲导致一次性返回
+    const contentType = res.getHeader('Content-Type') as string | undefined;
+    if (contentType && contentType.includes('text/event-stream')) {
+      return false;
+    }
+    // 其他响应使用 compression 默认过滤逻辑
+    return compression.filter(req, res);
+  },
+}));
 /**
  * 全局 JSON body 解析中间件
  * 默认限制 1MB，防止内存耗尽攻击

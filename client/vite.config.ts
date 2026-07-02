@@ -16,7 +16,13 @@ export default defineConfig({
             if (id.includes('@xyflow')) {
               return 'vendor-flow';
             }
-            if (id.includes('react-markdown') || id.includes('/remark') || id.includes('/rehype') || id.includes('/unified') || id.includes('/micromark') || id.includes('/mdast') || id.includes('/hast') || id.includes('/unist')) {
+            // KaTeX 单独拆包，避免与 remark/rehype 生态形成循环依赖
+            if (id.includes('/katex')) {
+              return 'vendor-katex';
+            }
+            // 仅将 react-markdown 入口拆到 vendor-markdown，
+            // remark/rehype/unified 等底层生态包归入 vendor，避免 chunk 间循环依赖
+            if (id.includes('react-markdown')) {
               return 'vendor-markdown';
             }
             if (id.includes('/zustand')) {
